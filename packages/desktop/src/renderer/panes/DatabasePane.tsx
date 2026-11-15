@@ -145,6 +145,7 @@ const DATASOURCE_MENU = [
   OBJECT_ACTION_IDS.newDatabase,
   KEY_ACTION_IDS.goTo,
   ACTION_IDS.manageShownSchemas,
+  ACTION_IDS.discoverDatabases,
   null,
   ACTION_IDS.datasourceProperties,
   ACTION_IDS.duplicateDatasource,
