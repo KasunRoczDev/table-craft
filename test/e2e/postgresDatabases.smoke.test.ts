@@ -12,6 +12,7 @@ import {
   CLOSE_HOOK_TIMEOUT_MS,
   closeApp,
   editorTabs,
+  findAction,
   EVIDENCE_WINDOW,
   evidenceFor,
   gridText,
@@ -69,10 +70,24 @@ describe.runIf(SMOKE_ENABLED && databaseEnabled("postgres"))("PostgreSQL databas
       await answerSecretPrompt(page, SOURCE_NAME, password);
       await waitUntilReady(page);
 
-      // No Discover Databases action: connecting must populate the sibling automatically.
-      await treeNode(page, SIBLING_NAME).waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+      // Discovery belongs to the original connection's Manage Shown Schemas picker.
+      await treeNode(page, SIBLING_DATABASE).waitFor({ timeout: LAUNCH_TIMEOUT_MS });
       expect(await treeNode(page, SOURCE_NAME).count()).toBe(1);
-      expect(await treeNode(page, SIBLING_NAME).count()).toBe(1);
+      expect(await treeNode(page, SIBLING_NAME).count()).toBe(0);
+      await treeNode(page, SOURCE_NAME).click();
+      await findAction(page, "Manage Shown Schemas");
+      const dialog = page.getByRole("dialog", { name: `Manage Shown Databases — ${SOURCE_NAME}` });
+      expect(await dialog.getByRole("checkbox", { name: SIBLING_DATABASE }).isChecked()).toBe(true);
+      await dialog.getByRole("checkbox", { name: "All databases" }).uncheck();
+      await dialog.getByRole("checkbox", { name: SIBLING_DATABASE }).uncheck();
+      await dialog.getByRole("button", { name: "OK" }).click();
+      await expect.poll(() => treeNode(page, SIBLING_DATABASE).count()).toBe(0);
+      await treeNode(page, SOURCE_NAME).click();
+      await findAction(page, "Manage Shown Schemas");
+      const reopened = page.getByRole("dialog", { name: `Manage Shown Databases — ${SOURCE_NAME}` });
+      await reopened.getByRole("checkbox", { name: SIBLING_DATABASE }).check();
+      await reopened.getByRole("button", { name: "OK" }).click();
+      await treeNode(page, SIBLING_DATABASE).waitFor({ timeout: LAUNCH_TIMEOUT_MS });
       await runStatement(page, `SELECT set_config('tablecraft.smoke_database', '${SESSION_MARKER}', false)`);
       await runStatement(page, `SELECT ${SESSION_VALUE} AS original_session`);
       await expect
@@ -81,7 +96,8 @@ describe.runIf(SMOKE_ENABLED && databaseEnabled("postgres"))("PostgreSQL databas
       const [originalSession] = (await gridText(page)).cells;
       expect(originalSession).toBeDefined();
 
-      await openConsoleOn(page, SIBLING_NAME);
+      await openConsoleOn(page, SIBLING_DATABASE);
+      await expect.poll(() => editorTabs(page).count(), { timeout: LAUNCH_TIMEOUT_MS }).toBe(2);
       await waitUntilReady(page);
       await runStatement(page, `SELECT ${SESSION_VALUE} AS sibling_session`);
       await expect
@@ -101,7 +117,7 @@ describe.runIf(SMOKE_ENABLED && databaseEnabled("postgres"))("PostgreSQL databas
         .poll(async () => (await gridText(page)).cells, { timeout: LAUNCH_TIMEOUT_MS })
         .toEqual([`${originalSession}:after`]);
       await expect.poll(() => treeNode(page, SOURCE_NAME).getAttribute("data-state")).toBe("connected");
-      await expect.poll(() => treeNode(page, SIBLING_NAME).getAttribute("data-state")).toBe("connected");
+      await expect.poll(() => treeNode(page, SIBLING_DATABASE).count()).toBe(1);
 
       const saved = JSON.parse(readProfileFile(userDataDir, "datasources.json") ?? "null") as {
         datasources: { id: string; name: string; config: { database: string } }[];

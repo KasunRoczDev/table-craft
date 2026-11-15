@@ -211,12 +211,25 @@ describe("datasource service", () => {
       await expect(app.connect(id!, {}, WINDOW)).rejects.toThrow("No data source");
     });
 
+    it("givenRunningChild_whenShownDatabasesChange_thenKeepsItsConnection", async () => {
+      const { service: app } = await service();
+      const source = await app.save(saving(PG_DRAFT, SECRET));
+      const [id] = app.addDatabases(source.id, ["other"]);
+      await app.connect(id!, {}, WINDOW);
+      const updated = await app.save(saving({ ...PG_DRAFT, id: source.id, shownNamespaces: ["table_craft"] }));
+      expect(updated.shownNamespaces).toEqual(["table_craft"]);
+      expect(app.list().datasources.find((item) => item.id === id)).toMatchObject({ databaseSourceId: source.id });
+      expect(app.addDatabases(source.id, ["other"])).toEqual([id]);
+    });
+
     it("givenRunningChild_whenSourceChangedOrDeleted_thenRefusesUntilDisconnected", async () => {
       const { service: app, dependencies } = await service();
       const source = await app.save(saving(PG_DRAFT, SECRET));
       const [id] = app.addDatabases(source.id, ["other"]);
       await app.connect(id!, {}, WINDOW);
-      await expect(app.save(saving({ ...PG_DRAFT, id: source.id }))).rejects.toThrow("still connected");
+      await expect(
+        app.save(saving({ ...PG_DRAFT, id: source.id, config: { ...PG_DRAFT.config, host: "new-host" } })),
+      ).rejects.toThrow("still connected");
       await expect(app.delete({ ids: [source.id], folders: ["Docker/Main"] })).rejects.toThrow("still connected");
       await expect(app.delete({ ids: [], folders: ["Docker/Main"] })).rejects.toThrow("not empty");
       await disconnected(dependencies, app.disconnect(id!));

@@ -482,7 +482,6 @@ export async function createDatasourceService<Target>(
     const draft = request.datasource;
     if (draft.id !== undefined) {
       if (databases.has(draft.id)) refuseEphemeral(draft.id, "moved");
-      requireDisconnectedDatabases(draft.id);
     }
     if (ephemeral !== null && draft.id === ephemeral.id) {
       throw new DatasourceError(
@@ -502,6 +501,13 @@ export async function createDatasourceService<Target>(
       plugin.network !== null,
       previous,
     );
+    const connectionChanged =
+      previous !== undefined &&
+      (previous.pluginId !== next.pluginId ||
+        JSON.stringify(previous.config) !== JSON.stringify(next.config) ||
+        JSON.stringify(previous.ssh) !== JSON.stringify(next.ssh) ||
+        JSON.stringify(previous.secretModes) !== JSON.stringify(next.secretModes));
+    if (connectionChanged) requireDisconnectedDatabases(id);
     checkRequired(plugin, next.config);
     checkTunnel(next.ssh);
     if (Object.values(modes).includes("forever") && !secrets.encryption().available) {
@@ -526,7 +532,9 @@ export async function createDatasourceService<Target>(
         ? datasources.map((d) => (d.id === id ? next : d))
         : [...datasources.filter((d) => d.id !== id), next];
     await write();
-    for (const [child, target] of databases) if (target.sourceId === id) databases.delete(child);
+    if (connectionChanged) {
+      for (const [child, target] of databases) if (target.sourceId === id) databases.delete(child);
+    }
     changed();
     return view(next, false);
   }
