@@ -18,6 +18,10 @@
   --tc-rise: 1.5rem;
   --tc-header-veil: 80%;
   --tc-header-blur: 16px;
+  /* Resolved here, at the root, so an island can step its own --tc-panel without a cycle. */
+  --tc-island: var(--tc-panel);
+  --tc-island-panel: var(--tc-raised);
+  --tc-island-raised: color-mix(in srgb, var(--tc-raised) 55%, var(--tc-border));
 }
 
 body {
@@ -73,9 +77,20 @@ body {
   }
 }
 
-/* The docs keep one line, as a tool window's edge: where the sidebar meets the page. */
-.sidebar-pane {
-  border-inline-end-color: var(--tc-border);
+/*
+ * A docs page sits in an island, as the app's editor does in its Islands window: a rounded panel a
+ * gap away from the frame, with no line. Inside it every surface steps up one tone, so code, tables
+ * and cards still read against the island.
+ */
+@media (min-width: 50rem) {
+  :root[data-has-sidebar] .main-frame > div {
+    min-height: calc(100vh - var(--sl-nav-height) - var(--tc-gap-island));
+    margin: 0 var(--tc-gap-island) var(--tc-gap-island) 0;
+    border-radius: var(--tc-radius-island);
+    background-color: var(--tc-island);
+    --tc-panel: var(--tc-island-panel);
+    --tc-raised: var(--tc-island-raised);
+  }
 }
 
 /* Docs: the app's selection for the current page, not a filled accent block. */
