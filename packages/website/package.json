@@ -1,0 +1,21 @@
+{
+  "name": "@table-craft/website",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The TableCraft website: landing page, the guide as docs, downloads and the changelog",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "sync": "bun scripts/sync.ts",
+    "dev": "bun scripts/sync.ts && astro dev",
+    "build": "bun scripts/sync.ts && astro build",
+    "preview": "astro preview"
+  },
+  "devDependencies": {
+    "@astrojs/starlight": "^0.43.1",
+    "astro": "^7.4.12",
+    "marked": "^18.2.0",
+    "sharp": "^0.35.5",
+    "starlight-links-validator": "^0.27.0"
+  }
+}
