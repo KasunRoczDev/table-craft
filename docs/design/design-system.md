@@ -923,9 +923,9 @@ The layout follows Linear's dense dark sites, after a survey of awesome-design-m
 separated by a tone step, never a line or a shadow, as Islands are (cards and buttons are filled,
 never outlined); the header and sidebar wear the page's `colors.canvas`, as Linear's do, and the
 header frosts (80% canvas, a 16 px backdrop blur) once the page scrolls under it, as OpenChamber's
-does. A docs page sits in an island, as the editor does in the app's Islands window: a
-`colors.panel` card with `islandRadiusPx` corners, `islandGapPx` from the frame and no line, inside
-which every surface steps up one tone (narrower than 50rem it is plain canvas); no eyebrow
+does. A docs page sits half a tone step above the sidebar (`colors.canvas` mixed 60/40 with
+`colors.panel`), so the two part without a line while panels inside the page still read a full
+step up (narrower than 50rem it is plain canvas); tables pad their first column; no eyebrow
 labels and no monospace outside code; display type at weight 600, capped at 4rem and two lines;
 screenshots with an Islands radius; keycaps for chords. The landing page opens, as Linear's does, on
 a sans headline over the app recording a data source, a browse and a query; agents (MCP) come next,

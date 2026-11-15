@@ -21,8 +21,8 @@ Starlight. It owns no copy of the docs and no colour of its own.
   toggle. No web font is downloaded.
 - **The layout follows Linear, without its lines.** A panel ladder that steps by tone, as Islands
   do: no hairlines, outlined boxes or shadows, no eyebrow labels and no monospace outside code. The
-  one exception is the subject itself: the databases list is a result grid. A docs page sits in an
-  island beside the sidebar, as the editor does in the app's Islands window. The hero is a sans
+  one exception is the subject itself: the databases list is a result grid. A docs page sits half a
+  tone step above the sidebar rather than behind a line. The hero is a sans
   headline over the app's own recording, and the first section after it is agents over MCP with
   their access levels. Keycaps for chords come from
   Raycast.
