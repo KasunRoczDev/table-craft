@@ -10,7 +10,7 @@
   --sl-text-h2: var(--sl-text-2xl);
   --sl-text-h3: var(--sl-text-xl);
   --sl-text-h4: var(--sl-text-lg);
-  --tc-display: clamp(2rem, 0.9rem + 4.4vw, 4.5rem);
+  --tc-display: clamp(2rem, 1rem + 3.6vw, 4rem);
   --tc-heading-tracking: -0.02em;
   --tc-section-gap: clamp(5rem, 3.5rem + 5vw, 9rem);
   /* The app's --ease-standard (packages/desktop/src/renderer/app.css). */
@@ -125,6 +125,28 @@ body {
 
 .sl-link-card:hover {
   background: var(--tc-raised);
+}
+
+/* Previous and Next: the link cards' tone step, with the label at body size rather than Starlight's 2xl. */
+.pagination-links a {
+  padding: 0.875rem 1.125rem;
+  border: 0;
+  border-radius: var(--tc-radius-island);
+  background: var(--tc-panel);
+  box-shadow: none;
+  font-size: var(--sl-text-sm);
+  color: var(--tc-ink-muted);
+  transition: background-color var(--tc-motion-fast) ease-out;
+}
+
+.pagination-links a:hover {
+  background: var(--tc-raised);
+}
+
+.pagination-links .link-title {
+  font-size: var(--sl-text-base);
+  font-weight: 500;
+  color: var(--tc-ink);
 }
 
 /* Shared pieces of the landing, download and changelog pages. */
@@ -409,6 +431,37 @@ body {
   background: var(--tc-panel);
   border-radius: var(--tc-radius-key);
   padding: 0.1em 0.4em;
+}
+
+.tc-prose details {
+  padding: 0.625rem 1rem;
+  background: var(--tc-panel);
+  border-radius: var(--tc-radius-popover);
+  font-size: var(--sl-text-sm);
+}
+
+.tc-prose summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--tc-ink-muted);
+}
+
+.tc-prose summary:hover,
+.tc-prose details[open] summary {
+  color: var(--tc-ink);
+}
+
+.tc-prose details > ul {
+  margin-top: 0.75rem;
+}
+
+.tc-prose details code {
+  background: none;
+  padding: 0;
+}
+
+.tc-prose details a {
+  text-decoration: none;
 }
 
 .tc-prose pre {

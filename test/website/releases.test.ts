@@ -59,6 +59,25 @@ describe("the website's changelog", () => {
     );
   });
 
+  it("givenPluginPackageList_whenConverted_thenItIsFoldedWithItsCount", () => {
+    const body = [
+      "## New features",
+      "* Explain plans",
+      "",
+      "### Plugins on npm",
+      "",
+      "- [`@tablecraft-app/plugin-etcd@1.37.0`](https://www.npmjs.com/package/@tablecraft-app/plugin-etcd/v/1.37.0) (`latest`)",
+      "- [`@tablecraft-app/plugin-redis@1.37.0`](https://www.npmjs.com/package/@tablecraft-app/plugin-redis/v/1.37.0) (`latest`)",
+    ].join("\n");
+
+    const html = toChangelogEntry(release({ body }))?.html ?? "";
+
+    expect(html).toContain('<details class="tc-packages"><summary>Plugins on npm (2)</summary>');
+    expect(html).not.toContain(" open");
+    expect(html).toMatch(/<details[^>]*>[\s\S]*<li><a href="https:\/\/www\.npmjs\.com[\s\S]*<\/details>/);
+    expect(html.indexOf("Explain plans")).toBeLessThan(html.indexOf("<details"));
+  });
+
   it("givenGuideAndPullLinks_whenConverted_thenTheyPointIntoTheSiteAndReadAsNumbers", () => {
     const markdown = releaseMarkdown(
       [

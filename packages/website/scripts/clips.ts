@@ -10,7 +10,6 @@ export const WEBSITE_CLIPS = [
   "table-editor",
   "explain",
   "diagram",
-  "search-everywhere",
   "themes",
 ] as const;
 export type WebsiteClip = (typeof WEBSITE_CLIPS)[number];

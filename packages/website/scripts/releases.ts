@@ -30,6 +30,7 @@ export interface Changelog {
 const RELEASES_PER_PAGE = 50;
 const INSTALL_HEADING = "## Install";
 const GENERATED_NOTES_MARKER = "<!-- Release notes generated";
+const PACKAGES_HEADING = /^#{2,4} Plugins on npm\s*$/;
 const HTML_COMMENT = /<!--[\s\S]*?-->/g;
 const HEADING = /^(#{1,5}) /gm;
 const GUIDE_LINK = new RegExp(`${escapeRegExp(repositoryFileUrl(GUIDE_DIRECTORY))}/([a-z0-9-]+)\\.md(#[^)\\s]*)?`, "g");
@@ -51,8 +52,33 @@ export function dropInstallBlock(body: string): string {
   return [...lines.slice(0, start), ...(end < 0 ? [] : rest.slice(end))].join("\n");
 }
 
+/**
+ * Folds the per-package list the publish workflow appends to every release (`scripts/plugins/publish.ts`) into a closed
+ * `<details>`, so a release reads as its changes; the summary keeps the heading and the count.
+ */
+export function collapsePackageList(body: string): string {
+  const lines = body.split("\n");
+  const start = lines.findIndex((line) => PACKAGES_HEADING.test(line));
+  if (start < 0) return body;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.startsWith("#") || line.startsWith(GENERATED_NOTES_MARKER));
+  const section = end < 0 ? rest : rest.slice(0, end);
+  const count = section.filter((line) => line.startsWith("- ")).length;
+  const title = lines[start]!.replace(/^#+\s*/, "");
+  return [
+    ...lines.slice(0, start),
+    `<details class="tc-packages"><summary>${title} (${count})</summary>`,
+    "",
+    ...section,
+    "",
+    "</details>",
+    "",
+    ...(end < 0 ? [] : rest.slice(end)),
+  ].join("\n");
+}
+
 export function releaseMarkdown(body: string): string {
-  return dropInstallBlock(body.replace(/\r\n/g, "\n"))
+  return collapsePackageList(dropInstallBlock(body.replace(/\r\n/g, "\n")))
     .replace(HTML_COMMENT, "")
     .replace(GUIDE_LINK, (_match, slug: string, anchor: string | undefined) => docsRoute(slug, anchor ?? ""))
     .replace(PULL_URL, (url, number: string) => `[#${number}](${url})`)

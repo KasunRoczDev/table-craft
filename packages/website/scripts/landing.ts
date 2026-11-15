@@ -7,42 +7,21 @@ export const HERO_TITLE = "A database IDE in the spirit of DataGrip";
 export const HERO_LEAD =
   "Free and open source for macOS, Windows and Linux. Connections, a database explorer, SQL consoles with schema-aware completion, a result grid, a table data editor, query history and EXPLAIN plans, with every database a plugin.";
 
-export type SyntaxKind = "keyword" | "string" | "number" | "identifier" | "operator";
-
-export interface SqlToken {
+export interface AgentAccess {
+  /** The level's name as the Data Sources dialog and `docs/guide/agents.md` write it. */
+  level: string;
   text: string;
-  kind?: SyntaxKind;
 }
 
-/** The hero's statement, one array per line, coloured as the console colours SQL. It says HERO_TITLE. */
-export const HERO_QUERY: readonly (readonly SqlToken[])[] = [
-  [{ text: "SELECT", kind: "keyword" }, { text: " * " }, { text: "FROM", kind: "keyword" }, { text: " ides" }],
-  [
-    { text: "WHERE", kind: "keyword" },
-    { text: " spirit", kind: "identifier" },
-    { text: " = ", kind: "operator" },
-    { text: "'DataGrip'", kind: "string" },
-    { text: ";" },
-  ],
-];
-
-export interface Chord {
-  /** Glyphs as the shortcuts guide writes them for macOS, one keycap each. */
-  keys: readonly string[];
-  /** The action's name in the shortcuts guide's table. */
-  action: string;
-}
-
-/** DataGrip's chords the landing page shows; each is a row of `docs/guide/shortcuts.md`. */
-export const CHORDS: readonly Chord[] = [
-  { keys: ["⇧", "⇧"], action: "Search Everywhere" },
-  { keys: ["⇧", "⌘", "A"], action: "Find Action…" },
-  { keys: ["⇧", "⌘", "L"], action: "New Console" },
-  { keys: ["⌘", "↩"], action: "Run" },
-  { keys: ["⇧", "⌘", "E"], action: "Explain Plan" },
-  { keys: ["F4"], action: "Open Data" },
-  { keys: ["⌘", "B"], action: "Go to DDL" },
-  { keys: ["⌥", "⌘", "L"], action: "Reformat Code" },
+/** The access levels an agent gets per data source, from least to most, as `docs/guide/agents.md` orders them. */
+export const AGENT_ACCESS: readonly AgentAccess[] = [
+  { level: "Off", text: "Where every data source starts. Agents do not see it." },
+  { level: "Ask before reads", text: "Agents browse schemas and tables; every query that returns rows waits for you." },
+  { level: "Read only", text: "SELECTs, DDL, explain and format, in a read-only session. Anything else is refused." },
+  {
+    level: "Ask before writes",
+    text: "One change at a time, run only after you read it and its reason and choose Allow once.",
+  },
 ];
 
 export interface Highlight {
