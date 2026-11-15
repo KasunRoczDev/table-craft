@@ -18,10 +18,9 @@
   --tc-rise: 1.5rem;
   --tc-header-veil: 80%;
   --tc-header-blur: 16px;
-  /* Resolved here, at the root, so an island can step its own --tc-panel without a cycle. */
-  --tc-island: var(--tc-panel);
-  --tc-island-panel: var(--tc-raised);
-  --tc-island-raised: color-mix(in srgb, var(--tc-raised) 55%, var(--tc-border));
+  /* Half a tone step: far enough from the canvas to part the page from the sidebar, close enough
+   * that panels inside it still read a full step up. */
+  --tc-docs-page: color-mix(in srgb, var(--tc-canvas) 60%, var(--tc-panel));
 }
 
 body {
@@ -77,19 +76,11 @@ body {
   }
 }
 
-/*
- * A docs page sits in an island, as the app's editor does in its Islands window: a rounded panel a
- * gap away from the frame, with no line. Inside it every surface steps up one tone, so code, tables
- * and cards still read against the island.
- */
+/* A docs page is half a tone step above the sidebar's canvas, so the two part without a line. */
 @media (min-width: 50rem) {
   :root[data-has-sidebar] .main-frame > div {
-    min-height: calc(100vh - var(--sl-nav-height) - var(--tc-gap-island));
-    margin: 0 var(--tc-gap-island) var(--tc-gap-island) 0;
-    border-radius: var(--tc-radius-island);
-    background-color: var(--tc-island);
-    --tc-panel: var(--tc-island-panel);
-    --tc-raised: var(--tc-island-raised);
+    min-height: calc(100vh - var(--sl-nav-height));
+    background-color: var(--tc-docs-page);
   }
 }
 
@@ -107,17 +98,24 @@ body {
   background: var(--tc-panel);
 }
 
-/* A real table keeps its row lines; the box around it goes, and the header row is a tone step. */
+/*
+ * A real table keeps its row lines; the box around it goes, and the header row is a tone step.
+ * Starlight sets the first column flush left, which leaves the header's text against its fill's
+ * edge, and scrolls a wide table, which `overflow: hidden` would cut off instead.
+ */
 .sl-markdown-content table {
   border-collapse: separate;
   border-spacing: 0;
   border-radius: var(--tc-radius-popover);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
-.sl-markdown-content :is(th, td) {
+.sl-markdown-content :is(th, td),
+.sl-markdown-content :is(th, td):first-child,
+.sl-markdown-content :is(th, td):last-child {
   border: 0;
   border-bottom: 1px solid var(--tc-border);
+  padding-inline: 1rem;
 }
 
 .sl-markdown-content tr:last-child td {
