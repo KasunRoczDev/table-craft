@@ -16,6 +16,8 @@
   /* The app's --ease-standard (packages/desktop/src/renderer/app.css). */
   --tc-ease: cubic-bezier(0.2, 0, 0, 1);
   --tc-rise: 1.5rem;
+  --tc-header-veil: 80%;
+  --tc-header-blur: 16px;
 }
 
 body {
@@ -34,17 +36,21 @@ body {
 }
 
 /*
- * The header is the page's own canvas, as Linear's is, and a line marks its edge only once the page
- * scrolls under it. Translucency was tried: the clips smudge grey through it, worst in Light.
+ * The header is the page's own canvas, frosted once the page scrolls under it, as OpenChamber's is:
+ * the text beneath blurs away instead of meeting a line. The canvas stays mostly opaque, since a
+ * thinner veil lets the clips smudge grey through it, worst in Light.
  */
 .page > header.header {
   background-color: var(--tc-canvas);
-  box-shadow: inset 0 -1px 0 transparent;
-  transition: box-shadow var(--tc-motion-base) ease-out;
+  transition: background-color var(--tc-motion-base) ease-out;
 }
 
-:root[data-scrolled] .page > header.header {
-  box-shadow: inset 0 -1px 0 var(--tc-border);
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  :root[data-scrolled] .page > header.header {
+    background-color: color-mix(in srgb, var(--tc-canvas) var(--tc-header-veil), transparent);
+    -webkit-backdrop-filter: blur(var(--tc-header-blur)) saturate(1.4);
+    backdrop-filter: blur(var(--tc-header-blur)) saturate(1.4);
+  }
 }
 
 .page > header.header button[data-open-modal] {
@@ -65,6 +71,11 @@ body {
   .page > header.header button[data-open-modal]:hover {
     background-color: transparent;
   }
+}
+
+/* The docs keep one line, as a tool window's edge: where the sidebar meets the page. */
+.sidebar-pane {
+  border-inline-end-color: var(--tc-border);
 }
 
 /* Docs: the app's selection for the current page, not a filled accent block. */
