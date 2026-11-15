@@ -18,6 +18,8 @@ import {
   z,
 } from "@table-craft/plugin-api";
 import {
+  CATALOG_SEARCH_MAX_PATHS,
+  CATALOG_SEARCH_SCOPES,
   ERROR_ANSWERS,
   ON_ERROR_CHOICES,
   KEY_HISTORY_MAX_COUNT,
@@ -735,6 +737,14 @@ export const engineRequestSchema = z.discriminatedUnion("type", [
     refresh: z.boolean().optional(),
   }),
   z.strictObject({ id: requestId, type: z.literal("catalog.inferredKeys"), path: namespacePath }),
+  z.strictObject({
+    id: requestId,
+    type: z.literal("catalog.search"),
+    paths: z.array(namespacePath).max(CATALOG_SEARCH_MAX_PATHS),
+    query: z.string().trim().min(1),
+    scope: z.enum(CATALOG_SEARCH_SCOPES),
+    limit: z.number().int().positive(),
+  }),
   z.strictObject({
     id: requestId,
     type: z.literal("catalog.qualifiedName"),

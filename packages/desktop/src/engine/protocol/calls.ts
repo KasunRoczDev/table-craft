@@ -1,4 +1,6 @@
 import type {
+  CatalogSearch,
+  CatalogSearchScope,
   CompletionResult,
   CompletionScope,
   Declaration,
@@ -416,6 +418,20 @@ export interface EngineCalls extends KeyAdvancedCalls {
    * through the same cache as `catalog.describe`. Only the ER diagram draws them. Needs `schemaTree`.
    */
   "catalog.inferredKeys": { params: { readonly path: readonly string[] }; result: readonly InferredKey[] };
+  /**
+   * Tables, views and columns in `paths` whose name or comment holds `query`, best first (plan 159).
+   * Reads through the same cache as `catalog.describe`, describing a path nobody opened yet; a path
+   * that fails to describe is listed under `unread` and the rest still answer. Needs `schemaTree`.
+   */
+  "catalog.search": {
+    params: {
+      readonly paths: readonly (readonly string[])[];
+      readonly query: string;
+      readonly scope: CatalogSearchScope;
+      readonly limit: number;
+    };
+    result: CatalogSearch;
+  };
   /** `name` inside `path`, quoted by the plugin (decision 008). Needs `schemaTree`. */
   "catalog.qualifiedName": { params: { readonly path: readonly string[]; readonly name: string }; result: string };
   /**

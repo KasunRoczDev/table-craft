@@ -182,6 +182,17 @@ function summary(request: LoggedRequest, result: unknown, context: RequestContex
       return ["terminated session", { ...base, ...serverSession(request.target), ...context.target }];
     case "catalog.inferredKeys":
       return ["keys inferred", { ...base, count: Array.isArray(result) ? result.length : null }];
+    case "catalog.search":
+      return [
+        "catalog searched",
+        {
+          ...base,
+          query: request.query,
+          paths: Array.isArray(request.paths) ? request.paths.length : null,
+          hits: value.total,
+          unread: Array.isArray(value.unread) ? value.unread.length : null,
+        },
+      ];
     default:
       return null;
   }
