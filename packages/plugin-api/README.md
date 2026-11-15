@@ -47,4 +47,5 @@ This package follows semver, and its version is the plugin API version:
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE). TableCraft itself is GPL-3.0-or-later; a plugin built only on this
+package may use any license.

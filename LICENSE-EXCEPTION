@@ -1,0 +1,13 @@
+TableCraft plugin exception
+
+Additional permission under GNU GPL version 3 section 7
+
+If you modify TableCraft, or any covered work, by combining it with a datasource plugin (or a
+modified version of one) that interacts with TableCraft only through the interfaces published in
+@tablecraft-app/plugin-api, the licensors of TableCraft grant you additional permission to convey
+the resulting work. Such a plugin need not be licensed under the GNU GPL, and its Corresponding
+Source need not be provided. The parts of the resulting work that are TableCraft remain under the
+GNU GPL.
+
+You may remove this additional permission from your copy of TableCraft, or from a modified
+version of it, as section 7 of the GNU GPL allows.

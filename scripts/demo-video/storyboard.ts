@@ -100,7 +100,7 @@ export const STORYBOARD: readonly Shot[] = [
     logo: true,
     title: "TableCraft",
     titlePx: 88,
-    sub: "MIT licensed · macOS, Windows, Linux",
+    sub: "GPL-3.0 licensed · macOS, Windows, Linux",
     pills: ["PostgreSQL", "MySQL / MariaDB / TiDB", "SQLite", "SQL Server", "Oracle", "DuckDB", "Redis", "etcd"],
     url: "github.com/tranphucbol/table-craft",
   },

@@ -8,6 +8,7 @@ import { stagePackage } from "../../packages/plugin-api/scripts/build.js";
 
 const STAGE_TIMEOUT_MS = 120_000;
 const ROOT_FILES = ["LICENSE", "README.md", "package.json"];
+const MIT = "MIT";
 const DIST_PREFIX = "dist/";
 const ENTRY_FILES = [
   "dist/index.js",
@@ -54,6 +55,13 @@ describe("the publishable plugin-api package", () => {
       expect(target.default.startsWith(`./${DIST_PREFIX}`)).toBe(true);
       expect(target.types.startsWith(`./${DIST_PREFIX}`)).toBe(true);
     }
+  });
+
+  it("givenStagedPackage_whenRead_thenLicenseFieldAndFileAreMit", () => {
+    const manifest = JSON.parse(readFileSync(join(staged, "package.json"), "utf8")) as { license: string };
+
+    expect(manifest.license).toBe(MIT);
+    expect(readFileSync(join(staged, "LICENSE"), "utf8")).toMatch(/^MIT License\n/);
   });
 
   it("givenStagedPackage_whenImportedByNode_thenEntriesLoad", () => {

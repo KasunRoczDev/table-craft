@@ -273,4 +273,7 @@ publishes the plugin packages.
 
 ## License
 
-By contributing you agree that your contribution is licensed under the [MIT License](LICENSE).
+By contributing you agree that your contribution is licensed under the
+[GNU General Public License v3.0 or later](LICENSE), with the plugin permission of
+[LICENSE-EXCEPTION](LICENSE-EXCEPTION), or, for `packages/plugin-api`, under the
+[MIT License](packages/plugin-api/LICENSE) (decision 165).
