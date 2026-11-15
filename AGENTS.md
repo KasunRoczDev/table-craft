@@ -69,10 +69,15 @@ unset). The next run recreates and reseeds them. Never take down another checkou
   load-check every tarball through the real loader, and rehearse the npm publish (decision 109).
   Only `.github/workflows/publish-plugins.yml` publishes, when a release is published; never run
   `plugins:publish` without `--dry-run`, and push a tag only when a maintainer asks for that release
+- `bun run website` / `bun run website:build` / `bun run website:preview` - the website in
+  `packages/website` (decision 166): a sync step turns `docs/guide/`, the README's Documentation
+  index and the app's theme tokens into Starlight content, then Astro serves or builds it into
+  `packages/website/dist/`; the build fails on a broken internal link. `TABLE_CRAFT_WEBSITE_OFFLINE=1`
+  skips the changelog fetch from GitHub
 - `bun scripts/frozen-plugin.ts` - rebuild the frozen SQLite plugin in `test/support/frozen-plugins/`
   only when its API version itself changes before release, never to make a failing run pass
 
-CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, test:db) and the
+CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, website:build, test:db) and the
 packaged suite on macOS arm64 and x64 (blocking), Windows and Linux (best-effort) on every push,
 plus `test:db:postgres`, `:oracle` and `:mssql` when `plugins/<id>/**`, the contract suite or
 `test/db/schema/<id>*` changed (PostgreSQL also on a tag), and `plugins` (pack, check, publish
@@ -181,6 +186,13 @@ packages/desktop/          @table-craft/desktop, the Electron app
                            feeds the Services tree; `state/settings.ts` holds the
                            settings, `appearance/` applies them as CSS variables,
                            `dialogs/Settings.tsx` edits them
+packages/website/          @table-craft/website, the website: Astro and Starlight, its own
+                           TypeScript program. `scripts/` is pure and tested from
+                           `test/website/`: `guide.ts` (README index, guide pages, links),
+                           `tokens.ts` (CSS variables and code themes from `themes.ts`),
+                           `releases.ts` (the changelog), `site.ts` (URLs, downloads);
+                           `sync.ts` writes the git-ignored content. `src/pages/` the
+                           landing, download and changelog pages
 plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql and
                            sqlite built in, postgres, oracle, mssql, redis, etcd and duckdb optional (`BUILT_IN_PLUGINS`,
                            `OPTIONAL_PLUGINS` in `vite.plugins.config.ts`, decision 108;

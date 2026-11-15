@@ -129,7 +129,7 @@ gh run watch <run id>
 
 | Job       | What it does on a tag                                                                                                  |
 | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `verify`  | lint, format check, typecheck, `test` and `test:db`                                                                    |
+| `verify`  | lint, format check, typecheck, `test`, `website:build` and `test:db`                                                   |
 | `changes` | decides which opt-in database suites the commit needs                                                                  |
 | `test-db` | runs `test:db:postgres` on every tag, plus the Oracle and SQL Server suites when their paths changed                   |
 | `package` | builds the installers and runs the packaged suite on each platform; macOS blocks, Windows and Linux don't              |
