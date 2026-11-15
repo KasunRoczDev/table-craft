@@ -27,6 +27,13 @@ extraResources:
   # (decision 157).
   - from: node_modules/elkjs/LICENSE.md
     to: licenses/elkjs-LICENSE.md
+  # TableCraft's own licence, its plugin exception and the notice that names both (decision 165).
+  - from: ../../LICENSE
+    to: licenses/LICENSE
+  - from: ../../LICENSE-EXCEPTION
+    to: licenses/LICENSE-EXCEPTION
+  - from: ../../NOTICE
+    to: licenses/NOTICE
 asar: true
 npmRebuild: false
 icon: build/icon.png
