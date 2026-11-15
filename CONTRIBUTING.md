@@ -262,7 +262,7 @@ platform. `verify` and the macOS packages must pass; Windows and Linux are best-
   step reads the guide, the README's Documentation index (the sidebar) and the app's theme tokens,
   so there is nothing to copy across: a new guide page needs only its README line, and a link that
   works on GitHub must also resolve on the site. `bun run website` serves it while you write, and
-  `TABLE_CRAFT_WEBSITE_OFFLINE=1` skips fetching the changelog from GitHub. The landing page plays
+  `TABLE_CRAFT_WEBSITE_OFFLINE=1` skips fetching the changelog and the star count from GitHub. The landing page plays
   clips of README media scenes from `packages/website/media/`; after a UI change one of them shows,
   re-record it with `README_MEDIA=<scene> bun run website:media`.
 - A choice a future reader would otherwise reopen gets a record in [docs/decisions](docs/decisions/),

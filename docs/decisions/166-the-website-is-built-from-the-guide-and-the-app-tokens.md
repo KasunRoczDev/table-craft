@@ -30,11 +30,13 @@ Starlight. It owns no copy of the docs and no colour of its own.
   `packages/website/media/`: a 1600 px H.264 MP4 and a poster of the last frame per scene, about
   3.6 MB for eight, committed. A clip plays only while on screen and never under reduced motion,
   where the poster stands. Pages without a clip, and the docs, keep the GIFs of `docs/media/`.
-- **Downloads and the changelog come from GitHub.** Download links are the README's
+- **Downloads, the changelog and the star count come from GitHub.** Download links are the README's
   `releases/latest/download/` URLs, held once in `scripts/site.ts` and checked against the README by
   a test. The changelog is the published releases, fetched at build time. Drafts and prereleases are
-  left out, the repeated Install block is dropped, and guide links point back into the site. A
-  failed fetch leaves an empty changelog that links to GitHub Releases. The build still passes.
+  left out, the repeated Install block is dropped, and guide links point back into the site. The
+  header's Star button shows the repository's star count from the same build. A failed fetch
+  leaves an empty changelog that links to GitHub Releases and a Star button without a count. The
+  build still passes.
 - **Broken links fail CI.** `starlight-links-validator` checks every internal link and anchor, and
   `verify` runs `bun run website:build`.
 - **Pure parts are tested.** The guide transform, tokens, code themes, releases and platform
