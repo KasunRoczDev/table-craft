@@ -8,6 +8,10 @@
  * Plan 120's Ask before reads adds MySQL and Redis scenarios, so its live test runs on the databases:
  *
  *   TABLE_CRAFT_EVIDENCE_DIR=docs/evidence/120 bun run test:smoke:db:headless:redis test/e2e/mcp.smoke.test.ts
+ *
+ * Plan 159's search_catalog runs on SQLite, MySQL and Redis:
+ *
+ *   TABLE_CRAFT_EVIDENCE_DIR=docs/evidence/159 bun run test:smoke:db:headless:redis test/e2e/mcp.smoke.test.ts -t search
  */
 import type { ElectronApplication, Locator, Page } from "playwright-core";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,6 +29,7 @@ import {
   editorTabs,
   EVIDENCE_WINDOW,
   evidenceFor,
+  evidenceTextFor,
   findAction,
   LAUNCH_TIMEOUT_MS,
   launchApp,
@@ -49,6 +54,8 @@ import {
 
 const captureWindow = evidenceFor("117");
 const captureAskReads = evidenceFor("120");
+const captureSearch = evidenceFor("159");
+const writeSearch = evidenceTextFor("159");
 
 const TOKEN_PATTERN = /Bearer (tc_[\w-]+)/;
 const RENAME_CUSTOMER = "UPDATE customers SET name = 'Ada King' WHERE id = 1";
@@ -359,6 +366,9 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       const tables = await agent.tool("list_tables", { datasource: "shop", schema: "main" });
       expect(tables.text).toContain("customers");
 
+      const found = await agent.tool("search_catalog", { datasource: "shop", query: "email" });
+      expect(found.text).toBe("- main.customers.email TEXT (column of table)");
+
       const read = await agent.tool("run_query", {
         datasource: "shop",
         sql: "SELECT id, name FROM customers ORDER BY id",
@@ -630,11 +640,15 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       });
       expect(described.isError).toBe(false);
       expect(described.text).toContain("email");
+      const found = await agent.tool("search_catalog", { datasource: "mysql", query: "email" });
+      expect(found.isError).toBe(false);
+      expect(found.text).toContain(`- ${MYSQL_PLAIN.database}.customers.email`);
+      expect(found.text).not.toMatch(/^- (information_schema|mysql|performance_schema|sys)\./mu);
       expect(await chip(page).getAttribute("data-tone")).not.toBe("waiting");
       await chip(page).click();
       const popover = page.getByTestId("mcp-popover");
       await popover.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
-      await expect.poll(() => popover.getByTestId("mcp-client").textContent()).toContain("describe_table");
+      await expect.poll(() => popover.getByTestId("mcp-client").textContent()).toContain("search_catalog");
       await captureAskReads(page, "07-catalog");
       await page.keyboard.press("Escape");
 
@@ -772,6 +786,105 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       const answer = await value;
       expect(answer.isError).toBe(false);
       expect(answer.text).toContain("token-42");
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  /** Opens Agent Activity and waits for `count` rows. */
+  async function activityRows(page: Page, count: number): Promise<Locator> {
+    await findAction(page, "Show Agent Activity");
+    const activity = page.getByTestId("mcp-activity");
+    await activity.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+    const rows = activity.getByTestId("mcp-activity-row");
+    await expect.poll(() => rows.count()).toBe(count);
+    return rows;
+  }
+
+  it(
+    "givenAskReads_whenAgentSearchesCatalog_thenTablesThenColumnsWithoutApproval",
+    async () => {
+      const { page, port } = await launchServing([askingShop()]);
+      const agent = await agentAs(page, port, "OpenCode");
+
+      const found = await agent.tool("search_catalog", { datasource: "shop", query: "customer" });
+      expect(found.isError).toBe(false);
+      expect(found.text).toContain("- main.orders.customer_id");
+      const tables = await agent.tool("search_catalog", { datasource: "shop", query: "customer", in: "tables" });
+      expect(tables.text).toBe("- main.customer_totals (view)\n- main.customers (table)");
+      expect(found.text.startsWith(tables.text)).toBe(true);
+      const none = await agent.tool("search_catalog", { datasource: "shop", query: "invoice" });
+      expect(none.text).toBe('Nothing named like "invoice" in the 1 schema searched.');
+      expect(await approval(page).count()).toBe(0);
+      expect(await chip(page).getAttribute("data-tone")).not.toBe("waiting");
+      writeSearch(
+        "01-sqlite-search.txt",
+        [found, tables, none]
+          .map((result) => `${result.text}\n\n${JSON.stringify(result.structured, null, 2)}`)
+          .join("\n\n---\n\n"),
+      );
+
+      const rows = await activityRows(page, 3);
+      expect(await rows.last().textContent()).toContain("search_catalog");
+      expect(await rows.last().textContent()).toContain("customer");
+      expect(
+        await rows.evaluateAll((all: readonly AttributeHolder[]) => all.map((row) => row.getAttribute("data-outcome"))),
+      ).toEqual(["ok", "ok", "ok"]);
+      await captureSearch(page, "01-sqlite-activity");
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it.skipIf(!DATABASES_ENABLED)(
+    "givenShownSchemaOnMysql_whenAgentSearchesCatalog_thenHiddenAndSystemSchemasStayOut",
+    async () => {
+      const { page, port } = await launchServing([{ ...askingMysql(), shownNamespaces: [MYSQL_PLAIN.database] }]);
+      const agent = await agentAs(page, port, "Claude Code");
+      await connectWithPassword(page, "mysql", MYSQL_PASSWORD);
+
+      const found = await agent.tool("search_catalog", { datasource: "mysql", query: "customer_id" });
+      expect(found.isError).toBe(false);
+      expect(found.text).toContain(`- ${MYSQL_PLAIN.database}.orders.customer_id`);
+      expect(found.text).not.toContain("archive.");
+      expect(found.text).not.toMatch(/^- (information_schema|mysql|performance_schema|sys)\./mu);
+      expect(found.structured).toMatchObject({ searched: [MYSQL_PLAIN.database], skipped: [], unread: [] });
+      const hiddenSchema = await agent.tool("search_catalog", {
+        datasource: "mysql",
+        query: "customer_id",
+        schema: "archive",
+      });
+      expect(hiddenSchema.isError).toBe(true);
+      expect(hiddenSchema.text).toContain('No schema "archive" is shown for mysql');
+      expect(await approval(page).count()).toBe(0);
+      writeSearch(
+        "02-mysql-search.txt",
+        `${found.text}\n\n${JSON.stringify(found.structured, null, 2)}\n\n---\n\n${hiddenSchema.text}`,
+      );
+
+      const rows = await activityRows(page, 2);
+      expect(
+        await rows.evaluateAll((all: readonly AttributeHolder[]) => all.map((row) => row.getAttribute("data-outcome"))),
+      ).toEqual(["error", "ok"]);
+      await captureSearch(page, "02-mysql-activity");
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it.skipIf(!DATABASES_ENABLED || WITHOUT_REDIS)(
+    "givenRedis_whenAgentSearchesCatalog_thenRefusedForTheMissingCapability",
+    async () => {
+      const { page, port } = await launchServing([askingRedis()]);
+      const agent = await agentAs(page, port, "OpenCode");
+      await connectWithPassword(page, "redis", REDIS_PASSWORD);
+
+      const refused = await agent.tool("search_catalog", { datasource: "redis", query: "user" });
+      expect(refused.isError).toBe(true);
+      expect(refused.text).toBe("redis cannot do this: its plugin lacks the schemaTree capability.");
+      expect(await approval(page).count()).toBe(0);
+      writeSearch("03-redis-refused.txt", refused.text);
+
+      const rows = await activityRows(page, 1);
+      expect(await rows.first().getAttribute("data-outcome")).toBe("refused");
+      await captureSearch(page, "03-redis-refused");
     },
     SCENARIO_TIMEOUT_MS,
   );

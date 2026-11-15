@@ -212,7 +212,7 @@ describe("MCP over HTTP", () => {
       sessionId,
     );
 
-    expect((listed.body as { result: { tools: unknown[] } }).result.tools).toHaveLength(20);
+    expect((listed.body as { result: { tools: unknown[] } }).result.tools).toHaveLength(21);
     expect(called.body).toMatchObject({ id: 3, result: { structuredContent: { rows: [{ n: 3 }] } } });
     expect(history).toMatchObject([{ datasourceId: "shop", outcome: "success", rowCount: 1 }]);
     expect(statuses.at(-1)?.clients[0]?.lastCall).toMatchObject({

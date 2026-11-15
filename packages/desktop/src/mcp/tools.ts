@@ -6,6 +6,7 @@ import {
   listDatasources,
   listSchemas,
   listTables,
+  searchCatalog,
 } from "@table-craft/desktop/mcp/catalogTools.js";
 import { createQueryTools } from "@table-craft/desktop/mcp/queryTools.js";
 import { getKey, scanKeys } from "@table-craft/desktop/mcp/keyTools.js";
@@ -19,7 +20,7 @@ import {
 } from "@table-craft/desktop/mcp/consoleTools.js";
 import { openTableFor, revealInExplorer } from "@table-craft/desktop/mcp/windowTools.js";
 import type { AgentEdit } from "@table-craft/desktop/settings/mcp.js";
-import { KEY_TYPES } from "@table-craft/desktop/engine/protocol.js";
+import { CATALOG_SEARCH_SCOPES, KEY_TYPES } from "@table-craft/desktop/engine/protocol.js";
 import {
   ToolFailure,
   type Caller,
@@ -57,6 +58,19 @@ const TOOL_ARGUMENTS = {
   list_datasources: z.strictObject({}),
   list_schemas: z.strictObject({ datasource }),
   list_tables: z.strictObject({ datasource, schema }),
+  search_catalog: z.strictObject({
+    datasource,
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("A word of the name to find, such as email or customer; case does not matter."),
+    schema: schema.optional().describe("Search only this schema; every shown non-system schema when absent."),
+    in: z
+      .enum(CATALOG_SEARCH_SCOPES)
+      .optional()
+      .describe("tables for tables and views only, columns for columns only; all when absent."),
+  }),
   describe_table: z.strictObject({ datasource, schema, table }),
   get_ddl: z.strictObject({ datasource, schema, table }),
   run_query: z.strictObject({
@@ -164,6 +178,12 @@ const TOOL_SPECS: Readonly<Record<ToolName, ToolSpec>> = {
   },
   list_schemas: { title: "List schemas", description: "The databases or schemas of a datasource.", readOnly: true },
   list_tables: { title: "List tables", description: "The tables and views in a schema.", readOnly: true },
+  search_catalog: {
+    title: "Search catalog",
+    description:
+      "Find tables, views and columns whose name or comment contains the text, across the datasource's schemas. Use it before list_tables when you know a word but not where it lives.",
+    readOnly: true,
+  },
   describe_table: {
     title: "Describe table",
     description: "Columns, types, keys, foreign keys and indexes of a table or view.",
@@ -293,10 +313,10 @@ function datasourceOf(args: unknown): string | null {
   return typeof named === "string" ? named : null;
 }
 
-/** What Agent Activity names a call by: its statement, its key, or its table. */
+/** What Agent Activity names a call by: its statement, its key, its search, or its table. */
 function targetOf(args: unknown): string | null {
   const given = (args ?? {}) as Readonly<Record<string, unknown>>;
-  for (const key of ["sql", "key", "handle", "console"] as const) {
+  for (const key of ["sql", "key", "handle", "console", "query"] as const) {
     const value = given[key];
     if (typeof value === "string") return value;
   }
@@ -325,6 +345,13 @@ export function createTools(context: ToolContext): Tools {
       case "list_tables": {
         const parsed = TOOL_ARGUMENTS.list_tables.parse(args);
         return listTables(context, parsed.datasource, parsed.schema);
+      }
+      case "search_catalog": {
+        const parsed = TOOL_ARGUMENTS.search_catalog.parse(args);
+        return searchCatalog(context, parsed.datasource, parsed.query, {
+          schema: parsed.schema,
+          scope: parsed.in,
+        });
       }
       case "describe_table": {
         const parsed = TOOL_ARGUMENTS.describe_table.parse(args);

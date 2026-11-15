@@ -8,6 +8,7 @@ import { createMcpServer } from "@table-craft/desktop/mcp/server.js";
 import { TOOL_DEFINITIONS } from "@table-craft/desktop/mcp/tools.js";
 import type { McpActivityView } from "@table-craft/desktop/settings/mcp.js";
 import { agentCaller, agentHarness, textOf, waitingApproval, type AgentHarness } from "../support/mcpHarness.js";
+import { wideErdSqliteFile } from "../support/sqliteFixture.js";
 
 const SHOP: AgentDatasource = { id: "shop", name: "Shop", pluginId: "sqlite", comment: null, access: "ask" };
 const READ_ONLY_SHOP: AgentDatasource = { ...SHOP, access: "read" };
@@ -38,6 +39,7 @@ describe("MCP tools", () => {
       "list_datasources",
       "list_schemas",
       "list_tables",
+      "search_catalog",
       "describe_table",
       "get_ddl",
       "run_query",
@@ -108,6 +110,96 @@ describe("MCP tools", () => {
 
     expect(tables.result.isError).toBe(true);
     expect(textOf(tables.result)).toContain('No schema "main" is shown');
+  });
+
+  it("givenSeededSqlite_whenSearchingEmail_thenCustomersEmailColumnIsFound", async () => {
+    const harness = agentHarness([SHOP]);
+
+    const answer = await harness.tools.call("search_catalog", { datasource: "shop", query: "email" }, agentCaller());
+
+    expect(answer.outcome).toBe("ok");
+    expect(textOf(answer.result)).toBe("- main.customers.email TEXT (column of table)");
+    expect(answer.result.structuredContent).toEqual({
+      hits: [{ schema: "main", table: "customers", kind: "table", column: "email", type: "TEXT", match: "exact" }],
+      total: 1,
+      searched: ["main"],
+      skipped: [],
+      unread: [],
+    });
+  });
+
+  it("givenSeededSqlite_whenSearchingCustomer_thenTablesRankBeforeColumns", async () => {
+    const harness = agentHarness([SHOP]);
+
+    const answer = await harness.call("search_catalog", { datasource: "shop", query: "Customer", schema: "main" });
+
+    const hits = answer.structuredContent?.hits as readonly { readonly table: string; readonly column?: string }[];
+    const firstColumn = hits.findIndex((hit) => hit.column !== undefined);
+    expect(hits.slice(0, firstColumn).map((hit) => hit.table)).toEqual(
+      expect.arrayContaining(["customers", "customer_totals"]),
+    );
+    expect(hits.slice(firstColumn).every((hit) => hit.column !== undefined)).toBe(true);
+    expect(textOf(answer)).toContain("- main.orders.customer_id INTEGER (column of table)");
+  });
+
+  it("givenTablesScope_whenSearching_thenOnlyTablesAndViews", async () => {
+    const harness = agentHarness([SHOP]);
+
+    const answer = await harness.call("search_catalog", { datasource: "shop", query: "customer", in: "tables" });
+
+    expect(textOf(answer)).toBe("- main.customer_totals (view)\n- main.customers (table)");
+  });
+
+  it("givenNoMatch_whenSearching_thenTheSchemasSearchedAreCounted", async () => {
+    const harness = agentHarness([SHOP]);
+
+    const answer = await harness.call("search_catalog", { datasource: "shop", query: "invoice" });
+
+    expect(textOf(answer)).toBe('Nothing named like "invoice" in the 1 schema searched.');
+  });
+
+  it("givenUnshownSchema_whenSearchingIt_thenListSchemasIsSuggested", async () => {
+    const harness = agentHarness([{ ...SHOP, schemas: ["elsewhere"] }]);
+
+    const named = await harness.tools.call(
+      "search_catalog",
+      { datasource: "shop", query: "email", schema: "main" },
+      agentCaller(),
+    );
+    const everywhere = await harness.call("search_catalog", { datasource: "shop", query: "email" });
+
+    expect(named.result.isError).toBe(true);
+    expect(textOf(named.result)).toContain("Call list_schemas");
+    expect(textOf(everywhere)).toBe("No schemas are shown for this datasource.");
+  });
+
+  it("givenAskReadsAccess_whenSearching_thenNoApprovalIsAsked", async () => {
+    const harness = agentHarness([ASK_READS_SHOP]);
+
+    const answer = await harness.tools.call("search_catalog", { datasource: "shop", query: "email" }, agentCaller());
+
+    expect(answer.outcome).toBe("ok");
+    expect(harness.approvals.pending()).toEqual([]);
+  });
+
+  it("givenEmptyQuery_whenSearching_thenArgumentsAreRefused", async () => {
+    const harness = agentHarness([SHOP]);
+
+    const answer = await harness.tools.call("search_catalog", { datasource: "shop", query: "  " }, agentCaller());
+
+    expect(answer.result.isError).toBe(true);
+    expect(textOf(answer.result)).toContain("Invalid arguments");
+    expect(harness.requests.filter((request) => request.type === "catalog.search")).toEqual([]);
+  });
+
+  it("givenMoreHitsThanTheLimit_whenSearching_thenTheRestAreCounted", async () => {
+    const harness = agentHarness([SHOP], { file: wideErdSqliteFile(60) });
+
+    const answer = await harness.call("search_catalog", { datasource: "shop", query: "name", in: "columns" });
+
+    expect(answer.structuredContent?.hits).toHaveLength(50);
+    expect(answer.structuredContent?.total).toBe(60);
+    expect(textOf(answer)).toContain("Showing 50 of 60 hits; pass schema or a longer query for the rest.");
   });
 
   it("givenMoreRowsThanTheCap_whenQueried_thenPreviewIsCappedAndFetchRowsPages", async () => {
