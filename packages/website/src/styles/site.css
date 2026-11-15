@@ -1,7 +1,7 @@
 /*
- * The site's layer over Starlight (plan 161, decision 165): Linear's restraint on the app's tokens.
- * Surfaces step by tone and a 1px hairline, never a shadow; every colour is a --tc-* or --sl-*
- * custom property from src/generated/tokens.css.
+ * The site's layer over Starlight (plan 161, decision 166): Linear's restraint on the app's tokens.
+ * Surfaces step by tone, never a line or a shadow, as the app's Islands do; every colour is a
+ * --tc-* or --sl-* custom property from src/generated/tokens.css.
  */
 
 :root {
@@ -10,9 +10,12 @@
   --sl-text-h2: var(--sl-text-2xl);
   --sl-text-h3: var(--sl-text-xl);
   --sl-text-h4: var(--sl-text-lg);
-  --tc-display: clamp(2.25rem, 1.4rem + 3.6vw, 3.5rem);
+  --tc-display: clamp(2rem, 0.9rem + 4.4vw, 4.5rem);
   --tc-heading-tracking: -0.02em;
-  --tc-section-gap: clamp(4rem, 3rem + 4vw, 7rem);
+  --tc-section-gap: clamp(5rem, 3.5rem + 5vw, 9rem);
+  /* The app's --ease-standard (packages/desktop/src/renderer/app.css). */
+  --tc-ease: cubic-bezier(0.2, 0, 0, 1);
+  --tc-rise: 1.5rem;
 }
 
 body {
@@ -23,10 +26,6 @@ body {
 :is(h1, h2, h3, h4) {
   font-weight: 600;
   letter-spacing: var(--tc-heading-tracking);
-}
-
-header.header {
-  border-bottom-color: var(--tc-border);
 }
 
 .site-title {
@@ -43,15 +42,14 @@ header.header {
 }
 
 .sl-markdown-content img {
-  border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-popover);
   background: var(--tc-panel);
 }
 
+/* A real table keeps its row lines; the box around it goes, and the header row is a tone step. */
 .sl-markdown-content table {
   border-collapse: separate;
   border-spacing: 0;
-  border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-popover);
   overflow: hidden;
 }
@@ -73,9 +71,9 @@ header.header {
 
 .sl-markdown-content :not(pre) > code {
   background: var(--tc-panel);
-  border: 1px solid var(--tc-border);
+  border: 0;
   border-radius: var(--tc-radius-key);
-  padding: 0.05em 0.35em;
+  padding: 0.1em 0.4em;
 }
 
 .card {
@@ -83,15 +81,15 @@ header.header {
 }
 
 .sl-link-card {
+  border: 0;
   border-radius: var(--tc-radius-island);
   background: var(--tc-panel);
-  border-color: var(--tc-border);
   box-shadow: none;
+  transition: background-color var(--tc-motion-fast) ease-out;
 }
 
 .sl-link-card:hover {
-  border-color: var(--tc-accent);
-  background: var(--tc-panel);
+  background: var(--tc-raised);
 }
 
 /* Shared pieces of the landing, download and changelog pages. */
@@ -100,28 +98,22 @@ header.header {
   display: flex;
   flex-direction: column;
   gap: var(--tc-section-gap);
-  padding-block: clamp(1.5rem, 1rem + 3vw, 4rem) var(--tc-section-gap);
-}
-
-.tc-eyebrow {
-  font-family: var(--tc-font-mono);
-  font-size: var(--sl-text-xs);
-  color: var(--tc-accent);
-  letter-spacing: 0.02em;
+  padding-block: clamp(2rem, 1rem + 4vw, 5rem) clamp(3rem, 2rem + 3vw, 5rem);
 }
 
 .tc-display {
   font-size: var(--tc-display);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
+  line-height: 1;
+  letter-spacing: -0.035em;
   font-weight: 600;
   color: var(--tc-ink);
   text-wrap: balance;
 }
 
 .tc-section-title {
-  font-size: clamp(1.625rem, 1.2rem + 1.6vw, 2.25rem);
-  line-height: 1.15;
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
   color: var(--tc-ink);
   text-wrap: balance;
 }
@@ -129,7 +121,7 @@ header.header {
 .tc-lead {
   font-size: var(--sl-text-lg);
   line-height: 1.6;
-  color: var(--tc-ink-muted);
+  color: var(--tc-ink);
   max-width: 40rem;
   text-wrap: pretty;
 }
@@ -149,10 +141,11 @@ header.header {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  height: 2.5rem;
-  padding-inline: 1.125rem;
+  height: 2.75rem;
+  padding-inline: 1.25rem;
+  border: 0;
   border-radius: var(--tc-radius-popover);
-  border: 1px solid var(--tc-border);
+  background: var(--tc-panel);
   color: var(--tc-ink);
   font-size: var(--sl-text-sm);
   font-weight: 500;
@@ -160,23 +153,25 @@ header.header {
   white-space: nowrap;
   transition:
     background-color var(--tc-motion-fast) ease-out,
-    border-color var(--tc-motion-fast) ease-out;
+    transform var(--tc-motion-fast) var(--tc-ease);
 }
 
 .tc-button:hover {
-  background: var(--tc-panel);
+  background: var(--tc-raised);
   color: var(--tc-ink);
+}
+
+.tc-button:active {
+  transform: scale(var(--tc-press-scale));
 }
 
 .tc-button[data-variant="primary"] {
   background: var(--tc-accent);
-  border-color: var(--tc-accent);
   color: var(--tc-accent-ink);
 }
 
 .tc-button[data-variant="primary"]:hover {
   background: color-mix(in srgb, var(--tc-accent) 88%, var(--tc-ink));
-  border-color: color-mix(in srgb, var(--tc-accent) 88%, var(--tc-ink));
 }
 
 .tc-button:focus-visible {
@@ -184,12 +179,11 @@ header.header {
   outline-offset: 2px;
 }
 
-/* A screenshot as the app shows it: a panel one step above the page, a hairline, the island radius. */
+/* A screenshot as the app shows it: a panel one step above the page and the island radius. */
 .tc-shot {
   margin: 0;
   padding: 0.5rem;
   background: var(--tc-panel);
-  border: 1px solid var(--tc-border);
   border-radius: calc(var(--tc-radius-island) + 0.5rem);
 }
 
@@ -200,23 +194,12 @@ header.header {
   border-radius: var(--tc-radius-island);
 }
 
-.tc-shot figcaption {
-  padding: 0.625rem 0.25rem 0.125rem;
-  font-size: var(--sl-text-xs);
-  color: var(--tc-ink-muted);
-}
-
-/* Raycast's keycaps, flattened: the app's raised tone with a heavier bottom edge. */
+/* Raycast's keycaps, flattened to the app's raised tone. */
 .tc-keys {
   display: inline-flex;
   gap: 0.25rem;
   vertical-align: middle;
   white-space: nowrap;
-}
-
-.tc-lead .tc-key {
-  height: 1.5rem;
-  min-width: 1.5rem;
 }
 
 .tc-key {
@@ -226,14 +209,17 @@ header.header {
   min-width: 1.75rem;
   height: 1.75rem;
   padding-inline: 0.45rem;
-  border: 1px solid var(--tc-border);
-  border-bottom-width: 2px;
   border-radius: var(--tc-radius-key);
   background: var(--tc-raised);
   color: var(--tc-ink);
-  font-family: var(--tc-font-mono);
-  font-size: var(--sl-text-xs);
+  font-family: var(--tc-font-ui);
+  font-size: var(--sl-text-sm);
   line-height: 1;
+}
+
+.tc-lead .tc-key {
+  height: 1.5rem;
+  min-width: 1.5rem;
 }
 
 .tc-badge {
@@ -244,7 +230,7 @@ header.header {
   border-radius: var(--tc-radius-key);
   background: var(--tc-raised);
   color: var(--tc-ink-muted);
-  font-size: var(--sl-text-2xs);
+  font-size: var(--sl-text-xs);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -262,11 +248,19 @@ header.header {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 1rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--tc-border);
+  align-items: baseline;
+  gap: 1.5rem;
   font-size: var(--sl-text-sm);
   color: var(--tc-ink-muted);
+}
+
+.tc-footer-name {
+  flex-basis: 100%;
+  font-size: var(--tc-display);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  color: var(--tc-ink);
 }
 
 .tc-footer nav {
@@ -286,7 +280,8 @@ header.header {
 
 /* Rendered Markdown inside a .not-content page, where Starlight's own content styles do not reach. */
 .tc-prose {
-  color: var(--sl-color-gray-2);
+  max-width: 44rem;
+  color: var(--tc-ink);
   line-height: var(--sl-line-height);
 }
 
@@ -320,7 +315,6 @@ header.header {
 }
 
 .tc-prose strong {
-  color: var(--tc-ink);
   font-weight: 600;
 }
 
@@ -328,22 +322,19 @@ header.header {
   font-family: var(--tc-font-mono);
   font-size: 0.875em;
   background: var(--tc-panel);
-  border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-key);
-  padding: 0.05em 0.35em;
+  padding: 0.1em 0.4em;
 }
 
 .tc-prose pre {
   padding: 0.75rem 1rem;
   background: var(--tc-panel);
-  border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-popover);
   overflow-x: auto;
 }
 
 .tc-prose pre code {
   background: none;
-  border: 0;
   padding: 0;
 }
 
@@ -351,5 +342,55 @@ header.header {
   .tc-button,
   .site-nav a {
     transition: none;
+  }
+
+  .tc-button:active {
+    transform: none;
+  }
+}
+
+/*
+ * Entrances. The first screen rises on load; every later block rises once as it scrolls in, when
+ * `Reveal.astro` has set `tc-motion` and marks it `tc-in`.
+ */
+@keyframes tc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--tc-rise));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tc-enter > * {
+    animation: tc-rise 600ms var(--tc-ease) both;
+  }
+
+  .tc-enter > :nth-child(2) {
+    animation-delay: 70ms;
+  }
+
+  .tc-enter > :nth-child(3) {
+    animation-delay: 140ms;
+  }
+
+  .tc-enter > :nth-child(4) {
+    animation-delay: 210ms;
+  }
+
+  .tc-enter > :nth-child(n + 5) {
+    animation-delay: 280ms;
+  }
+
+  .tc-motion :is(.tc-reveal, .tc-reveal-items) > * {
+    opacity: 0;
+    transform: translateY(var(--tc-rise));
+    transition:
+      opacity 600ms var(--tc-ease) var(--tc-delay, 0ms),
+      transform 700ms var(--tc-ease) var(--tc-delay, 0ms);
+  }
+
+  .tc-motion :is(.tc-reveal, .tc-reveal-items) > .tc-in {
+    opacity: 1;
+    transform: none;
   }
 }

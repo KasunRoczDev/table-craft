@@ -1,5 +1,6 @@
 ---
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Reveal from "../components/Reveal.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import changelogJson from "../generated/changelog.json";
 import type { Changelog } from "../../scripts/releases";
@@ -19,8 +20,7 @@ const installGuide = `${DOCS_ROUTE}install/`;
   }}
 >
   <div class="tc-page not-content">
-    <section class="tc-download-head">
-      <p class="tc-eyebrow">Download</p>
+    <section class="tc-download-head tc-enter">
       <h1 class="tc-display">Get {SITE_TITLE}</h1>
       <p class="tc-lead">
         One installer per platform. Once installed, {SITE_TITLE} updates itself.{" "}
@@ -36,17 +36,17 @@ const installGuide = `${DOCS_ROUTE}install/`;
     </section>
 
     <section aria-label="Installers">
-      <ul class="tc-downloads">
+      <ul class="tc-downloads tc-reveal-items">
         {
           DOWNLOADS.map((download) => (
             <li data-platform={download.platform}>
               <div class="tc-download-card">
-                <div class="tc-download-title">
-                  <h2>{download.label}</h2>
-                  <span class="tc-badge" data-tone="accent" data-your-system hidden>
-                    Your system
+                <h2 class="tc-download-title">
+                  {download.label}
+                  <span class="sr-only" data-your-system hidden>
+                    (your system)
                   </span>
-                </div>
+                </h2>
                 <code>{download.file}</code>
                 <a class="tc-button" href={download.url} data-download={download.platform}>
                   Download for {PLATFORM_NAMES[download.platform]}
@@ -65,7 +65,7 @@ const installGuide = `${DOCS_ROUTE}install/`;
     <section class="tc-first-launch" aria-labelledby="first-launch-title">
       <h2 id="first-launch-title" class="tc-section-title">The first launch</h2>
       <p class="tc-lead">The builds are not signed with a paid certificate, so each platform asks once.</p>
-      <div class="tc-steps">
+      <div class="tc-steps tc-reveal-items">
         <div>
           <h3>macOS</h3>
           <p>
@@ -90,6 +90,7 @@ const installGuide = `${DOCS_ROUTE}install/`;
     </section>
 
     <SiteFooter />
+    <Reveal />
   </div>
 </StarlightPage>
 
@@ -128,19 +129,12 @@ const installGuide = `${DOCS_ROUTE}install/`;
     height: 100%;
     padding: 1.5rem;
     background: var(--tc-panel);
-    border: 1px solid var(--tc-border);
     border-radius: var(--tc-radius-island);
   }
   [data-recommended] > .tc-download-card {
-    border-color: var(--tc-accent);
+    background: var(--tc-raised);
   }
   .tc-download-title {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .tc-download-title h2 {
     font-size: var(--sl-text-lg);
     color: var(--tc-ink);
   }
@@ -149,9 +143,14 @@ const installGuide = `${DOCS_ROUTE}install/`;
     font-size: var(--sl-text-xs);
     color: var(--tc-ink-muted);
     white-space: nowrap;
+    background: none;
+    padding: 0;
   }
   .tc-download-card .tc-button {
     margin-top: auto;
+  }
+  .tc-download-card .tc-button:not([data-variant]) {
+    background: var(--tc-raised);
   }
   .tc-download-note {
     margin-top: 1.25rem;
@@ -165,31 +164,26 @@ const installGuide = `${DOCS_ROUTE}install/`;
   .tc-steps {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-    border: 1px solid var(--tc-border);
-    border-radius: var(--tc-radius-island);
-    overflow: hidden;
+    gap: 2rem 3rem;
+    margin-block: 1.5rem;
   }
   .tc-steps > div {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 0.75rem;
-    padding: 1.5rem;
-    border-inline-end: 1px solid var(--tc-border);
-    border-bottom: 1px solid var(--tc-border);
-    margin: 0 -1px -1px 0;
   }
   .tc-steps h3 {
     font-size: var(--sl-text-base);
     color: var(--tc-ink);
   }
-  .tc-steps p {
-    font-size: var(--sl-text-sm);
-    color: var(--tc-ink-muted);
+  .tc-steps h3 {
+    font-size: var(--sl-text-xl);
   }
   .tc-steps pre {
+    max-width: 100%;
     padding: 0.75rem 1rem;
-    background: var(--tc-canvas);
-    border: 1px solid var(--tc-border);
+    background: var(--tc-panel);
     border-radius: var(--tc-radius-popover);
     overflow-x: auto;
   }

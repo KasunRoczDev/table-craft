@@ -1,6 +1,11 @@
 import type { DatasourceTint } from "../../desktop/src/appearance/themes.js";
 import { docsRoute } from "./guide.js";
 
+/** The README's tagline, cut to stay within two lines on a phone. */
+export const HERO_TITLE = "A database IDE in the spirit of DataGrip";
+export const HERO_LEAD =
+  "Free and open source for macOS, Windows and Linux. Connections, a database explorer, SQL consoles with schema-aware completion, a result grid, a table data editor, query history and EXPLAIN plans, with every database a plugin.";
+
 export interface Chord {
   /** Glyphs as the shortcuts guide writes them for macOS, one keycap each. */
   keys: readonly string[];
@@ -55,7 +60,7 @@ export const HIGHLIGHTS: readonly Highlight[] = [
     media: "explain.gif",
   },
   {
-    title: "An ER diagram that guesses missing keys",
+    title: "An ER diagram that guesses keys",
     text: "A schema's tables and keys, with the customer_id columns a database never declared drawn dashed. Hide a wrong guess, add a missed one.",
     href: docsRoute("explorer", "#er-diagram"),
     media: "diagram.gif",

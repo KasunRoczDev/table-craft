@@ -31,7 +31,12 @@ export default defineConfig({
       customCss: ["./src/generated/tokens.css", "./src/styles/site.css"],
       expressiveCode: {
         themes: codeThemes(DARK_COLORS, LIGHT_COLORS),
-        styleOverrides: { borderRadius: "var(--tc-radius-popover)", codeFontFamily: "var(--tc-font-mono)" },
+        styleOverrides: {
+          borderRadius: "var(--tc-radius-popover)",
+          borderColor: "transparent",
+          codeFontFamily: "var(--tc-font-mono)",
+          frames: { shadowColor: "transparent" },
+        },
       },
       components: { Header: "./src/components/Header.astro", Hero: "./src/components/Hero.astro" },
       sidebar: [

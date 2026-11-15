@@ -13,6 +13,11 @@ const LIGHT_THEME_SELECTOR = ':root[data-theme="light"]';
 const TINT_LOW_SHARE = 22;
 const TINT_HIGH_SHARE = 60;
 const BODY_TEXT_SHARE = 70;
+/**
+ * Starlight draws its frame (header, sidebar, table of contents, title panel) with hairlines; the
+ * site separates those surfaces by the app's tone step instead, as the Islands window does.
+ */
+const NO_LINE = "transparent";
 
 function mix(color: string, share: number, other: string): string {
   return `color-mix(in srgb, ${color} ${share}%, ${other})`;
@@ -46,11 +51,11 @@ export function themeProperties(colors: ColorTokens): Record<string, string> {
     "--sl-color-accent": colors.accent,
     "--sl-color-accent-high": mix(colors.accent, TINT_HIGH_SHARE, colors.ink),
     "--sl-color-text-invert": colors.accentInk,
-    "--sl-color-bg-nav": colors.canvas,
-    "--sl-color-bg-sidebar": colors.canvas,
-    "--sl-color-hairline": colors.border,
-    "--sl-color-hairline-light": colors.border,
-    "--sl-color-hairline-shade": colors.border,
+    "--sl-color-bg-nav": colors.panel,
+    "--sl-color-bg-sidebar": colors.panel,
+    "--sl-color-hairline": NO_LINE,
+    "--sl-color-hairline-light": NO_LINE,
+    "--sl-color-hairline-shade": NO_LINE,
     ...tint("blue", colors.accent, colors),
     ...tint("green", colors.success, colors),
     ...tint("orange", colors.warning, colors),
@@ -97,6 +102,8 @@ export function sharedProperties(): Record<string, string> {
     "--tc-gap-island": `${COMFORTABLE_DENSITY.islandGapPx}px`,
     "--tc-motion-fast": `${MOTION.full.fastMs}ms`,
     "--tc-motion-base": `${MOTION.full.baseMs}ms`,
+    "--tc-motion-slow": `${MOTION.full.slowMs}ms`,
+    "--tc-press-scale": `${MOTION.full.pressScaleText}`,
   };
 }
 

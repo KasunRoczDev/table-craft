@@ -2,10 +2,11 @@
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import Keys from "../components/Keys.astro";
 import Shot from "../components/Shot.astro";
+import Reveal from "../components/Reveal.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import changelogJson from "../generated/changelog.json";
 import logo from "../generated/logo.png";
-import { CHORDS, DATABASES, HIGHLIGHTS } from "../../scripts/landing";
+import { CHORDS, DATABASES, HERO_LEAD, HERO_TITLE, HIGHLIGHTS } from "../../scripts/landing";
 import type { Changelog } from "../../scripts/releases";
 import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE, REPOSITORY_URL, SITE_DESCRIPTION, SITE_TAGLINE, SITE_TITLE } from "../../scripts/site";
 
@@ -17,11 +18,10 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
 
 <StarlightPage frontmatter={{ title: SITE_TITLE, description: SITE_DESCRIPTION, template: "splash", pagefind: false, hero: { title: SITE_TAGLINE } }}>
   <div class="tc-page tc-landing not-content">
-    <section class="tc-hero">
+    <section class="tc-hero tc-enter">
       <img class="tc-hero-logo" src={logo.src} width="96" height="96" alt="" />
-      <p class="tc-eyebrow">Free and open source · macOS, Windows and Linux</p>
-      <h1 class="tc-display">{SITE_TAGLINE}</h1>
-      <p class="tc-lead">{SITE_DESCRIPTION} Databases are reached through plugins loaded at runtime.</p>
+      <h1 class="tc-display">{HERO_TITLE}</h1>
+      <p class="tc-lead">{HERO_LEAD}</p>
       <div class="tc-actions">
         <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
         <a class="tc-button" href={DOCS_ROUTE}>Read the docs</a>
@@ -41,12 +41,11 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     <Shot class="tc-hero-shot" file="console.gif" alt="A SQL console running a query, with the result grid below" eager />
 
     <section class="tc-keymap" aria-labelledby="keymap-title">
-      <div class="tc-section-head">
-        <p class="tc-eyebrow">Keymap</p>
+      <div class="tc-section-head tc-reveal">
         <h2 id="keymap-title" class="tc-section-title">The chords your hands already know</h2>
         <p class="tc-lead">DataGrip's tool windows, layout and shortcuts, on Windows and Linux with Ctrl in place of ⌘.</p>
       </div>
-      <ul class="tc-chords">
+      <ul class="tc-chords tc-reveal-items">
         {
           CHORDS.map((chord) => (
             <li>
@@ -59,14 +58,13 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     </section>
 
     <section class="tc-databases" aria-labelledby="databases-title">
-      <div class="tc-section-head">
-        <p class="tc-eyebrow">Databases</p>
+      <div class="tc-section-head tc-reveal">
         <h2 id="databases-title" class="tc-section-title">Every database is a plugin</h2>
         <p class="tc-lead">
           SQLite and MySQL come in the box and work offline. The rest download from npm the first time you add one.
         </p>
       </div>
-      <ul class="tc-database-list">
+      <ul class="tc-database-list tc-reveal-items">
         {
           DATABASES.map((database) => (
             <li style={`--tint: var(--tc-datasource-${database.tint})`}>
@@ -83,7 +81,7 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
 
     {
       featured.map((highlight, index) => (
-        <section class="tc-feature" data-flip={index % 2 === 1 ? "" : undefined}>
+        <section class="tc-feature tc-reveal" data-flip={index % 2 === 1 ? "" : undefined}>
           <div class="tc-feature-text">
             <h2 class="tc-section-title">{highlight.title}</h2>
             <p class="tc-lead">{highlight.text}</p>
@@ -97,11 +95,10 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     }
 
     <section aria-labelledby="more-title">
-      <div class="tc-section-head">
-        <p class="tc-eyebrow">And more</p>
+      <div class="tc-section-head tc-reveal">
         <h2 id="more-title" class="tc-section-title">Built for the daily loop</h2>
       </div>
-      <ul class="tc-more">
+      <ul class="tc-more tc-reveal-items">
         {
           more.map((highlight) => (
             <li>
@@ -115,7 +112,7 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
       </ul>
     </section>
 
-    <section class="tc-cta">
+    <section class="tc-cta tc-reveal">
       <h2 class="tc-section-title">Open a console in a minute</h2>
       <p class="tc-lead">Download the app, add a data source with <Keys keys={["⌘", "N"]} />, and run a query with <Keys keys={["⌘", "↩"]} />.</p>
       <div class="tc-actions">
@@ -125,6 +122,7 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     </section>
 
     <SiteFooter />
+    <Reveal />
   </div>
 </StarlightPage>
 
@@ -145,18 +143,18 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 1.25rem;
+    gap: 1.5rem;
   }
   .tc-hero-logo {
     width: 4.5rem;
     height: 4.5rem;
   }
   .tc-hero .tc-display {
-    max-width: 52rem;
+    max-width: 60rem;
   }
   .tc-hero-version {
     font-size: var(--sl-text-sm);
-    font-family: var(--tc-font-mono);
+    font-variant-numeric: tabular-nums;
   }
   .tc-hero-version a {
     color: inherit;
@@ -166,46 +164,40 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     color: var(--tc-ink);
   }
   .tc-hero-shot {
-    margin-top: calc(var(--tc-section-gap) * -0.5);
+    margin-top: calc(var(--tc-section-gap) * -0.6);
   }
   .tc-section-head {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 2rem;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
   }
   .tc-chords {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-    gap: var(--tc-gap-island);
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    gap: 1.75rem 2rem;
     padding: 0;
     list-style: none;
   }
   .tc-chords li {
     display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    padding: 0.875rem 1rem;
-    background: var(--tc-panel);
-    border: 1px solid var(--tc-border);
-    border-radius: var(--tc-radius-island);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
     color: var(--tc-ink);
-    font-size: var(--sl-text-sm);
   }
   .tc-database-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    column-gap: 2rem;
+    gap: 1.5rem 3rem;
     padding: 0;
     list-style: none;
-    border-top: 1px solid var(--tc-border);
   }
   .tc-database-list li {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 1rem 0.25rem;
-    border-bottom: 1px solid var(--tc-border);
+    font-size: var(--sl-text-lg);
   }
   .tc-database-dot {
     width: 0.625rem;
@@ -240,7 +232,10 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
   @media (min-width: 60rem) {
     .tc-feature {
       grid-template-columns: 5fr 8fr;
-      gap: 3.5rem;
+      gap: 4rem;
+    }
+    .tc-feature[data-flip] {
+      grid-template-columns: 8fr 5fr;
     }
     .tc-feature[data-flip] .tc-feature-text {
       order: 2;
@@ -249,7 +244,7 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
   .tc-more {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    gap: var(--tc-gap-island);
+    gap: 2.5rem 2rem;
     padding: 0;
     list-style: none;
   }
@@ -258,37 +253,30 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     flex-direction: column;
     gap: 0.5rem;
     height: 100%;
-    padding: 1.25rem;
-    background: var(--tc-panel);
-    border: 1px solid var(--tc-border);
-    border-radius: var(--tc-radius-island);
     text-decoration: none;
-    transition: border-color var(--tc-motion-fast) ease-out;
-  }
-  .tc-more a:hover {
-    border-color: var(--tc-accent);
   }
   .tc-more h3 {
-    font-size: var(--sl-text-base);
+    font-size: var(--sl-text-lg);
     color: var(--tc-ink);
+    transition: color var(--tc-motion-fast) ease-out;
+  }
+  .tc-more a:hover h3 {
+    color: var(--tc-accent);
   }
   .tc-more p {
-    font-size: var(--sl-text-sm);
     line-height: 1.6;
     color: var(--tc-ink-muted);
   }
   .tc-cta {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 1.25rem;
-    padding: clamp(2.5rem, 2rem + 3vw, 4.5rem) 1.5rem;
+    align-items: flex-start;
+    gap: 1.5rem;
+    padding: clamp(2.5rem, 1.5rem + 4vw, 5rem);
     background: var(--tc-panel);
-    border: 1px solid var(--tc-border);
     border-radius: calc(var(--tc-radius-island) + 0.5rem);
-    text-align: center;
   }
-  .tc-cta .tc-lead {
-    margin-inline: auto;
+  .tc-cta .tc-button:not([data-variant]) {
+    background: var(--tc-raised);
   }
 </style>

@@ -1,0 +1,28 @@
+<script>
+  const REVEALED = "tc-in";
+  const STAGGER_MS = 70;
+  const STAGGER_STEPS = 4;
+  const ROOT_MARGIN = "0px 0px -10% 0px";
+
+  // The hidden state hangs off a class this script sets, so a page without the script, or a reader
+  // who asked for less motion, sees every block where it stands.
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if ("IntersectionObserver" in window && !calm) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add(REVEALED);
+          observer.unobserve(entry.target);
+        }
+      },
+      { rootMargin: ROOT_MARGIN },
+    );
+    for (const block of document.querySelectorAll<HTMLElement>(".tc-reveal > *, .tc-reveal-items > *")) {
+      const index = Array.prototype.indexOf.call(block.parentElement?.children ?? [], block);
+      block.style.setProperty("--tc-delay", `${(index % STAGGER_STEPS) * STAGGER_MS}ms`);
+      observer.observe(block);
+    }
+    document.documentElement.classList.add("tc-motion");
+  }
+</script>
