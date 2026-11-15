@@ -1,0 +1,29 @@
+---
+import media from "../generated/media.json";
+import { MEDIA_ROUTE, type MediaSize } from "../../scripts/site";
+
+interface Props {
+  /** A GIF in `docs/media/`. */
+  file: string;
+  alt: string;
+  caption?: string;
+  eager?: boolean;
+  class?: string;
+}
+
+const { file, alt, caption, eager = false, class: className } = Astro.props;
+const size = (media as Record<string, MediaSize>)[file];
+if (!size) throw new Error(`docs/media/${file} does not exist; use one of the GIFs readme:media records.`);
+---
+
+<figure class:list={["tc-shot", className]}>
+  <img
+    src={`${MEDIA_ROUTE}${file}`}
+    alt={alt}
+    width={size.width}
+    height={size.height}
+    loading={eager ? "eager" : "lazy"}
+    decoding="async"
+  />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

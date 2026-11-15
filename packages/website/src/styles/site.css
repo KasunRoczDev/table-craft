@@ -1,0 +1,355 @@
+/*
+ * The site's layer over Starlight (plan 161, decision 165): Linear's restraint on the app's tokens.
+ * Surfaces step by tone and a 1px hairline, never a shadow; every colour is a --tc-* or --sl-*
+ * custom property from src/generated/tokens.css.
+ */
+
+:root {
+  --sl-line-height: 1.7;
+  --sl-text-h1: var(--sl-text-4xl);
+  --sl-text-h2: var(--sl-text-2xl);
+  --sl-text-h3: var(--sl-text-xl);
+  --sl-text-h4: var(--sl-text-lg);
+  --tc-display: clamp(2.25rem, 1.4rem + 3.6vw, 3.5rem);
+  --tc-heading-tracking: -0.02em;
+  --tc-section-gap: clamp(4rem, 3rem + 4vw, 7rem);
+}
+
+body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+:is(h1, h2, h3, h4) {
+  font-weight: 600;
+  letter-spacing: var(--tc-heading-tracking);
+}
+
+header.header {
+  border-bottom-color: var(--tc-border);
+}
+
+.site-title {
+  color: var(--tc-ink);
+}
+
+/* Docs: the app's selection for the current page, not a filled accent block. */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background-color: var(--tc-selection);
+  color: var(--tc-ink);
+  font-weight: 500;
+}
+
+.sl-markdown-content img {
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-popover);
+  background: var(--tc-panel);
+}
+
+.sl-markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-popover);
+  overflow: hidden;
+}
+
+.sl-markdown-content :is(th, td) {
+  border: 0;
+  border-bottom: 1px solid var(--tc-border);
+}
+
+.sl-markdown-content tr:last-child td {
+  border-bottom: 0;
+}
+
+.sl-markdown-content th {
+  background: var(--tc-panel);
+  color: var(--tc-ink);
+  font-weight: 600;
+}
+
+.sl-markdown-content :not(pre) > code {
+  background: var(--tc-panel);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-key);
+  padding: 0.05em 0.35em;
+}
+
+.card {
+  border-radius: var(--tc-radius-island);
+}
+
+.sl-link-card {
+  border-radius: var(--tc-radius-island);
+  background: var(--tc-panel);
+  border-color: var(--tc-border);
+  box-shadow: none;
+}
+
+.sl-link-card:hover {
+  border-color: var(--tc-accent);
+  background: var(--tc-panel);
+}
+
+/* Shared pieces of the landing, download and changelog pages. */
+
+.tc-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-section-gap);
+  padding-block: clamp(1.5rem, 1rem + 3vw, 4rem) var(--tc-section-gap);
+}
+
+.tc-eyebrow {
+  font-family: var(--tc-font-mono);
+  font-size: var(--sl-text-xs);
+  color: var(--tc-accent);
+  letter-spacing: 0.02em;
+}
+
+.tc-display {
+  font-size: var(--tc-display);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+  color: var(--tc-ink);
+  text-wrap: balance;
+}
+
+.tc-section-title {
+  font-size: clamp(1.625rem, 1.2rem + 1.6vw, 2.25rem);
+  line-height: 1.15;
+  color: var(--tc-ink);
+  text-wrap: balance;
+}
+
+.tc-lead {
+  font-size: var(--sl-text-lg);
+  line-height: 1.6;
+  color: var(--tc-ink-muted);
+  max-width: 40rem;
+  text-wrap: pretty;
+}
+
+.tc-muted {
+  color: var(--tc-ink-muted);
+}
+
+.tc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.5rem;
+  padding-inline: 1.125rem;
+  border-radius: var(--tc-radius-popover);
+  border: 1px solid var(--tc-border);
+  color: var(--tc-ink);
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--tc-motion-fast) ease-out,
+    border-color var(--tc-motion-fast) ease-out;
+}
+
+.tc-button:hover {
+  background: var(--tc-panel);
+  color: var(--tc-ink);
+}
+
+.tc-button[data-variant="primary"] {
+  background: var(--tc-accent);
+  border-color: var(--tc-accent);
+  color: var(--tc-accent-ink);
+}
+
+.tc-button[data-variant="primary"]:hover {
+  background: color-mix(in srgb, var(--tc-accent) 88%, var(--tc-ink));
+  border-color: color-mix(in srgb, var(--tc-accent) 88%, var(--tc-ink));
+}
+
+.tc-button:focus-visible {
+  outline: 2px solid var(--tc-accent);
+  outline-offset: 2px;
+}
+
+/* A screenshot as the app shows it: a panel one step above the page, a hairline, the island radius. */
+.tc-shot {
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--tc-panel);
+  border: 1px solid var(--tc-border);
+  border-radius: calc(var(--tc-radius-island) + 0.5rem);
+}
+
+.tc-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--tc-radius-island);
+}
+
+.tc-shot figcaption {
+  padding: 0.625rem 0.25rem 0.125rem;
+  font-size: var(--sl-text-xs);
+  color: var(--tc-ink-muted);
+}
+
+/* Raycast's keycaps, flattened: the app's raised tone with a heavier bottom edge. */
+.tc-keys {
+  display: inline-flex;
+  gap: 0.25rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.tc-lead .tc-key {
+  height: 1.5rem;
+  min-width: 1.5rem;
+}
+
+.tc-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding-inline: 0.45rem;
+  border: 1px solid var(--tc-border);
+  border-bottom-width: 2px;
+  border-radius: var(--tc-radius-key);
+  background: var(--tc-raised);
+  color: var(--tc-ink);
+  font-family: var(--tc-font-mono);
+  font-size: var(--sl-text-xs);
+  line-height: 1;
+}
+
+.tc-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--tc-radius-key);
+  background: var(--tc-raised);
+  color: var(--tc-ink-muted);
+  font-size: var(--sl-text-2xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tc-badge[hidden] {
+  display: none;
+}
+
+.tc-badge[data-tone="accent"] {
+  background: var(--tc-selection);
+  color: var(--tc-ink);
+}
+
+.tc-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--tc-border);
+  font-size: var(--sl-text-sm);
+  color: var(--tc-ink-muted);
+}
+
+.tc-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.tc-footer a {
+  color: var(--tc-ink-muted);
+  text-decoration: none;
+}
+
+.tc-footer a:hover {
+  color: var(--tc-ink);
+}
+
+/* Rendered Markdown inside a .not-content page, where Starlight's own content styles do not reach. */
+.tc-prose {
+  color: var(--sl-color-gray-2);
+  line-height: var(--sl-line-height);
+}
+
+.tc-prose > * + * {
+  margin-top: 1rem;
+}
+
+.tc-prose :is(h2, h3, h4) {
+  color: var(--tc-ink);
+  line-height: 1.3;
+}
+
+.tc-prose :is(h2, h3, h4) + * {
+  margin-top: 0.5rem;
+}
+
+.tc-prose * + :is(h2, h3, h4) {
+  margin-top: 1.75rem;
+}
+
+.tc-prose ul {
+  padding-inline-start: 1.25rem;
+}
+
+.tc-prose li + li {
+  margin-top: 0.375rem;
+}
+
+.tc-prose a {
+  color: var(--tc-accent);
+}
+
+.tc-prose strong {
+  color: var(--tc-ink);
+  font-weight: 600;
+}
+
+.tc-prose code {
+  font-family: var(--tc-font-mono);
+  font-size: 0.875em;
+  background: var(--tc-panel);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-key);
+  padding: 0.05em 0.35em;
+}
+
+.tc-prose pre {
+  padding: 0.75rem 1rem;
+  background: var(--tc-panel);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-popover);
+  overflow-x: auto;
+}
+
+.tc-prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-button,
+  .site-nav a {
+    transition: none;
+  }
+}

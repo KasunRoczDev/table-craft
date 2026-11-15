@@ -1,0 +1,132 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import changelogJson from "../generated/changelog.json";
+import type { Changelog } from "../../scripts/releases";
+import { RELEASES_URL, SITE_TITLE } from "../../scripts/site";
+
+const changelog = changelogJson as Changelog;
+
+function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString("en", { dateStyle: "long" });
+}
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "Changelog",
+    description: `What changed in each ${SITE_TITLE} release.`,
+    template: "splash",
+    hero: { title: "Changelog" },
+  }}
+>
+  <div class="tc-page not-content">
+    <section class="tc-changelog-head">
+      <p class="tc-eyebrow">Changelog</p>
+      <h1 class="tc-display">What's new in {SITE_TITLE}</h1>
+      <p class="tc-lead">
+        Every release, newest first, from <a href={RELEASES_URL}>GitHub Releases</a>, where each one also lists its
+        installers and plugin packages.
+      </p>
+    </section>
+
+    {
+      changelog.entries.length === 0 ? (
+        <p class="tc-changelog-empty tc-muted">
+          The release notes could not be loaded when this page was built. Read them on{" "}
+          <a href={RELEASES_URL}>GitHub Releases</a>.
+        </p>
+      ) : (
+        <ol class="tc-releases" data-pagefind-weight="0.2">
+          {changelog.entries.map((entry) => (
+            <li class="tc-release" id={entry.version}>
+              <div class="tc-release-meta">
+                <a class="tc-release-version" href={`#${entry.version}`}>
+                  {entry.version}
+                </a>
+                <time datetime={entry.date}>{formatDate(entry.date)}</time>
+                <a class="tc-release-source" href={entry.url}>
+                  On GitHub
+                </a>
+              </div>
+              <div class="tc-release-body tc-prose">
+                {entry.title !== entry.version && <h2>{entry.title}</h2>}
+                <Fragment set:html={entry.html} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )
+    }
+
+    <SiteFooter />
+  </div>
+</StarlightPage>
+
+<style>
+  .tc-changelog-head {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .tc-changelog-head a,
+  .tc-changelog-empty a {
+    color: var(--tc-accent);
+  }
+  .tc-releases {
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--tc-border);
+  }
+  .tc-release {
+    display: grid;
+    gap: 1rem;
+    padding-block: 2.5rem;
+    border-bottom: 1px solid var(--tc-border);
+    scroll-margin-top: calc(var(--sl-nav-height) + 1rem);
+  }
+  @media (min-width: 50rem) {
+    .tc-release {
+      grid-template-columns: 12rem 1fr;
+      gap: 3rem;
+    }
+    .tc-release-meta {
+      position: sticky;
+      top: calc(var(--sl-nav-height) + 1.5rem);
+      align-self: start;
+    }
+  }
+  .tc-release-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: var(--sl-text-sm);
+    color: var(--tc-ink-muted);
+  }
+  .tc-release-version {
+    font-family: var(--tc-font-mono);
+    font-size: var(--sl-text-lg);
+    font-weight: 600;
+    color: var(--tc-ink);
+    text-decoration: none;
+  }
+  .tc-release-source {
+    color: var(--tc-ink-muted);
+  }
+  .tc-release-source:hover {
+    color: var(--tc-ink);
+  }
+  .tc-release-body {
+    min-width: 0;
+  }
+  .tc-release-body :global(h3) {
+    font-size: var(--sl-text-lg);
+  }
+  .tc-release-body :global(h4) {
+    font-size: var(--sl-text-base);
+    color: var(--tc-ink-muted);
+  }
+  .tc-release-body > :global(:first-child) {
+    margin-top: 0;
+  }
+</style>

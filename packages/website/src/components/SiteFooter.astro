@@ -1,0 +1,14 @@
+---
+import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE, ISSUES_URL, repositoryFileUrl, REPOSITORY_URL, SITE_TITLE } from "../../scripts/site";
+---
+
+<footer class="tc-footer not-content">
+  <span>{SITE_TITLE} is free software under the <a href={repositoryFileUrl("LICENSE")}>GPL-3.0-or-later</a>.</span>
+  <nav aria-label="Footer">
+    <a href={DOCS_ROUTE}>Docs</a>
+    <a href={DOWNLOAD_ROUTE}>Download</a>
+    <a href={CHANGELOG_ROUTE}>Changelog</a>
+    <a href={REPOSITORY_URL}>GitHub</a>
+    <a href={ISSUES_URL}>Report a bug</a>
+  </nav>
+</footer>

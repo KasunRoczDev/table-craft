@@ -1,0 +1,7 @@
+# Written by scripts/sync.ts from docs/guide, docs/media, the app icon and GitHub releases.
+src/content/docs/
+src/generated/
+public/media/
+public/icons/
+# Astro's types and cache.
+.astro/
