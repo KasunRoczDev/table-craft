@@ -187,11 +187,61 @@ body {
   border-radius: calc(var(--tc-radius-island) + 0.5rem);
 }
 
-.tc-shot img {
+.tc-shot :is(img, video) {
   display: block;
   width: 100%;
   height: auto;
   border-radius: var(--tc-radius-island);
+}
+
+/* A result grid as the console draws one: a raised header, striped rows, row numbers in the gutter. */
+.tc-grid {
+  overflow-x: auto;
+  border-radius: var(--tc-radius-island);
+  background: var(--tc-canvas);
+  font-family: var(--tc-font-mono);
+  font-size: var(--sl-text-sm);
+}
+
+.tc-grid table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tc-grid :is(th, td) {
+  padding: 0.625rem 1rem;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.tc-grid th {
+  background: var(--tc-raised);
+  color: var(--tc-ink-muted);
+  font-weight: 500;
+}
+
+.tc-grid td {
+  color: var(--tc-ink);
+}
+
+.tc-grid tbody tr:nth-child(even) td {
+  background: var(--tc-grid-stripe);
+}
+
+.tc-grid .tc-grid-row {
+  width: 1%;
+  color: var(--tc-ink-muted);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.tc-grid td[data-syntax="number"] {
+  color: var(--tc-syntax-number);
+}
+
+.tc-grid:focus-visible {
+  outline: 2px solid var(--tc-accent);
+  outline-offset: 2px;
 }
 
 /* Raycast's keycaps, flattened to the app's raised tone. */

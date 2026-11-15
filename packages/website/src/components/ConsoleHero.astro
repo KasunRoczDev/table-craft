@@ -1,0 +1,246 @@
+---
+import Keys from "./Keys.astro";
+import { DATABASES, HERO_QUERY, HERO_TITLE } from "../../scripts/landing";
+import { SITE_TITLE } from "../../scripts/site";
+
+interface Props {
+  version?: string;
+}
+
+const { version } = Astro.props;
+const lines = HERO_QUERY.map((tokens) => ({ tokens, length: tokens.reduce((sum, token) => sum + token.text.length, 0) }));
+const row: readonly { column: string; value: string; kind: "string" | "number" }[] = [
+  { column: "name", value: SITE_TITLE, kind: "string" },
+  { column: "price", value: "0", kind: "number" },
+  { column: "runs_on", value: "macOS, Windows, Linux", kind: "string" },
+  { column: "databases", value: String(DATABASES.length), kind: "number" },
+  ...(version ? [{ column: "latest", value: version, kind: "string" as const }] : []),
+];
+---
+
+<section class="tc-console" data-console aria-labelledby="hero-title">
+  <div class="tc-console-bar">
+    <span class="tc-console-tab"><span class="tc-console-dot" aria-hidden="true"></span>console [tablecraft]</span>
+    <button class="tc-console-run" type="button" data-console-run>
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"></path></svg>
+      Run <Keys keys={["⌘", "↩"]} />
+    </button>
+  </div>
+  <div class="tc-console-editor">
+    <ol class="tc-console-gutter" aria-hidden="true">{lines.map((_, index) => <li>{index + 1}</li>)}</ol>
+    <h1 id="hero-title" class="tc-console-sql" aria-label={`${SITE_TITLE}: ${HERO_TITLE}`}>
+      {
+        lines.map((line, index) => (
+          <span class="tc-console-line" style={`--chars: ${line.length}; --line: ${index}`}>
+            {line.tokens.map((token) => (token.kind ? <span data-syntax={token.kind}>{token.text}</span> : token.text))}
+          </span>
+        ))
+      }
+    </h1>
+  </div>
+  <div class="tc-console-result">
+    <p class="tc-console-status">Result 1 <span>· 1 row</span></p>
+    <div class="tc-grid" tabindex="0" role="region" aria-label="The query's result">
+      <table>
+        <thead>
+          <tr>
+            {row.map((cell) => <th scope="col">{cell.column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {row.map((cell) => <td data-syntax={cell.kind}>{cell.value}</td>)}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<script>
+  const RUN_CLASS = "tc-running";
+
+  for (const console of document.querySelectorAll<HTMLElement>("[data-console]")) {
+    const run = (): void => {
+      console.classList.remove(RUN_CLASS);
+      void console.offsetWidth;
+      console.classList.add(RUN_CLASS);
+    };
+    console.querySelector("[data-console-run]")?.addEventListener("click", run);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        run();
+      }
+    });
+    run();
+  }
+</script>
+
+<style>
+  .tc-console {
+    display: flex;
+    flex-direction: column;
+    background: var(--tc-panel);
+    border-radius: calc(var(--tc-radius-island) + 0.5rem);
+    overflow: hidden;
+  }
+  .tc-console-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+    font-size: var(--sl-text-sm);
+    color: var(--tc-ink-muted);
+  }
+  .tc-console-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--tc-radius-popover);
+    background: var(--tc-raised);
+    color: var(--tc-ink);
+  }
+  .tc-console-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--tc-success);
+  }
+  .tc-console-run {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.25rem;
+    padding-inline: 0.75rem 0.375rem;
+    border: 0;
+    border-radius: var(--tc-radius-popover);
+    background: transparent;
+    color: var(--tc-ink);
+    font: inherit;
+    cursor: pointer;
+    transition:
+      background-color var(--tc-motion-fast) ease-out,
+      transform var(--tc-motion-fast) var(--tc-ease);
+  }
+  .tc-console-run svg {
+    color: var(--tc-success);
+  }
+  .tc-console-run:hover {
+    background: var(--tc-raised);
+  }
+  .tc-console-run:active {
+    transform: scale(var(--tc-press-scale));
+  }
+  .tc-console-run:focus-visible {
+    outline: 2px solid var(--tc-accent);
+    outline-offset: 2px;
+  }
+  .tc-console-run :global(.tc-key) {
+    background: var(--tc-canvas);
+    height: 1.5rem;
+    min-width: 1.5rem;
+  }
+  .tc-console-editor {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: clamp(0.75rem, 2vw, 2rem);
+    margin-inline: 0.5rem;
+    padding: clamp(1.25rem, 0.5rem + 3vw, 3.5rem) clamp(0.75rem, 2vw, 2rem);
+    background: var(--tc-canvas);
+    border-radius: var(--tc-radius-island);
+  }
+  .tc-console-gutter,
+  .tc-console-sql {
+    font-family: var(--tc-font-mono);
+    font-size: clamp(1.2rem, 0.3rem + 3.9vw, 3.75rem);
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+  }
+  .tc-console-gutter {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--tc-ink-muted);
+    opacity: 0.5;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .tc-console-sql {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin: 0;
+    font-weight: 500;
+    color: var(--tc-ink);
+  }
+  .tc-console-line {
+    display: block;
+    white-space: pre;
+    border-radius: var(--tc-radius-key);
+  }
+  [data-syntax="keyword"] {
+    color: var(--tc-syntax-keyword);
+  }
+  [data-syntax="string"] {
+    color: var(--tc-syntax-string);
+  }
+  [data-syntax="number"] {
+    color: var(--tc-syntax-number);
+  }
+  [data-syntax="identifier"] {
+    color: var(--tc-syntax-identifier);
+  }
+  [data-syntax="operator"] {
+    color: var(--tc-syntax-operator);
+  }
+  .tc-console-result {
+    padding: 1rem 0.5rem 0.5rem;
+  }
+  .tc-console-status {
+    padding: 0 0.5rem 0.75rem;
+    font-size: var(--sl-text-sm);
+    color: var(--tc-ink);
+  }
+  .tc-console-status span {
+    color: var(--tc-ink-muted);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .tc-running .tc-console-line {
+      overflow: hidden;
+      animation: tc-type calc(var(--chars) * 45ms) steps(var(--chars), end) both;
+      animation-delay: calc(var(--line) * 900ms + 200ms);
+    }
+    .tc-running .tc-console-editor {
+      animation: tc-flash 900ms var(--tc-ease) 2350ms both;
+    }
+    .tc-running .tc-console-status,
+    .tc-running .tc-grid tbody tr {
+      animation: tc-result 500ms var(--tc-ease) 2450ms both;
+    }
+  }
+
+  @keyframes tc-type {
+    from {
+      max-width: 0;
+    }
+    to {
+      max-width: calc(var(--chars) * 1ch);
+    }
+  }
+  @keyframes tc-flash {
+    0%,
+    30% {
+      background: var(--tc-statement-flash);
+    }
+  }
+  @keyframes tc-result {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+  }
+</style>

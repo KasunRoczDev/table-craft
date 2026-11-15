@@ -1,14 +1,18 @@
 ---
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Clips from "../components/Clips.astro";
+import ConsoleHero from "../components/ConsoleHero.astro";
+import Keymap from "../components/Keymap.astro";
 import Keys from "../components/Keys.astro";
-import Shot from "../components/Shot.astro";
 import Reveal from "../components/Reveal.astro";
+import Shot from "../components/Shot.astro";
 import SiteFooter from "../components/SiteFooter.astro";
+import Stage from "../components/Stage.astro";
 import changelogJson from "../generated/changelog.json";
-import logo from "../generated/logo.png";
-import { CHORDS, DATABASES, HERO_LEAD, HERO_TITLE, HIGHLIGHTS } from "../../scripts/landing";
+import { DATABASES, HERO_LEAD, HIGHLIGHTS } from "../../scripts/landing";
 import type { Changelog } from "../../scripts/releases";
 import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE, REPOSITORY_URL, SITE_DESCRIPTION, SITE_TAGLINE, SITE_TITLE } from "../../scripts/site";
+import { docsRoute } from "../../scripts/guide";
 
 const changelog = changelogJson as Changelog;
 const latest = changelog.entries[0];
@@ -18,81 +22,97 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
 
 <StarlightPage frontmatter={{ title: SITE_TITLE, description: SITE_DESCRIPTION, template: "splash", pagefind: false, hero: { title: SITE_TAGLINE } }}>
   <div class="tc-page tc-landing not-content">
-    <section class="tc-hero tc-enter">
-      <img class="tc-hero-logo" src={logo.src} width="96" height="96" alt="" />
-      <h1 class="tc-display">{HERO_TITLE}</h1>
-      <p class="tc-lead">{HERO_LEAD}</p>
-      <div class="tc-actions">
-        <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
-        <a class="tc-button" href={DOCS_ROUTE}>Read the docs</a>
-        <a class="tc-button" href={REPOSITORY_URL}>GitHub</a>
+    <div class="tc-hero tc-enter">
+      <ConsoleHero version={latest?.version} />
+      <div class="tc-hero-text">
+        <p class="tc-lead">{HERO_LEAD}</p>
+        <div class="tc-hero-actions">
+          <div class="tc-actions">
+            <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
+            <a class="tc-button" href={DOCS_ROUTE}>Read the docs</a>
+            <a class="tc-button" href={REPOSITORY_URL}>GitHub</a>
+          </div>
+          {
+            latest && (
+              <a class="tc-hero-version" href={CHANGELOG_ROUTE}>
+                {latest.version}, {new Date(latest.date).toLocaleDateString("en", { dateStyle: "medium" })}
+              </a>
+            )
+          }
+        </div>
       </div>
-      {
-        latest && (
-          <p class="tc-hero-version tc-muted">
-            <a href={CHANGELOG_ROUTE}>
-              {latest.version} · {new Date(latest.date).toLocaleDateString("en", { dateStyle: "medium" })}
-            </a>
-          </p>
-        )
-      }
-    </section>
+    </div>
 
-    <Shot class="tc-hero-shot" file="console.gif" alt="A SQL console running a query, with the result grid below" eager />
-
-    <section class="tc-keymap" aria-labelledby="keymap-title">
-      <div class="tc-section-head tc-reveal">
-        <h2 id="keymap-title" class="tc-section-title">The chords your hands already know</h2>
-        <p class="tc-lead">DataGrip's tool windows, layout and shortcuts, on Windows and Linux with Ctrl in place of ⌘.</p>
-      </div>
-      <ul class="tc-chords tc-reveal-items">
-        {
-          CHORDS.map((chord) => (
-            <li>
-              <Keys keys={chord.keys} />
-              <span>{chord.action.replace("…", "")}</span>
-            </li>
-          ))
-        }
-      </ul>
-    </section>
-
-    <section class="tc-databases" aria-labelledby="databases-title">
-      <div class="tc-section-head tc-reveal">
-        <h2 id="databases-title" class="tc-section-title">Every database is a plugin</h2>
+    <section class="tc-split tc-reveal" aria-labelledby="connect-title">
+      <div class="tc-split-text">
+        <h2 id="connect-title" class="tc-section-title">Add a data source, browse it, run SQL</h2>
         <p class="tc-lead">
-          SQLite and MySQL come in the box and work offline. The rest download from npm the first time you add one.
+          Rows stay in a separate engine process and the grid reads windows of them, so a big result never
+          freezes the window.
         </p>
       </div>
-      <ul class="tc-database-list tc-reveal-items">
-        {
-          DATABASES.map((database) => (
-            <li style={`--tint: var(--tc-datasource-${database.tint})`}>
-              <span class="tc-database-dot" aria-hidden="true" />
-              <span class="tc-database-name">{database.name}</span>
-              <span class="tc-badge" data-tone={database.builtIn ? "accent" : undefined}>
-                {database.builtIn ? "In the box" : "On demand"}
-              </span>
-            </li>
-          ))
-        }
-      </ul>
+      <Shot clip="how-it-works" file="console.gif" alt="Adding a PostgreSQL data source, opening its tables and running a query" />
     </section>
 
-    {
-      featured.map((highlight, index) => (
-        <section class="tc-feature tc-reveal" data-flip={index % 2 === 1 ? "" : undefined}>
-          <div class="tc-feature-text">
-            <h2 class="tc-section-title">{highlight.title}</h2>
-            <p class="tc-lead">{highlight.text}</p>
-            <a class="tc-feature-link" href={highlight.href}>
-              Read more <span aria-hidden="true">→</span>
-            </a>
-          </div>
-          {highlight.media && <Shot file={highlight.media} alt={highlight.title} />}
-        </section>
-      ))
-    }
+    <Stage highlights={featured} />
+
+    <section class="tc-keymap" aria-labelledby="keymap-title">
+      <div class="tc-split">
+        <div class="tc-split-text tc-reveal">
+          <h2 id="keymap-title" class="tc-section-title">The chords your hands already know</h2>
+          <p class="tc-lead">
+            DataGrip's tool windows, layout and shortcuts, with Ctrl in place of ⌘ on Windows and Linux. Press
+            one of these here, then <Keys keys={["⇧", "⇧"]} /> in the app.
+          </p>
+        </div>
+        <Shot clip="search-everywhere" file="search-everywhere.gif" alt="Search Everywhere finding a table, an action and a setting" />
+      </div>
+      <Keymap />
+    </section>
+
+    <section class="tc-split" aria-labelledby="databases-title">
+      <div class="tc-split-text tc-reveal">
+        <h2 id="databases-title" class="tc-section-title">Every database is a plugin</h2>
+        <p class="tc-lead">
+          SQLite and MySQL come in the box and work offline. The rest download from npm the first time you add
+          one, and yours can load the same way.
+        </p>
+        <a class="tc-link" href={docsRoute("plugins")}>How plugins load <span aria-hidden="true">→</span></a>
+      </div>
+      <figure class="tc-result tc-reveal">
+        <figcaption><code><span data-syntax="keyword">SELECT</span> name, plugin <span data-syntax="keyword">FROM</span> databases;</code></figcaption>
+        <div class="tc-grid" tabindex="0" role="region" aria-label="Supported databases">
+          <table>
+            <thead>
+              <tr><th scope="col" class="tc-grid-row">#</th><th scope="col">name</th><th scope="col">plugin</th></tr>
+            </thead>
+            <tbody>
+              {
+                DATABASES.map((database, index) => (
+                  <tr style={`--tint: var(--tc-datasource-${database.tint})`}>
+                    <td class="tc-grid-row">{index + 1}</td>
+                    <td><span class="tc-database-dot" aria-hidden="true" />{database.name}</td>
+                    <td data-plugin={database.builtIn ? "built-in" : undefined}>{database.builtIn ? "in the box" : "on demand"}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </figure>
+    </section>
+
+    <section class="tc-split" data-flip aria-labelledby="themes-title">
+      <div class="tc-split-text tc-reveal">
+        <h2 id="themes-title" class="tc-section-title">Darcula, IntelliJ Light and 43 more</h2>
+        <p class="tc-lead">
+          Dark, Light and High contrast, ported themes such as Gruvbox, Nord and Solarized, or your own theme
+          file, in a comfortable or a compact density. This site wears the app's Dark and Light.
+        </p>
+        <a class="tc-link" href={docsRoute("themes")}>Themes <span aria-hidden="true">→</span></a>
+      </div>
+      <Shot clip="themes" file="themes.gif" alt="Switching between the Dark, Light and ported themes" />
+    </section>
 
     <section aria-labelledby="more-title">
       <div class="tc-section-head tc-reveal">
@@ -100,14 +120,16 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
       </div>
       <ul class="tc-more tc-reveal-items">
         {
-          more.map((highlight) => (
-            <li>
-              <a href={highlight.href}>
-                <h3>{highlight.title}</h3>
-                <p>{highlight.text}</p>
-              </a>
-            </li>
-          ))
+          more
+            .filter((highlight) => highlight.href !== docsRoute("themes"))
+            .map((highlight) => (
+              <li>
+                <a href={highlight.href}>
+                  <h3>{highlight.title}</h3>
+                  <p>{highlight.text}</p>
+                </a>
+              </li>
+            ))
         }
       </ul>
     </section>
@@ -116,13 +138,14 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
       <h2 class="tc-section-title">Open a console in a minute</h2>
       <p class="tc-lead">Download the app, add a data source with <Keys keys={["⌘", "N"]} />, and run a query with <Keys keys={["⌘", "↩"]} />.</p>
       <div class="tc-actions">
-        <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE}>Download TableCraft</a>
+        <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
         <a class="tc-button" href={`${DOCS_ROUTE}install/`}>Install guide</a>
       </div>
     </section>
 
     <SiteFooter />
     <Reveal />
+    <Clips />
   </div>
 </StarlightPage>
 
@@ -142,29 +165,37 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
   .tc-hero {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 1.5rem;
+    gap: 2.5rem;
   }
-  .tc-hero-logo {
-    width: 4.5rem;
-    height: 4.5rem;
+  .tc-hero-text {
+    display: grid;
+    gap: 1.5rem 4rem;
+    align-items: end;
   }
-  .tc-hero .tc-display {
-    max-width: 60rem;
+  .tc-hero-text .tc-lead {
+    font-size: var(--sl-text-xl);
+  }
+  .tc-hero-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
   .tc-hero-version {
     font-size: var(--sl-text-sm);
     font-variant-numeric: tabular-nums;
-  }
-  .tc-hero-version a {
-    color: inherit;
+    color: var(--tc-ink-muted);
     text-decoration: none;
   }
-  .tc-hero-version a:hover {
+  .tc-hero-version:hover {
     color: var(--tc-ink);
   }
-  .tc-hero-shot {
-    margin-top: calc(var(--tc-section-gap) * -0.6);
+  @media (min-width: 64rem) {
+    .tc-hero-text {
+      grid-template-columns: 1fr auto;
+    }
+    .tc-hero-actions {
+      align-items: flex-end;
+    }
   }
   .tc-section-head {
     display: flex;
@@ -172,74 +203,69 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     gap: 1rem;
     margin-bottom: 2.5rem;
   }
-  .tc-chords {
+  .tc-split {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-    gap: 1.75rem 2rem;
-    padding: 0;
-    list-style: none;
+    gap: 2.5rem 4rem;
+    align-items: center;
   }
-  .tc-chords li {
+  .tc-split-text {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.75rem;
-    color: var(--tc-ink);
+    gap: 1.25rem;
   }
-  .tc-database-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    gap: 1.5rem 3rem;
-    padding: 0;
-    list-style: none;
-  }
-  .tc-database-list li {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: var(--sl-text-lg);
-  }
-  .tc-database-dot {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-radius: 50%;
-    background: var(--tint);
-    flex: none;
-  }
-  .tc-database-name {
-    flex: 1;
-    color: var(--tc-ink);
-    font-weight: 500;
-  }
-  .tc-feature {
-    display: grid;
-    gap: 2rem;
-    align-items: center;
-  }
-  .tc-feature-text {
+  .tc-keymap {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 2.5rem;
   }
-  .tc-feature-link {
+  @media (min-width: 64rem) {
+    .tc-split {
+      grid-template-columns: 5fr 7fr;
+    }
+    .tc-split[data-flip] {
+      grid-template-columns: 7fr 5fr;
+    }
+    .tc-split[data-flip] > .tc-split-text {
+      order: 2;
+    }
+  }
+  .tc-link {
     color: var(--tc-accent);
     font-weight: 500;
     text-decoration: none;
   }
-  .tc-feature-link:hover {
+  .tc-link:hover {
     text-decoration: underline;
   }
-  @media (min-width: 60rem) {
-    .tc-feature {
-      grid-template-columns: 5fr 8fr;
-      gap: 4rem;
-    }
-    .tc-feature[data-flip] {
-      grid-template-columns: 8fr 5fr;
-    }
-    .tc-feature[data-flip] .tc-feature-text {
-      order: 2;
-    }
+  .tc-result {
+    margin: 0;
+    padding: 0.5rem;
+    background: var(--tc-panel);
+    border-radius: calc(var(--tc-radius-island) + 0.5rem);
+  }
+  .tc-result figcaption {
+    padding: 1rem 1rem 1.25rem;
+    font-size: clamp(0.95rem, 0.8rem + 0.5vw, 1.25rem);
+  }
+  .tc-result code {
+    font-family: var(--tc-font-mono);
+    color: var(--tc-ink);
+  }
+  .tc-result [data-syntax="keyword"] {
+    color: var(--tc-syntax-keyword);
+  }
+  .tc-result td[data-plugin] {
+    color: var(--tc-success);
+  }
+  .tc-database-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-inline-end: 0.625rem;
+    border-radius: 50%;
+    background: var(--tint);
+    vertical-align: 0.1em;
   }
   .tc-more {
     display: grid;
@@ -273,10 +299,23 @@ const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
     align-items: flex-start;
     gap: 1.5rem;
     padding: clamp(2.5rem, 1.5rem + 4vw, 5rem);
-    background: var(--tc-panel);
-    border-radius: calc(var(--tc-radius-island) + 0.5rem);
+    background: var(--tc-accent);
+    color: var(--tc-accent-ink);
+    border-radius: calc(var(--tc-radius-island) + 0.75rem);
+  }
+  .tc-cta :is(.tc-section-title, .tc-lead) {
+    color: var(--tc-accent-ink);
+  }
+  .tc-cta .tc-button[data-variant="primary"] {
+    background: var(--tc-accent-ink);
+    color: var(--tc-accent);
   }
   .tc-cta .tc-button:not([data-variant]) {
-    background: var(--tc-raised);
+    background: color-mix(in srgb, var(--tc-accent-ink) 14%, transparent);
+    color: var(--tc-accent-ink);
+  }
+  .tc-cta :global(.tc-key) {
+    background: color-mix(in srgb, var(--tc-accent-ink) 14%, transparent);
+    color: var(--tc-accent-ink);
   }
 </style>

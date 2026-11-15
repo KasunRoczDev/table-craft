@@ -1,0 +1,113 @@
+---
+import Keys from "./Keys.astro";
+import { CHORDS } from "../../scripts/landing";
+---
+
+<ul class="tc-chords" data-keymap>
+  {
+    CHORDS.map((chord) => (
+      <li data-chord={chord.keys.join(" ")}>
+        <Keys keys={chord.keys} />
+        <span>{chord.action.replace("…", "")}</span>
+      </li>
+    ))
+  }
+</ul>
+
+<script>
+  const PRESSED_MS = 900;
+  /** Two taps of Shift this close together are Search Everywhere, as in DataGrip. */
+  const DOUBLE_SHIFT_MS = 400;
+  const KEY_GLYPHS: Record<string, string> = { Enter: "↩", F4: "F4" };
+
+  function glyphFor(event: KeyboardEvent): string | undefined {
+    if (event.code.startsWith("Key")) return event.code.slice("Key".length);
+    return KEY_GLYPHS[event.code];
+  }
+
+  function chordOf(event: KeyboardEvent, key: string): string {
+    const held = [event.shiftKey && "⇧", event.altKey && "⌥", (event.metaKey || event.ctrlKey) && "⌘"];
+    return [...held.filter((glyph): glyph is string => Boolean(glyph)), key].join(" ");
+  }
+
+  // The chords light up as the visitor presses them; a chord the page knows is kept from the browser.
+  for (const keymap of document.querySelectorAll<HTMLElement>("[data-keymap]")) {
+    const rows = new Map(
+      [...keymap.querySelectorAll<HTMLElement>("[data-chord]")].map((row) => [row.dataset["chord"] ?? "", row]),
+    );
+    const timers = new Map<HTMLElement, number>();
+    let lastShift = 0;
+    const light = (chord: string): boolean => {
+      const row = rows.get(chord);
+      if (!row) return false;
+      row.dataset["pressed"] = "";
+      window.clearTimeout(timers.get(row));
+      timers.set(
+        row,
+        window.setTimeout(() => delete row.dataset["pressed"], PRESSED_MS),
+      );
+      return true;
+    };
+    document.addEventListener("keydown", (event) => {
+      if (event.repeat || event.target instanceof HTMLInputElement) return;
+      if (event.key === "Shift") {
+        const now = performance.now();
+        if (now - lastShift < DOUBLE_SHIFT_MS) light("⇧ ⇧");
+        lastShift = now;
+        return;
+      }
+      const key = glyphFor(event);
+      if (key && light(chordOf(event, key)) && key !== "↩") event.preventDefault();
+    });
+  }
+</script>
+
+<style>
+  .tc-chords {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0;
+    list-style: none;
+  }
+  @media (min-width: 48rem) {
+    .tc-chords {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .tc-chords li {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.25rem;
+    border-radius: var(--tc-radius-island);
+    background: var(--tc-panel);
+    color: var(--tc-ink);
+    transition:
+      background-color var(--tc-motion-base) var(--tc-ease),
+      transform var(--tc-motion-base) var(--tc-ease);
+  }
+  .tc-chords :global(.tc-key) {
+    height: 2.5rem;
+    min-width: 2.5rem;
+    font-size: var(--sl-text-lg);
+    border-radius: var(--tc-radius-popover);
+    transition:
+      background-color var(--tc-motion-base) var(--tc-ease),
+      color var(--tc-motion-base) var(--tc-ease);
+  }
+  .tc-chords li[data-pressed] {
+    background: var(--tc-selection);
+    transform: translateY(-0.25rem);
+  }
+  .tc-chords li[data-pressed] :global(.tc-key) {
+    background: var(--tc-accent);
+    color: var(--tc-accent-ink);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tc-chords li[data-pressed] {
+      transform: none;
+    }
+  }
+</style>

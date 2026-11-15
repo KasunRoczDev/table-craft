@@ -1,10 +1,30 @@
 import type { DatasourceTint } from "../../desktop/src/appearance/themes.js";
+import type { WebsiteClip } from "./clips.js";
 import { docsRoute } from "./guide.js";
 
 /** The README's tagline, cut to stay within two lines on a phone. */
 export const HERO_TITLE = "A database IDE in the spirit of DataGrip";
 export const HERO_LEAD =
   "Free and open source for macOS, Windows and Linux. Connections, a database explorer, SQL consoles with schema-aware completion, a result grid, a table data editor, query history and EXPLAIN plans, with every database a plugin.";
+
+export type SyntaxKind = "keyword" | "string" | "number" | "identifier" | "operator";
+
+export interface SqlToken {
+  text: string;
+  kind?: SyntaxKind;
+}
+
+/** The hero's statement, one array per line, coloured as the console colours SQL. It says HERO_TITLE. */
+export const HERO_QUERY: readonly (readonly SqlToken[])[] = [
+  [{ text: "SELECT", kind: "keyword" }, { text: " * " }, { text: "FROM", kind: "keyword" }, { text: " ides" }],
+  [
+    { text: "WHERE", kind: "keyword" },
+    { text: " spirit", kind: "identifier" },
+    { text: " = ", kind: "operator" },
+    { text: "'DataGrip'", kind: "string" },
+    { text: ";" },
+  ],
+];
 
 export interface Chord {
   /** Glyphs as the shortcuts guide writes them for macOS, one keycap each. */
@@ -27,46 +47,61 @@ export const CHORDS: readonly Chord[] = [
 
 export interface Highlight {
   title: string;
+  /** A short name for the landing page's tab, on highlights with media. */
+  tab?: string;
   text: string;
   href: string;
   /** A GIF in `docs/media/`. */
   media?: string;
+  /** The website's own recording of the same scene, played instead of the GIF. */
+  clip?: WebsiteClip;
 }
 
 /** The README's Highlights, in the words a visitor scans first; the ones with media get a row of their own. */
 export const HIGHLIGHTS: readonly Highlight[] = [
   {
     title: "Completion that knows your schema",
+    tab: "Completion",
     text: "Tables after FROM, whole join conditions after JOIN, and the columns of an alias after o. — from the catalog of the data source you are on.",
     href: docsRoute("completion"),
     media: "completion.gif",
+    clip: "completion",
   },
   {
     title: "Large results stay responsive",
+    tab: "Results",
     text: "Rows stay in the engine process and the grid reads windows of them, so a million-row result does not freeze the window. Sorting, copying and exporting happen there too.",
     href: docsRoute("data", "#result-grid"),
     media: "grid.gif",
+    clip: "grid",
   },
   {
     title: "A table editor that shows its SQL",
+    tab: "Table editor",
     text: "Edit cells, add and delete rows, preview the statements, and submit them in one transaction.",
     href: docsRoute("data", "#table-data-editor"),
     media: "table-editor.gif",
+    clip: "table-editor",
   },
   {
     title: "Explain Plan as a tree",
+    tab: "Explain",
     text: "Estimated and actual rows, costs and timings, with each node's share drawn in its cell. Explain Analyse asks before it runs a write.",
     href: docsRoute("console", "#explain"),
     media: "explain.gif",
+    clip: "explain",
   },
   {
     title: "An ER diagram that guesses keys",
+    tab: "ER diagram",
     text: "A schema's tables and keys, with the customer_id columns a database never declared drawn dashed. Hide a wrong guess, add a missed one.",
     href: docsRoute("explorer", "#er-diagram"),
     media: "diagram.gif",
+    clip: "diagram",
   },
   {
     title: "An MCP server for AI agents",
+    tab: "Agents",
     text: "Claude Code, OpenCode or Cursor list schemas and run queries. Each data source starts off, and writes wait for your approval.",
     href: docsRoute("agents"),
     media: "agents-approval.gif",
