@@ -19,8 +19,10 @@ Starlight. It owns no copy of the docs and no colour of its own.
   code-block themes are built from the same `syntax` tokens. Fonts are `SYSTEM_UI_FONT` and
   `SYSTEM_MONO_FONT`, and radii are the Islands ones. Dark is the default and Light follows the
   toggle. No web font is downloaded.
-- **The layout follows Linear.** A panel ladder, hairlines and no shadows, with GIFs from
-  `docs/media/` in full-width panels. Keycaps for the DataGrip chords come from Raycast.
+- **The layout follows Linear, without its lines.** A panel ladder that steps by tone, as Islands
+  do: no hairlines, outlined boxes or shadows, no eyebrow labels and no monospace outside code. GIFs
+  from `docs/media/` run large beside each highlight. Keycaps for the DataGrip chords come from
+  Raycast.
 - **Downloads and the changelog come from GitHub.** Download links are the README's
   `releases/latest/download/` URLs, held once in `scripts/site.ts` and checked against the README by
   a test. The changelog is the published releases, fetched at build time. Drafts and prereleases are

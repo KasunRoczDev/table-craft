@@ -903,23 +903,27 @@ literals. Its sync step writes `src/generated/tokens.css` from `DARK_COLORS` and
 (`packages/website/scripts/tokens.ts`): Dark is `:root`, Light is `:root[data-theme="light"]`, the
 Starlight theme toggle switching between them. High contrast and the ported themes stay in the app.
 
-| Site variable                                   | Token                                     |
-| ----------------------------------------------- | ----------------------------------------- |
-| `--sl-color-black`, `--sl-color-bg-nav`         | `colors.canvas`                           |
-| `--sl-color-gray-6`                             | `colors.panel`                            |
-| `--sl-color-gray-5`, `--sl-color-hairline*`     | `colors.border`                           |
-| `--sl-color-white`, `--sl-color-gray-1`         | `colors.ink`                              |
-| `--sl-color-gray-3`                             | `colors.inkMuted`                         |
-| `--sl-color-accent`, `--sl-color-text-invert`   | `colors.accent`, `colors.accentInk`       |
-| `--sl-color-accent-low`                         | `colors.selection`                        |
-| `--tc-*` (canvas to danger, syntax, datasource) | the token of the same name                |
-| `--sl-font`, `--sl-font-mono`                   | `SYSTEM_UI_FONT`, `SYSTEM_MONO_FONT`      |
-| `--tc-radius-island`, `--tc-radius-popover`     | `islandRadiusPx` (Comfortable), popover 8 |
-| `--tc-radius-key`                               | the tooltip radius, 4, for keycaps        |
-| Code blocks (Expressive Code)                   | `colors.syntax.*`, on `colors.panel`      |
+| Site variable                                        | Token                                     |
+| ---------------------------------------------------- | ----------------------------------------- |
+| `--sl-color-black`                                   | `colors.canvas`                           |
+| `--sl-color-gray-6`, `--sl-color-bg-nav`, `-sidebar` | `colors.panel`                            |
+| `--sl-color-gray-5`                                  | `colors.border`                           |
+| `--sl-color-hairline*`                               | `transparent`: the frame steps by tone    |
+| `--sl-color-white`, `--sl-color-gray-1`              | `colors.ink`                              |
+| `--sl-color-gray-3`                                  | `colors.inkMuted`                         |
+| `--sl-color-accent`, `--sl-color-text-invert`        | `colors.accent`, `colors.accentInk`       |
+| `--sl-color-accent-low`                              | `colors.selection`                        |
+| `--tc-*` (canvas to danger, syntax, datasource)      | the token of the same name                |
+| `--sl-font`, `--sl-font-mono`                        | `SYSTEM_UI_FONT`, `SYSTEM_MONO_FONT`      |
+| `--tc-radius-island`, `--tc-radius-popover`          | `islandRadiusPx` (Comfortable), popover 8 |
+| `--tc-radius-key`                                    | the tooltip radius, 4, for keycaps        |
+| Code blocks (Expressive Code)                        | `colors.syntax.*`, on `colors.panel`      |
 
 The layout follows Linear's dense dark sites, after a survey of awesome-design-md: surfaces
-separated by a tone step or a hairline, never both and never a shadow; display type at weight 600,
-capped at 3.5rem; screenshots in a `colors.panel` frame with an Islands radius; keycaps for chords.
+separated by a tone step, never a line or a shadow, as Islands are (the header and sidebar are
+`colors.panel` on a `colors.canvas` page; cards and buttons are filled, never outlined); no eyebrow
+labels and no monospace outside code; display type at weight 600, capped at 4.5rem and two lines;
+screenshots with an Islands radius; keycaps for chords. Blocks rise once as they scroll in, with the
+app's standard ease, and stand still under `prefers-reduced-motion`. Tables keep their row lines.
 The docs keep the app's look too: the current sidebar page is `colors.selection` under
 `colors.ink`, as a selected tree row is.
