@@ -21,14 +21,14 @@ Starlight. It owns no copy of the docs and no colour of its own.
   toggle. No web font is downloaded.
 - **The layout follows Linear, without its lines.** A panel ladder that steps by tone, as Islands
   do: no hairlines, outlined boxes or shadows, no eyebrow labels and no monospace outside code. The
-  one exception is the subject itself: the hero is a console whose headline is a SQL statement in
-  the app's syntax colours, run on load and again with Run or ⌘↩, and the databases list is a
-  result grid. Keycaps for the DataGrip chords come from Raycast and light up as the visitor
-  presses them.
+  one exception is the subject itself: the databases list is a result grid. The hero is a sans
+  headline over the app's own recording, and the first section after it is agents over MCP with
+  their access levels. Keycaps for chords come from
+  Raycast.
 - **The landing page plays its own recordings.** `bun run website:media` records README media
   scenes as lossless clips (`README_MEDIA_CLIPS`, decision 036) and encodes them into
   `packages/website/media/`: a 1600 px H.264 MP4 and a poster of the last frame per scene, about
-  3.6 MB for eight, committed. A clip plays only while on screen and never under reduced motion,
+  2.6 MB for seven, committed. A clip plays only while on screen and never under reduced motion,
   where the poster stands. Pages without a clip, and the docs, keep the GIFs of `docs/media/`.
 - **Downloads, the changelog and the star count come from GitHub.** Download links are the README's
   `releases/latest/download/` URLs, held once in `scripts/site.ts` and checked against the README by

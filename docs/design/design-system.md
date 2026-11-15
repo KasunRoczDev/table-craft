@@ -923,12 +923,13 @@ The layout follows Linear's dense dark sites, after a survey of awesome-design-m
 separated by a tone step, never a line or a shadow, as Islands are (cards and buttons are filled,
 never outlined); the header and sidebar wear the page's `colors.canvas`, as Linear's do, and the
 header takes one `colors.border` line only once the page scrolls under it; no eyebrow
-labels and no monospace outside code; display type at weight 600, capped at 4.5rem and two lines;
-screenshots with an Islands radius; keycaps for chords. The landing page wears the app itself: its
-hero is a console island whose headline is a two-line SQL statement in `colors.syntax`, typed on
-load, flashed with `colors.statementFlash` and answered by a result grid (`colors.gridStripe` rows,
-a `colors.raised` header); the databases list is a result grid too; the call to action is the one
-`colors.accent` field. Scenes play as the website's own MP4 clips, falling back to the GIFs. Blocks rise once as they scroll in, with the
+labels and no monospace outside code; display type at weight 600, capped at 4rem and two lines;
+screenshots with an Islands radius; keycaps for chords. The landing page opens, as Linear's does, on
+a sans headline over the app recording a data source, a browse and a query; agents (MCP) come next,
+their access levels as `colors.panel` steps with the most trusting one in `colors.selection`; the
+databases list is a result grid (`colors.gridStripe` rows, a `colors.raised` header); the call to
+action is the one `colors.accent` field. Starlight's Previous and Next links are filled panels with
+the page's title at body size. Scenes play as the website's own MP4 clips, falling back to the GIFs. Blocks rise once as they scroll in, with the
 app's standard ease, and stand still under `prefers-reduced-motion`. Tables keep their row lines.
 The docs keep the app's look too: the current sidebar page is `colors.selection` under
 `colors.ink`, as a selected tree row is.
