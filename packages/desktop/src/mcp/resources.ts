@@ -107,14 +107,14 @@ const PROMPTS: Readonly<Record<string, PromptSpec>> = {
     description: "Map a datasource's schemas and main tables before working with it.",
     arguments: [DATASOURCE_ARGUMENT],
     text: ({ datasource = "" }) =>
-      `Explore the TableCraft datasource ${datasource}. Call list_schemas, then list_tables for the schemas that matter, and describe_table for the central tables. Summarise what the data is about, the main tables and how they relate through foreign keys. Read only; do not change anything.`,
+      `Explore the TableCraft datasource ${datasource}. Call list_schemas, then list_tables for the schemas that matter, and describe_table for the central tables; search_catalog finds a table or column by a word of its name across every schema. Summarise what the data is about, the main tables and how they relate through foreign keys. Read only; do not change anything.`,
   },
   write_query: {
     title: "Write a query",
     description: "Answer a question about the data with one read-only query.",
     arguments: [DATASOURCE_ARGUMENT, { name: "question", description: "What to find out.", required: true }],
     text: ({ datasource = "", question = "" }) =>
-      `Using the TableCraft datasource ${datasource}, answer: ${question}\nFirst find the tables involved with list_tables and describe_table, write one SELECT in the datasource's dialect, check it with check_sql, then run it with run_query, giving a reason: on an ask-before-reads datasource it waits for the user's approval. Show the query and explain the result.`,
+      `Using the TableCraft datasource ${datasource}, answer: ${question}\nFirst find the tables involved with search_catalog, searching a word of the question, or list_tables, and read them with describe_table; write one SELECT in the datasource's dialect, check it with check_sql, then run it with run_query, giving a reason: on an ask-before-reads datasource it waits for the user's approval. Show the query and explain the result.`,
   },
 };
 

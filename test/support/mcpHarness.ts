@@ -105,9 +105,9 @@ export interface AgentHarness {
 /** The MCP tools over one seeded SQLite file per datasource id, with approvals the test answers. */
 export function agentHarness(
   datasources: readonly AgentDatasource[],
-  options: { readOnly?: boolean; sentOf?: (sql: string) => string } = {},
+  options: { readOnly?: boolean; sentOf?: (sql: string) => string; file?: string } = {},
 ): AgentHarness {
-  const path = seededSqliteFile();
+  const path = options.file ?? seededSqliteFile();
   const history: AgentHistoryEntry[] = [];
   let exposed = datasources;
   let rowCap = 3;

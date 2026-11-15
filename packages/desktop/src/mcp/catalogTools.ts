@@ -1,4 +1,10 @@
-import type { Namespace, Relation } from "@table-craft/desktop/engine/protocol.js";
+import {
+  CATALOG_SEARCH_MAX_PATHS,
+  type CatalogSearchHit,
+  type CatalogSearchScope,
+  type Namespace,
+  type Relation,
+} from "@table-craft/desktop/engine/protocol.js";
 import type { AgentDatasource } from "@table-craft/desktop/mcp/messages.js";
 import type { AgentEngine } from "@table-craft/desktop/mcp/engines.js";
 import {
@@ -110,6 +116,74 @@ export async function listTables(context: ToolContext, named: string, schema: st
   return textResult(lines.length === 0 ? `${pathText(path)} has no tables or views.` : lines.join("\n"), {
     schema: pathText(path),
     tables,
+  });
+}
+
+const SEARCH_NAMESPACE_LIMIT = CATALOG_SEARCH_MAX_PATHS;
+const SEARCH_HIT_LIMIT = 50;
+
+function schemas(count: number): string {
+  return count === 1 ? "1 schema" : `${String(count)} schemas`;
+}
+
+function hitLine(hit: CatalogSearchHit): string {
+  const commented = hit.match === "comment" ? ", comment matches" : "";
+  if (hit.column === undefined) return `- ${pathText([...hit.path, hit.relation])} (${hit.kind}${commented})`;
+  const named = pathText([...hit.path, hit.relation, hit.column.name]);
+  return `- ${named} ${hit.column.type} (column of ${hit.kind}${commented})`;
+}
+
+export async function searchCatalog(
+  context: ToolContext,
+  named: string,
+  query: string,
+  options: { readonly schema?: string | undefined; readonly scope?: CatalogSearchScope | undefined },
+): Promise<ToolResult> {
+  const datasource = exposedDatasource(context, named);
+  const engine = await engineWith(context, datasource, ["schemaTree"]);
+  const candidates =
+    options.schema === undefined
+      ? (await shownNamespaces(engine, datasource))
+          .filter((namespace) => !namespace.system)
+          .map((namespace) => namespace.path)
+      : [await resolvePath(engine, datasource, options.schema)];
+  if (candidates.length === 0) return textResult("No schemas are shown for this datasource.", { hits: [], total: 0 });
+  const paths = candidates.slice(0, SEARCH_NAMESPACE_LIMIT);
+  const skipped = candidates.slice(SEARCH_NAMESPACE_LIMIT);
+  const found = await engine.call("catalog.search", {
+    paths,
+    query,
+    scope: options.scope ?? "all",
+    limit: SEARCH_HIT_LIMIT,
+  });
+  const searched = paths.length - found.unread.length;
+  const lines =
+    found.hits.length === 0
+      ? [`Nothing named like "${query}" in the ${schemas(searched)} searched.`]
+      : found.hits.map(hitLine);
+  if (found.total > found.hits.length) {
+    lines.push(
+      `Showing ${String(found.hits.length)} of ${String(found.total)} hits; pass schema or a longer query for the rest.`,
+    );
+  }
+  if (skipped.length > 0) {
+    lines.push(
+      `Skipped ${schemas(skipped.length)} past the first ${String(SEARCH_NAMESPACE_LIMIT)}; pass schema to search one.`,
+    );
+  }
+  for (const unread of found.unread) lines.push(`Could not read ${pathText(unread.path)}: ${unread.message}`);
+  return textResult(lines.join("\n"), {
+    hits: found.hits.map((hit) => ({
+      schema: pathText(hit.path),
+      table: hit.relation,
+      kind: hit.kind,
+      ...(hit.column === undefined ? {} : { column: hit.column.name, type: hit.column.type }),
+      match: hit.match,
+    })),
+    total: found.total,
+    searched: paths.map(pathText),
+    skipped: skipped.map(pathText),
+    unread: found.unread.map((unread) => ({ schema: pathText(unread.path), message: unread.message })),
   });
 }
 

@@ -2977,6 +2977,7 @@ port or `enabled`, restarts the host. `rowCap` changes reach the running host wi
 | `list_datasources` |                    | The exposed datasources with their access                               |
 | `list_schemas`     | `schemaTree`       | `catalog.namespaces`, limited to the shown namespaces (decision 117)    |
 | `list_tables`      | `schemaTree`       | `catalog.describe` of one schema: tables and views with column counts   |
+| `search_catalog`   | `schemaTree`       | `catalog.search`: names over shown non-system schemas (decision 164)    |
 | `describe_table`   | `schemaTree`       | Columns, keys, foreign keys and indexes                                 |
 | `get_ddl`          | `schemaTree`,`ddl` | `catalog.definition`                                                    |
 | `run_query`        | `sql`              | One statement; reads capped at `rowCap`, writes after approval          |
@@ -3042,7 +3043,7 @@ popover offers Allow and Block, which write the list. Unanswered for 60 seconds,
 the call is refused. The name is what the client says it is; the token is the authentication.
 
 **Per-datasource policy.** `agentSchemas` (top-level namespace names; absent, the shown
-namespaces) narrows `list_schemas`, `list_tables`, `describe_table`, `get_ddl` and resources, never
+namespaces) narrows `list_schemas`, `list_tables`, `search_catalog`, `describe_table`, `get_ddl` and resources, never
 SQL (decision 008). `agentRowCap` (1–1,000) overrides `rowCap`, and `agentTimeoutSeconds`
 (1–3,600) overrides `statementTimeoutSeconds`. All three are set over
 `datasources.setAgentPolicy`.
