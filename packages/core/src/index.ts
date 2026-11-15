@@ -5,6 +5,14 @@ export {
   type CompletionCatalogOptions,
 } from "./catalog/completionCatalog.js";
 export { inferForeignKeys, nameTokens, type InferredKey } from "./catalog/inferKeys.js";
+export {
+  CATALOG_MATCHES,
+  CATALOG_SEARCH_SCOPES,
+  searchCatalog,
+  type CatalogMatch,
+  type CatalogSearchHit,
+  type CatalogSearchScope,
+} from "./catalog/search.js";
 export { CoreError, EditRejectedError, TunnelError, type CoreErrorCode, type TunnelErrorCode } from "./errors.js";
 export {
   READ_ONLY_REASONS,
