@@ -157,3 +157,4 @@ started, not when it is merged.
 | 162 | [The row cap is written into the SQL](162-the-row-cap-is-written-into-the-sql.md)                                                                                      |
 | 163 | [fetch_rows waits for approval when it runs the statement again](163-fetch-rows-waits-for-approval-when-it-runs-the-statement-again.md)                                |
 | 164 | [Agents search the catalog in the engine](164-agents-search-the-catalog-in-the-engine.md)                                                                              |
+| 165 | [TableCraft is GPL-3.0-or-later and its plugin API is MIT](165-tablecraft-is-gpl-3-and-its-plugin-api-is-mit.md)                                                       |
