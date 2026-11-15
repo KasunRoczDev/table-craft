@@ -34,6 +34,10 @@ jobs:
       - run: bun run format:check
       - run: bun run typecheck
       - run: bun run test
+      # Decision 166: the site builds from the guide, so a broken guide link fails here.
+      - run: bun run website:build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       # Decision 099: MySQL, TiDB and MariaDB only; every other server has its own job below.
       - run: bun run test:db
 

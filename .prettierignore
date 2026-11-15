@@ -9,3 +9,6 @@ packages/plugin-api/api/*.api.md
 packages/desktop/scripts/palettes/
 plugins/redis/src/*.generated.ts
 plugins/duckdb/src/*.generated.ts
+packages/website/.astro/
+packages/website/src/content/docs/
+packages/website/src/generated/

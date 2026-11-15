@@ -69,10 +69,18 @@ unset). The next run recreates and reseeds them. Never take down another checkou
   load-check every tarball through the real loader, and rehearse the npm publish (decision 109).
   Only `.github/workflows/publish-plugins.yml` publishes, when a release is published; never run
   `plugins:publish` without `--dry-run`, and push a tag only when a maintainer asks for that release
+- `bun run website` / `bun run website:build` / `bun run website:preview` - the website in
+  `packages/website` (decision 166): a sync step turns `docs/guide/`, the README's Documentation
+  index and the app's theme tokens into Starlight content, then Astro serves or builds it into
+  `packages/website/dist/`; the build fails on a broken internal link. `TABLE_CRAFT_WEBSITE_OFFLINE=1`
+  skips the changelog and star count fetches from GitHub
+- `bun run website:media` - record the landing page's clips (README media scenes, `README_MEDIA_CLIPS`)
+  and encode them into `packages/website/media/` as MP4s with posters; same needs as `readme:media`,
+  `README_MEDIA=<scene>` re-records one, `-- --encode` only encodes
 - `bun scripts/frozen-plugin.ts` - rebuild the frozen SQLite plugin in `test/support/frozen-plugins/`
   only when its API version itself changes before release, never to make a failing run pass
 
-CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, test:db) and the
+CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, website:build, test:db) and the
 packaged suite on macOS arm64 and x64 (blocking), Windows and Linux (best-effort) on every push,
 plus `test:db:postgres`, `:oracle` and `:mssql` when `plugins/<id>/**`, the contract suite or
 `test/db/schema/<id>*` changed (PostgreSQL also on a tag), and `plugins` (pack, check, publish
@@ -181,6 +189,15 @@ packages/desktop/          @table-craft/desktop, the Electron app
                            feeds the Services tree; `state/settings.ts` holds the
                            settings, `appearance/` applies them as CSS variables,
                            `dialogs/Settings.tsx` edits them
+packages/website/          @table-craft/website, the website: Astro and Starlight, its own
+                           TypeScript program. `scripts/` is pure and tested from
+                           `test/website/`: `guide.ts` (README index, guide pages, links),
+                           `tokens.ts` (CSS variables and code themes from `themes.ts`),
+                           `releases.ts` (the changelog), `repository.ts` (the header's
+                           star count), `site.ts` (URLs, downloads),
+                           `clips.ts` (the recorded clips in `media/`);
+                           `sync.ts` writes the git-ignored content. `src/pages/` the
+                           landing, download and changelog pages
 plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql and
                            sqlite built in, postgres, oracle, mssql, redis, etcd and duckdb optional (`BUILT_IN_PLUGINS`,
                            `OPTIONAL_PLUGINS` in `vite.plugins.config.ts`, decision 108;
@@ -223,7 +240,8 @@ test/                      Vitest suites, `givenX_whenY_thenZ`
                            by `readme:media`
 .github/workflows/         ci.yml: verify, package per platform, plugin packages, draft
                            release on a v* tag; publish-plugins.yml: npm publish when a
-                           release is published
+                           release is published; website.yml: the website to GitHub
+                           Pages when a stable release is published
 docs/design/               specification.md, design-system.md
 docs/decisions/            one numbered file per durable decision
 docs/guide/                the user guide, one page per topic, indexed from the README

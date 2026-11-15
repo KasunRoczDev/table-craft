@@ -67,5 +67,6 @@
     "vitest.db.config.ts"
   ],
   // The renderer targets a browser, not Node: it gets its own program, with DOM, in plan 001.
-  "exclude": ["packages/desktop/src/renderer/**", "test/renderer/**"]
+  // The website's Astro files get their own program, with Astro's types and the DOM, in plan 161.
+  "exclude": ["packages/desktop/src/renderer/**", "test/renderer/**", "packages/website/src/**"]
 }

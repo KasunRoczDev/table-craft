@@ -45,6 +45,9 @@ bun run format                 # Prettier
 bun run desktop:package        # an installer for this machine
 bun run readme:media           # re-record the GIFs of the README and the guide
 bun run demo:video             # record and cut the README's demo video
+bun run website                # the website on a local dev server, from the guide
+bun run website:build          # build the website into packages/website/dist
+bun run website:media          # record the landing page's clips into packages/website/media
 ```
 
 Two environment variables keep a development run away from your own profile:
@@ -70,6 +73,7 @@ capability is a message in `packages/desktop/src/engine/protocol.ts`.
 | `packages/plugin-api/` | The plugin contract: types, schemas, capabilities, the shared SQL kit                     |
 | `packages/core/`       | The plugin loader, sessions, result sets, edits, history, the catalog cache               |
 | `packages/desktop/`    | The Electron app: `main/`, `preload/`, `engine/` and `renderer/`                          |
+| `packages/website/`    | The website: landing, download, changelog, and the guide as docs                          |
 | `plugins/<id>/`        | One datasource plugin each: MySQL, SQLite, PostgreSQL, Redis, Oracle, MSSQL, etcd, DuckDB |
 | `test/`                | Vitest suites, the database fixtures and the Playwright harness                           |
 | `docs/`                | The guide, the specification, the design system and the decisions                         |
@@ -123,6 +127,7 @@ Each rule has a decision record that says why.
 | Packaging or the update flow       | `bun run test:smoke:packaged`                                        |
 | The plugin API                     | `bun run api:check`, and `bun run api:report` to commit the reports  |
 | A user doc, a setting or an action | `bun run test`, whose `userDocs.test.ts` checks the docs             |
+| The website or a guide link        | `bun run website:build`, whose link check fails on a broken link     |
 
 - Tests are named `givenX_whenY_thenZ`.
 - `test:db` starts MySQL, TiDB and MariaDB. TiDB is an amd64 image, slow under emulation on Apple
@@ -252,6 +257,14 @@ platform. `verify` and the macOS packages must pass; Windows and Linux are best-
   for the cards. GitHub plays a README video only from its own attachments, so the MP4 is not
   committed: drop it into a GitHub comment box and put the `user-attachments` link it gives in the
   README.
+- The website serves the guide as its docs
+  ([166](docs/decisions/166-the-website-is-built-from-the-guide-and-the-app-tokens.md)). Its sync
+  step reads the guide, the README's Documentation index (the sidebar) and the app's theme tokens,
+  so there is nothing to copy across: a new guide page needs only its README line, and a link that
+  works on GitHub must also resolve on the site. `bun run website` serves it while you write, and
+  `TABLE_CRAFT_WEBSITE_OFFLINE=1` skips fetching the changelog and the star count from GitHub. The landing page plays
+  clips of README media scenes from `packages/website/media/`; after a UI change one of them shows,
+  re-record it with `README_MEDIA=<scene> bun run website:media`.
 - A choice a future reader would otherwise reopen gets a record in [docs/decisions](docs/decisions/),
   from its `TEMPLATE.md`, and a row in its index.
 - `docs/plans/` and `docs/evidence/` are local working files and are never committed

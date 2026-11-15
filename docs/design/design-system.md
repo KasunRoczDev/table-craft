@@ -895,3 +895,41 @@ name picks the classes in `renderer/ui/tint.ts`: the swatch is `bg-ds-<name>`, t
 | `green`                       | `--tc-ds-green`  | `ds-green`  | `#5e9f62` | `#4e9a55` |
 | `blue`                        | `--tc-ds-blue`   | `ds-blue`   | `#4f80c9` | `#4a7fe0` |
 | `violet`                      | `--tc-ds-violet` | `ds-violet` | `#9670c7` | `#9a6fd1` |
+
+## Website
+
+Decision 166. The website (`packages/website`) takes its look from these tokens, never its own
+literals. Its sync step writes `src/generated/tokens.css` from `DARK_COLORS` and `LIGHT_COLORS`
+(`packages/website/scripts/tokens.ts`): Dark is `:root`, Light is `:root[data-theme="light"]`, the
+Starlight theme toggle switching between them. High contrast and the ported themes stay in the app.
+
+| Site variable                                       | Token                                     |
+| --------------------------------------------------- | ----------------------------------------- |
+| `--sl-color-black`, `--sl-color-bg-nav`, `-sidebar` | `colors.canvas`                           |
+| `--sl-color-gray-6`                                 | `colors.panel`                            |
+| `--sl-color-gray-5`                                 | `colors.border`                           |
+| `--sl-color-hairline*`                              | `transparent`: the frame steps by tone    |
+| `--sl-color-white`, `--sl-color-gray-1`             | `colors.ink`                              |
+| `--sl-color-gray-3`                                 | `colors.inkMuted`                         |
+| `--sl-color-accent`, `--sl-color-text-invert`       | `colors.accent`, `colors.accentInk`       |
+| `--sl-color-accent-low`                             | `colors.selection`                        |
+| `--tc-*` (canvas to danger, syntax, datasource)     | the token of the same name                |
+| `--sl-font`, `--sl-font-mono`                       | `SYSTEM_UI_FONT`, `SYSTEM_MONO_FONT`      |
+| `--tc-radius-island`, `--tc-radius-popover`         | `islandRadiusPx` (Comfortable), popover 8 |
+| `--tc-radius-key`                                   | the tooltip radius, 4, for keycaps        |
+| Code blocks (Expressive Code)                       | `colors.syntax.*`, on `colors.panel`      |
+
+The layout follows Linear's dense dark sites, after a survey of awesome-design-md: surfaces
+separated by a tone step, never a line or a shadow, as Islands are (cards and buttons are filled,
+never outlined); the header and sidebar wear the page's `colors.canvas`, as Linear's do, and the
+header takes one `colors.border` line only once the page scrolls under it; no eyebrow
+labels and no monospace outside code; display type at weight 600, capped at 4rem and two lines;
+screenshots with an Islands radius; keycaps for chords. The landing page opens, as Linear's does, on
+a sans headline over the app recording a data source, a browse and a query; agents (MCP) come next,
+their access levels as `colors.panel` steps with the most trusting one in `colors.selection`; the
+databases list is a result grid (`colors.gridStripe` rows, a `colors.raised` header); the call to
+action is the one `colors.accent` field. Starlight's Previous and Next links are filled panels with
+the page's title at body size. Scenes play as the website's own MP4 clips, falling back to the GIFs. Blocks rise once as they scroll in, with the
+app's standard ease, and stand still under `prefers-reduced-motion`. Tables keep their row lines.
+The docs keep the app's look too: the current sidebar page is `colors.selection` under
+`colors.ink`, as a selected tree row is.
