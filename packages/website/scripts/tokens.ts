@@ -15,7 +15,8 @@ const TINT_HIGH_SHARE = 60;
 const BODY_TEXT_SHARE = 70;
 /**
  * Starlight draws its frame (header, sidebar, table of contents, title panel) with hairlines; the
- * site separates those surfaces by the app's tone step instead, as the Islands window does.
+ * site paints the frame in the page's own canvas instead, so header, sidebar and page read as one
+ * surface, and only the header earns a line, once the page scrolls under it (site.css).
  */
 const NO_LINE = "transparent";
 
@@ -51,8 +52,8 @@ export function themeProperties(colors: ColorTokens): Record<string, string> {
     "--sl-color-accent": colors.accent,
     "--sl-color-accent-high": mix(colors.accent, TINT_HIGH_SHARE, colors.ink),
     "--sl-color-text-invert": colors.accentInk,
-    "--sl-color-bg-nav": colors.panel,
-    "--sl-color-bg-sidebar": colors.panel,
+    "--sl-color-bg-nav": colors.canvas,
+    "--sl-color-bg-sidebar": colors.canvas,
     "--sl-color-hairline": NO_LINE,
     "--sl-color-hairline-light": NO_LINE,
     "--sl-color-hairline-shade": NO_LINE,

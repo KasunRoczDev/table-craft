@@ -45,12 +45,12 @@ describe("the website's colours", () => {
     }
   });
 
-  it("givenAppThemes_whenWritingTokensCss_thenTheFrameStepsByToneWithoutHairlines", () => {
+  it("givenAppThemes_whenWritingTokensCss_thenTheFrameWearsThePageCanvasWithoutHairlines", () => {
     for (const colors of [DARK_COLORS, LIGHT_COLORS]) {
       const properties = themeProperties(colors);
 
-      expect(properties["--sl-color-bg-nav"]).toBe(colors.panel);
-      expect(properties["--sl-color-bg-sidebar"]).toBe(colors.panel);
+      expect(properties["--sl-color-bg-nav"]).toBe(colors.canvas);
+      expect(properties["--sl-color-bg-sidebar"]).toBe(colors.canvas);
       for (const name of ["--sl-color-hairline", "--sl-color-hairline-light", "--sl-color-hairline-shade"]) {
         expect(properties[name], name).toBe("transparent");
       }

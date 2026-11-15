@@ -29,7 +29,42 @@ body {
 }
 
 .site-title {
+  gap: 0.75rem;
   color: var(--tc-ink);
+}
+
+/*
+ * The header is the page's own canvas, as Linear's is, and a line marks its edge only once the page
+ * scrolls under it. Translucency was tried: the clips smudge grey through it, worst in Light.
+ */
+.page > header.header {
+  background-color: var(--tc-canvas);
+  box-shadow: inset 0 -1px 0 transparent;
+  transition: box-shadow var(--tc-motion-base) ease-out;
+}
+
+:root[data-scrolled] .page > header.header {
+  box-shadow: inset 0 -1px 0 var(--tc-border);
+}
+
+.page > header.header button[data-open-modal] {
+  border: 0;
+  background-color: var(--tc-panel);
+  color: var(--tc-ink-muted);
+  transition: background-color var(--tc-motion-fast) ease-out;
+}
+
+.page > header.header button[data-open-modal]:hover {
+  background-color: var(--tc-raised);
+  color: var(--tc-ink);
+}
+
+/* Starlight shrinks search to a bare icon below 50rem; a fill there would read as a stray box. */
+@media (max-width: 50rem) {
+  .page > header.header button[data-open-modal],
+  .page > header.header button[data-open-modal]:hover {
+    background-color: transparent;
+  }
 }
 
 /* Docs: the app's selection for the current page, not a filled accent block. */

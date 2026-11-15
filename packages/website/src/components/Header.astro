@@ -7,21 +7,20 @@ import ThemeSelect from "virtual:starlight/components/ThemeSelect";
 import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE } from "../../scripts/site";
 
 const links = [
-  { label: "Docs", href: DOCS_ROUTE, optional: true },
-  { label: "Download", href: DOWNLOAD_ROUTE, optional: false },
-  { label: "Changelog", href: CHANGELOG_ROUTE, optional: true },
+  { label: "Docs", href: DOCS_ROUTE },
+  { label: "Changelog", href: CHANGELOG_ROUTE },
 ];
 const path = Astro.url.pathname;
 ---
 
 <div class="header">
   <div class="title-wrapper sl-flex"><SiteTitle /></div>
-  <div class="sl-flex print:hidden">{config.pagefind && <Search />}</div>
+  <div class="sl-flex print:hidden search">{config.pagefind && <Search />}</div>
   <div class="sl-flex print:hidden right-group">
     <nav class="site-nav sl-flex" aria-label="Site">
       {
         links.map((link) => (
-          <a href={link.href} class:list={{ optional: link.optional }} aria-current={path.startsWith(link.href) ? "page" : undefined}>
+          <a href={link.href} aria-current={path.startsWith(link.href) ? "page" : undefined}>
             {link.label}
           </a>
         ))
@@ -29,8 +28,18 @@ const path = Astro.url.pathname;
     </nav>
     <div class="sl-hidden md:sl-flex social-icons"><SocialIcons /></div>
     <div class="sl-hidden md:sl-flex"><ThemeSelect /></div>
+    <a class="tc-button download" data-variant="primary" href={DOWNLOAD_ROUTE} aria-current={path.startsWith(DOWNLOAD_ROUTE) ? "page" : undefined}>
+      Download
+    </a>
   </div>
 </div>
+
+<script>
+  const root = document.documentElement;
+  const mark = () => root.toggleAttribute("data-scrolled", window.scrollY > 0);
+  mark();
+  window.addEventListener("scroll", mark, { passive: true });
+</script>
 
 <style>
   .header {
@@ -48,11 +57,11 @@ const path = Astro.url.pathname;
   }
   .right-group,
   .social-icons {
-    gap: 1rem;
+    gap: 1.25rem;
     align-items: center;
   }
   .site-nav {
-    gap: 1.25rem;
+    gap: 1.5rem;
     font-size: var(--sl-text-sm);
   }
   .site-nav a {
@@ -69,8 +78,12 @@ const path = Astro.url.pathname;
     height: 1.25rem;
     border-inline-start: 1px solid var(--tc-border);
   }
-  @media (max-width: 30rem) {
-    .site-nav .optional {
+  .download {
+    height: 2.25rem;
+    padding-inline: 1rem;
+  }
+  @media (max-width: 40rem) {
+    .site-nav {
       display: none;
     }
   }
@@ -79,6 +92,18 @@ const path = Astro.url.pathname;
       display: grid;
       grid-template-columns: minmax(calc(var(--sl-sidebar-width) - var(--sl-nav-pad-x)), auto) 1fr auto;
       align-content: center;
+    }
+    /* Without a sidebar the bar lines up with the page's content column, as Linear's does. */
+    :global(html:not([data-has-sidebar])) .header {
+      grid-template-columns: auto 1fr auto;
+      max-width: var(--sl-content-width);
+      margin-inline: auto;
+    }
+    :global(html:not([data-has-sidebar])) .search {
+      justify-content: flex-end;
+    }
+    :global(html:not([data-has-sidebar])) .search :global(button[data-open-modal]) {
+      max-width: 15rem;
     }
   }
 </style>
