@@ -47,6 +47,7 @@ bun run readme:media           # re-record the GIFs of the README and the guide
 bun run demo:video             # record and cut the README's demo video
 bun run website                # the website on a local dev server, from the guide
 bun run website:build          # build the website into packages/website/dist
+bun run website:media          # record the landing page's clips into packages/website/media
 ```
 
 Two environment variables keep a development run away from your own profile:
@@ -261,7 +262,9 @@ platform. `verify` and the macOS packages must pass; Windows and Linux are best-
   step reads the guide, the README's Documentation index (the sidebar) and the app's theme tokens,
   so there is nothing to copy across: a new guide page needs only its README line, and a link that
   works on GitHub must also resolve on the site. `bun run website` serves it while you write, and
-  `TABLE_CRAFT_WEBSITE_OFFLINE=1` skips fetching the changelog from GitHub.
+  `TABLE_CRAFT_WEBSITE_OFFLINE=1` skips fetching the changelog from GitHub. The landing page plays
+  clips of README media scenes from `packages/website/media/`; after a UI change one of them shows,
+  re-record it with `README_MEDIA=<scene> bun run website:media`.
 - A choice a future reader would otherwise reopen gets a record in [docs/decisions](docs/decisions/),
   from its `TEMPLATE.md`, and a row in its index.
 - `docs/plans/` and `docs/evidence/` are local working files and are never committed

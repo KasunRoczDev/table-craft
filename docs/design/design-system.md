@@ -923,7 +923,11 @@ The layout follows Linear's dense dark sites, after a survey of awesome-design-m
 separated by a tone step, never a line or a shadow, as Islands are (the header and sidebar are
 `colors.panel` on a `colors.canvas` page; cards and buttons are filled, never outlined); no eyebrow
 labels and no monospace outside code; display type at weight 600, capped at 4.5rem and two lines;
-screenshots with an Islands radius; keycaps for chords. Blocks rise once as they scroll in, with the
+screenshots with an Islands radius; keycaps for chords. The landing page wears the app itself: its
+hero is a console island whose headline is a two-line SQL statement in `colors.syntax`, typed on
+load, flashed with `colors.statementFlash` and answered by a result grid (`colors.gridStripe` rows,
+a `colors.raised` header); the databases list is a result grid too; the call to action is the one
+`colors.accent` field. Scenes play as the website's own MP4 clips, falling back to the GIFs. Blocks rise once as they scroll in, with the
 app's standard ease, and stand still under `prefers-reduced-motion`. Tables keep their row lines.
 The docs keep the app's look too: the current sidebar page is `colors.selection` under
 `colors.ink`, as a selected tree row is.

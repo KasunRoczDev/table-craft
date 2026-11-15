@@ -20,9 +20,16 @@ Starlight. It owns no copy of the docs and no colour of its own.
   `SYSTEM_MONO_FONT`, and radii are the Islands ones. Dark is the default and Light follows the
   toggle. No web font is downloaded.
 - **The layout follows Linear, without its lines.** A panel ladder that steps by tone, as Islands
-  do: no hairlines, outlined boxes or shadows, no eyebrow labels and no monospace outside code. GIFs
-  from `docs/media/` run large beside each highlight. Keycaps for the DataGrip chords come from
-  Raycast.
+  do: no hairlines, outlined boxes or shadows, no eyebrow labels and no monospace outside code. The
+  one exception is the subject itself: the hero is a console whose headline is a SQL statement in
+  the app's syntax colours, run on load and again with Run or ⌘↩, and the databases list is a
+  result grid. Keycaps for the DataGrip chords come from Raycast and light up as the visitor
+  presses them.
+- **The landing page plays its own recordings.** `bun run website:media` records README media
+  scenes as lossless clips (`README_MEDIA_CLIPS`, decision 036) and encodes them into
+  `packages/website/media/`: a 1600 px H.264 MP4 and a poster of the last frame per scene, about
+  3.6 MB for eight, committed. A clip plays only while on screen and never under reduced motion,
+  where the poster stands. Pages without a clip, and the docs, keep the GIFs of `docs/media/`.
 - **Downloads and the changelog come from GitHub.** Download links are the README's
   `releases/latest/download/` URLs, held once in `scripts/site.ts` and checked against the README by
   a test. The changelog is the published releases, fetched at build time. Drafts and prereleases are
@@ -56,5 +63,6 @@ one for one.
 - Astro, Starlight, the validator, `marked` and `sharp` join `bun.lock`, scoped to
   `packages/website`. The app and plugins never import them.
 - `verify` builds the site, which adds about a minute and one GitHub API call per run.
+- A UI change that a clip shows means re-running `website:media` for it, beside `readme:media`.
 - Deploying the site (GitHub Pages or a domain) is left to the maintainer. `TABLE_CRAFT_WEBSITE_URL`
   sets the canonical URL and sitemap when it is deployed.

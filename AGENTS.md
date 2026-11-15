@@ -74,6 +74,9 @@ unset). The next run recreates and reseeds them. Never take down another checkou
   index and the app's theme tokens into Starlight content, then Astro serves or builds it into
   `packages/website/dist/`; the build fails on a broken internal link. `TABLE_CRAFT_WEBSITE_OFFLINE=1`
   skips the changelog fetch from GitHub
+- `bun run website:media` - record the landing page's clips (README media scenes, `README_MEDIA_CLIPS`)
+  and encode them into `packages/website/media/` as MP4s with posters; same needs as `readme:media`,
+  `README_MEDIA=<scene>` re-records one, `-- --encode` only encodes
 - `bun scripts/frozen-plugin.ts` - rebuild the frozen SQLite plugin in `test/support/frozen-plugins/`
   only when its API version itself changes before release, never to make a failing run pass
 
@@ -190,7 +193,8 @@ packages/website/          @table-craft/website, the website: Astro and Starligh
                            TypeScript program. `scripts/` is pure and tested from
                            `test/website/`: `guide.ts` (README index, guide pages, links),
                            `tokens.ts` (CSS variables and code themes from `themes.ts`),
-                           `releases.ts` (the changelog), `site.ts` (URLs, downloads);
+                           `releases.ts` (the changelog), `site.ts` (URLs, downloads),
+                           `clips.ts` (the recorded clips in `media/`);
                            `sync.ts` writes the git-ignored content. `src/pages/` the
                            landing, download and changelog pages
 plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql and
