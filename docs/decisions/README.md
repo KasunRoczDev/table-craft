@@ -158,3 +158,4 @@ started, not when it is merged.
 | 163 | [fetch_rows waits for approval when it runs the statement again](163-fetch-rows-waits-for-approval-when-it-runs-the-statement-again.md)                                |
 | 164 | [Agents search the catalog in the engine](164-agents-search-the-catalog-in-the-engine.md)                                                                              |
 | 165 | [TableCraft is GPL-3.0-or-later and its plugin API is MIT](165-tablecraft-is-gpl-3-and-its-plugin-api-is-mit.md)                                                       |
+| 166 | [The website is built from the guide and the app tokens](166-the-website-is-built-from-the-guide-and-the-app-tokens.md)                                                |
