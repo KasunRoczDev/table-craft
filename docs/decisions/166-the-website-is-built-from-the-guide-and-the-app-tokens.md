@@ -37,6 +37,11 @@ Starlight. It owns no copy of the docs and no colour of its own.
   header's Star button shows the repository's star count from the same build. A failed fetch
   leaves an empty changelog that links to GitHub Releases and a Star button without a count. The
   build still passes.
+- **It is published to GitHub Pages when a release is.** `.github/workflows/website.yml` builds the
+  site from the tag of each published stable release and deploys it to
+  `https://tablecraft1.dev/`, the project's own domain, so routes stay at the root with no base
+  path. A prerelease leaves the site on the last stable one. Running **Website** by hand with a tag
+  republishes that tag.
 - **Broken links fail CI.** `starlight-links-validator` checks every internal link and anchor, and
   `verify` runs `bun run website:build`.
 - **Pure parts are tested.** The guide transform, tokens, code themes, releases and platform
@@ -66,5 +71,8 @@ one for one.
   `packages/website`. The app and plugins never import them.
 - `verify` builds the site, which adds about a minute and one GitHub API call per run.
 - A UI change that a clip shows means re-running `website:media` for it, beside `readme:media`.
-- Deploying the site (GitHub Pages or a domain) is left to the maintainer. `TABLE_CRAFT_WEBSITE_URL`
-  sets the canonical URL and sitemap when it is deployed.
+- The domain's DNS and the Pages custom-domain setting live outside the repository (RELEASING.md,
+  One-time setup). Serving the site under a path instead, such as `<owner>.github.io/table-craft/`,
+  would mean an Astro `base` and prefixing every hand-written route.
+- The site shows the last stable release, not `main`. A guide fix merged between releases waits
+  for the next one, or for **Website** run by hand with the latest tag.

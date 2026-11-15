@@ -248,6 +248,12 @@ asks. It downloads the tarballs attached to the release, load-checks them agains
 publishes `@tablecraft-app/plugin-api` first and then each plugin with npm provenance, skipping
 every version already on npm, and appends what each plugin is at this release to the notes.
 
+Publishing a stable release also starts `.github/workflows/website.yml` (decision 166). It builds
+the website from the release's tag and deploys it to GitHub Pages at
+<https://tablecraft1.dev/>, so the docs, download page and changelog match the
+app people download. A beta does not deploy it. The plugin list lands in the notes a minute later;
+run **Website** by hand with the tag to show it on the changelog.
+
 When the release takes a plugin API major (decision 155), every plugin moves with it and an app on
 the new major refuses the plugins it already has. Publish only when you can approve the `plugins`
 environment at once, approve it before anything else, and check `npm view` (below) before
@@ -258,6 +264,7 @@ its data sources show **Update failed** with Retry, and the next connect or laun
 
 ```sh
 gh run list --workflow publish-plugins.yml --limit 1
+gh run list --workflow website.yml --limit 1
 npm view @tablecraft-app/plugin-postgres version
 curl -sL https://github.com/tranphucbol/table-craft/releases/latest/download/update-manifest.json
 ```
@@ -349,20 +356,20 @@ reproducible and every release would republish it; fix the build in a pull reque
 
 ## When something goes wrong
 
-| What happened                                             | What to do                                                                                                                                                                  |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A job failed before the release job, so no draft exists   | Fix it in a pull request on `main`. Delete the tag (`git push origin :refs/tags/v1.15.0`, `git tag -d v1.15.0`) and tag the fixed merge commit with the same version        |
-| The draft exists but is wrong, and it was never published | Delete the draft (`gh release delete v1.15.0`) and the tag as above, fix on `main`, and tag again. Nothing outside the repository has seen it                               |
-| The release job waits                                     | Approve the `release` environment in the run                                                                                                                                |
-| The release job fails on the signing key                  | The `TABLE_CRAFT_UPDATE_SIGNING_KEY` secret is missing or does not match the public key in `packages/desktop/src/main/update/manifest.ts`. Fix the secret and rerun the job |
-| The release job fails writing the checksums               | Two attachments share a name, or one has a character `sha256sum` cannot read back. Delete the tag as above, fix the build that produced it on `main`, and tag again         |
-| `publish-plugins` failed partway                          | Rerun it (`gh run rerun <run id>`): versions already on npm are skipped                                                                                                     |
-| The `plugins` job says the registry is unreachable        | Rerun the job once npm answers. On a tag it never falls back to republishing every plugin                                                                                   |
-| `publish-channel` refused the manifest                    | A higher beta is already on `chore/update-channels`. Publish betas in order; the refused one reaches nobody, which is what you want                                         |
-| A published beta is broken                                | [Retract it](#retracting-a-beta) and ship the fix as the next beta                                                                                                          |
-| A published release is broken                             | Fix it on `main` and release the next patch. Never delete or retag a published release, and never unpublish from npm                                                        |
-| The signing key is lost or leaked                         | Follow decision 044: a release that changes the public key, which every user installs by hand once. Say so under **Before you update**                                      |
-| A published release's notes are wrong                     | Edit them (`gh release edit v1.15.0 --notes-file ...`), keeping the `### Plugins on npm` list. Notes are the one thing you may change after publishing                      |
+| What happened                                             | What to do                                                                                                                                                                                |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A job failed before the release job, so no draft exists   | Fix it in a pull request on `main`. Delete the tag (`git push origin :refs/tags/v1.15.0`, `git tag -d v1.15.0`) and tag the fixed merge commit with the same version                      |
+| The draft exists but is wrong, and it was never published | Delete the draft (`gh release delete v1.15.0`) and the tag as above, fix on `main`, and tag again. Nothing outside the repository has seen it                                             |
+| The release job waits                                     | Approve the `release` environment in the run                                                                                                                                              |
+| The release job fails on the signing key                  | The `TABLE_CRAFT_UPDATE_SIGNING_KEY` secret is missing or does not match the public key in `packages/desktop/src/main/update/manifest.ts`. Fix the secret and rerun the job               |
+| The release job fails writing the checksums               | Two attachments share a name, or one has a character `sha256sum` cannot read back. Delete the tag as above, fix the build that produced it on `main`, and tag again                       |
+| `publish-plugins` failed partway                          | Rerun it (`gh run rerun <run id>`): versions already on npm are skipped                                                                                                                   |
+| The `plugins` job says the registry is unreachable        | Rerun the job once npm answers. On a tag it never falls back to republishing every plugin                                                                                                 |
+| `publish-channel` refused the manifest                    | A higher beta is already on `chore/update-channels`. Publish betas in order; the refused one reaches nobody, which is what you want                                                       |
+| A published beta is broken                                | [Retract it](#retracting-a-beta) and ship the fix as the next beta                                                                                                                        |
+| A published release is broken                             | Fix it on `main` and release the next patch. Never delete or retag a published release, and never unpublish from npm                                                                      |
+| The signing key is lost or leaked                         | Follow decision 044: a release that changes the public key, which every user installs by hand once. Say so under **Before you update**                                                    |
+| A published release's notes are wrong                     | Edit them (`gh release edit v1.15.0 --notes-file ...`), keeping the `### Plugins on npm` list, then run **Website** with the tag. Notes are the one thing you may change after publishing |
 
 ## One-time setup
 
@@ -376,5 +383,12 @@ A fork, or a new maintainer, needs this before its first release:
 - The GitHub environment `plugins`, with a deployment rule for `v*` tags, optional reviewers, and
   the secret `NPM_TOKEN`: a granular npm token that can publish only `@tablecraft-app/*`.
 - Membership of the `@tablecraft-app` scope on npm.
+- GitHub Pages with **Source** set to GitHub Actions (Settings → Pages), and a deployment rule for
+  `v*` tags on the `github-pages` environment that setting creates: it allows only the default
+  branch until then, and the website deploys from the release's tag. **Custom domain** on that page
+  is `tablecraft1.dev` with **Enforce HTTPS**; the domain's DNS has the four GitHub Pages `A`
+  records (`185.199.108.153` to `185.199.111.153`), their `AAAA` twins and a `www` `CNAME` to
+  `tranphucbol.github.io`. Moving the site means changing `SITE_URL` in
+  `packages/website/scripts/site.ts` too.
 - A branch protection rule for `chore/update-channels` that lets only GitHub Actions and maintainers push.
   The first published beta creates the branch.

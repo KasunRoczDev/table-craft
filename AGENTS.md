@@ -240,7 +240,8 @@ test/                      Vitest suites, `givenX_whenY_thenZ`
                            by `readme:media`
 .github/workflows/         ci.yml: verify, package per platform, plugin packages, draft
                            release on a v* tag; publish-plugins.yml: npm publish when a
-                           release is published
+                           release is published; website.yml: the website to GitHub
+                           Pages when a stable release is published
 docs/design/               specification.md, design-system.md
 docs/decisions/            one numbered file per durable decision
 docs/guide/                the user guide, one page per topic, indexed from the README
