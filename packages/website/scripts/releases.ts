@@ -85,13 +85,19 @@ export type Fetch = (
   json(): Promise<unknown>;
 }>;
 
-/** The latest published releases, newest first; a failure leaves the changelog empty rather than failing the build. */
-export async function fetchChangelog(fetchImpl: Fetch, token?: string): Promise<Changelog> {
+/** The headers of every GitHub API call the build makes; a token raises the rate limit. */
+export function githubHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "table-craft-website",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/** The latest published releases, newest first; a failure leaves the changelog empty rather than failing the build. */
+export async function fetchChangelog(fetchImpl: Fetch, token?: string): Promise<Changelog> {
+  const headers = githubHeaders(token);
   try {
     const response = await fetchImpl(`${RELEASES_API_URL}?per_page=${RELEASES_PER_PAGE}`, { headers });
     if (!response.ok) {

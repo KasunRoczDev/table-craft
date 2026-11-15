@@ -7,7 +7,8 @@ export const REPOSITORY_SLUG = "tranphucbol/table-craft";
 export const REPOSITORY_URL = `https://github.com/${REPOSITORY_SLUG}`;
 export const REPOSITORY_BRANCH = "main";
 export const RELEASES_URL = `${REPOSITORY_URL}/releases`;
-export const RELEASES_API_URL = `https://api.github.com/repos/${REPOSITORY_SLUG}/releases`;
+export const REPOSITORY_API_URL = `https://api.github.com/repos/${REPOSITORY_SLUG}`;
+export const RELEASES_API_URL = `${REPOSITORY_API_URL}/releases`;
 export const ISSUES_URL = `${REPOSITORY_URL}/issues/new`;
 export const LATEST_DOWNLOAD_URL = `${RELEASES_URL}/latest/download`;
 

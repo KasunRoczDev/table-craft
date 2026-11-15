@@ -1,7 +1,7 @@
 // Writes everything the site reads from the rest of the repository, before `astro dev` and
 // `astro build` (plan 161, decision 165). Every output is git-ignored.
 //   bun run --cwd packages/website sync
-// TABLE_CRAFT_WEBSITE_OFFLINE=1 skips the GitHub releases fetch; GITHUB_TOKEN raises its rate limit.
+// TABLE_CRAFT_WEBSITE_OFFLINE=1 skips the GitHub releases and stars fetch; GITHUB_TOKEN raises its rate limit.
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -11,6 +11,7 @@ import { DARK_COLORS, LIGHT_COLORS } from "../../desktop/src/appearance/themes.j
 import { clipFile, MEDIA_DIRECTORY, posterFile, WEBSITE_CLIPS } from "./clips.js";
 import { docsOverview, GUIDE_DIRECTORY, readDocsIndex, toStarlightPage } from "./guide.js";
 import { fetchChangelog, type Changelog } from "./releases.js";
+import { fetchRepository, type Repository } from "./repository.js";
 import { tokensCss } from "./tokens.js";
 import { DOCS_ROUTE, type MediaSize } from "./site.js";
 
@@ -101,13 +102,24 @@ async function syncIcons(): Promise<void> {
   ]);
 }
 
+function offline(): boolean {
+  return process.env.TABLE_CRAFT_WEBSITE_OFFLINE === "1";
+}
+
 async function syncChangelog(): Promise<Changelog> {
-  const changelog: Changelog =
-    process.env.TABLE_CRAFT_WEBSITE_OFFLINE === "1"
-      ? { entries: [], error: "TABLE_CRAFT_WEBSITE_OFFLINE=1" }
-      : await fetchChangelog(fetch, process.env.GITHUB_TOKEN);
+  const changelog: Changelog = offline()
+    ? { entries: [], error: "TABLE_CRAFT_WEBSITE_OFFLINE=1" }
+    : await fetchChangelog(fetch, process.env.GITHUB_TOKEN);
   await writeFile(join(GENERATED, "changelog.json"), `${JSON.stringify(changelog, null, 2)}\n`);
   return changelog;
+}
+
+async function syncRepository(): Promise<Repository> {
+  const repository: Repository = offline()
+    ? { error: "TABLE_CRAFT_WEBSITE_OFFLINE=1" }
+    : await fetchRepository(fetch, process.env.GITHUB_TOKEN);
+  await writeFile(join(GENERATED, "repository.json"), `${JSON.stringify(repository, null, 2)}\n`);
+  return repository;
 }
 
 async function main(): Promise<void> {
@@ -118,11 +130,18 @@ async function main(): Promise<void> {
   );
   await mkdir(GENERATED, { recursive: true });
   await writeFile(join(GENERATED, "tokens.css"), tokensCss(DARK_COLORS, LIGHT_COLORS));
-  const [pages, media, , changelog] = await Promise.all([syncGuide(), syncMedia(), syncIcons(), syncChangelog()]);
+  const [pages, media, , changelog, repository] = await Promise.all([
+    syncGuide(),
+    syncMedia(),
+    syncIcons(),
+    syncChangelog(),
+    syncRepository(),
+  ]);
   const releases = changelog.error
     ? `no releases (${changelog.error}); the changelog links to GitHub`
     : `${changelog.entries.length} releases`;
-  console.log(`website: ${pages} guide pages, ${media.gifs} GIFs, ${media.clips} clips, ${releases}`);
+  const stars = repository.stars === undefined ? `no stars (${repository.error})` : `${repository.stars} stars`;
+  console.log(`website: ${pages} guide pages, ${media.gifs} GIFs, ${media.clips} clips, ${releases}, ${stars}`);
 }
 
 await main();
