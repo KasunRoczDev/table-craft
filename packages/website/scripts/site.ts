@@ -17,6 +17,9 @@ export const DOWNLOAD_ROUTE = "/download/";
 export const CHANGELOG_ROUTE = "/changelog/";
 export const MEDIA_ROUTE = "/media/";
 
+/** The domain GitHub Pages serves the site on; its DNS and the Pages setting live outside the repository (RELEASING.md). */
+export const SITE_URL = "https://tablecraft1.dev";
+
 export interface MediaSize {
   width: number;
   height: number;

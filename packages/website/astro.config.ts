@@ -12,6 +12,7 @@ import {
   REPOSITORY_URL,
   SITE_DESCRIPTION,
   SITE_TITLE,
+  SITE_URL,
 } from "./scripts/site.js";
 import { codeThemes } from "./scripts/tokens.js";
 
@@ -19,7 +20,7 @@ const README = new URL("../../README.md", import.meta.url);
 const docsGroups = readDocsIndex(readFileSync(README, "utf8"));
 
 export default defineConfig({
-  site: process.env.TABLE_CRAFT_WEBSITE_URL,
+  site: SITE_URL,
   integrations: [
     starlight({
       title: SITE_TITLE,
