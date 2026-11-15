@@ -1,29 +1,56 @@
 ---
 import media from "../generated/media.json";
+import { clipFile, posterFile } from "../../scripts/clips";
 import { MEDIA_ROUTE, type MediaSize } from "../../scripts/site";
 
 interface Props {
-  /** A GIF in `docs/media/`. */
-  file: string;
+  /** A GIF in `docs/media/`; optional when `clip` names a recorded clip. */
+  file?: string;
+  /** The website's recording of the same scene in `packages/website/media/`, played in place of the GIF. */
+  clip?: string;
   alt: string;
   caption?: string;
   eager?: boolean;
   class?: string;
 }
 
-const { file, alt, caption, eager = false, class: className } = Astro.props;
-const size = (media as Record<string, MediaSize>)[file];
-if (!size) throw new Error(`docs/media/${file} does not exist; use one of the GIFs readme:media records.`);
+const { file, clip, alt, caption, eager = false, class: className } = Astro.props;
+const sizes = media as Record<string, MediaSize>;
+const video = clip ? sizes[clipFile(clip)] : undefined;
+const size = file ? sizes[file] : undefined;
+if (!video && !size) {
+  throw new Error(`No media for ${file ?? clip}: name a GIF readme:media records, or record the clip with website:media.`);
+}
 ---
 
 <figure class:list={["tc-shot", className]}>
-  <img
-    src={`${MEDIA_ROUTE}${file}`}
-    alt={alt}
-    width={size.width}
-    height={size.height}
-    loading={eager ? "eager" : "lazy"}
-    decoding="async"
-  />
+  {
+    clip && video ? (
+      <video
+        data-clip
+        muted
+        loop
+        playsinline
+        preload={eager ? "auto" : "none"}
+        poster={`${MEDIA_ROUTE}${posterFile(clip)}`}
+        width={video.width}
+        height={video.height}
+        aria-label={alt}
+      >
+        <source src={`${MEDIA_ROUTE}${clipFile(clip)}`} type="video/mp4" />
+      </video>
+    ) : (
+      size && (
+      <img
+        src={`${MEDIA_ROUTE}${file}`}
+        alt={alt}
+        width={size.width}
+        height={size.height}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+      />
+      )
+    )
+  }
   {caption && <figcaption>{caption}</figcaption>}
 </figure>

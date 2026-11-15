@@ -1,0 +1,21 @@
+<script>
+  const VISIBLE_SHARE = 0.35;
+
+  // A clip plays only while it is on screen, and never for a reader who asked for less motion: they
+  // keep the poster, the scene's last frame.
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const clips = document.querySelectorAll<HTMLVideoElement>("video[data-clip]");
+  if (!calm && "IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const video = entry.target as HTMLVideoElement;
+          if (entry.isIntersecting) void video.play().catch(() => undefined);
+          else video.pause();
+        }
+      },
+      { threshold: VISIBLE_SHARE },
+    );
+    for (const clip of clips) observer.observe(clip);
+  }
+</script>

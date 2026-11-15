@@ -2,11 +2,13 @@
 // `astro build` (plan 161, decision 165). Every output is git-ignored.
 //   bun run --cwd packages/website sync
 // TABLE_CRAFT_WEBSITE_OFFLINE=1 skips the GitHub releases fetch; GITHUB_TOKEN raises its rate limit.
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { DARK_COLORS, LIGHT_COLORS } from "../../desktop/src/appearance/themes.js";
+import { clipFile, MEDIA_DIRECTORY, posterFile, WEBSITE_CLIPS } from "./clips.js";
 import { docsOverview, GUIDE_DIRECTORY, readDocsIndex, toStarlightPage } from "./guide.js";
 import { fetchChangelog, type Changelog } from "./releases.js";
 import { tokensCss } from "./tokens.js";
@@ -61,18 +63,29 @@ async function syncGuide(): Promise<number> {
   return indexed.size;
 }
 
-/** Copies the GIFs and records their sizes, so pages reserve the right box before a GIF loads. */
-async function syncMedia(): Promise<number> {
+/**
+ * Copies the GIFs and the website's clips and records their sizes, so pages reserve the right box
+ * before either loads; a clip's size is its poster's.
+ */
+async function syncMedia(): Promise<{ gifs: number; clips: number }> {
   await mkdir(PUBLIC_MEDIA, { recursive: true });
-  const files = (await readdir(MEDIA_SOURCE)).filter((file) => file.endsWith(".gif")).sort();
+  const gifs = (await readdir(MEDIA_SOURCE)).filter((file) => file.endsWith(".gif")).sort();
   const sizes: Record<string, MediaSize> = {};
-  for (const file of files) {
+  for (const file of gifs) {
     await copyFile(join(MEDIA_SOURCE, file), join(PUBLIC_MEDIA, file));
     const { width, height } = await sharp(join(MEDIA_SOURCE, file)).metadata();
     sizes[file] = { width, height };
   }
+  const clips = WEBSITE_CLIPS.filter((clip) => existsSync(join(MEDIA_DIRECTORY, clipFile(clip))));
+  for (const clip of clips) {
+    for (const file of [clipFile(clip), posterFile(clip)]) {
+      await copyFile(join(MEDIA_DIRECTORY, file), join(PUBLIC_MEDIA, file));
+    }
+    const { width, height } = await sharp(join(MEDIA_DIRECTORY, posterFile(clip))).metadata();
+    sizes[clipFile(clip)] = { width, height };
+  }
   await writeFile(join(GENERATED, "media.json"), `${JSON.stringify(sizes, null, 2)}\n`);
-  return files.length;
+  return { gifs: gifs.length, clips: clips.length };
 }
 
 async function syncIcons(): Promise<void> {
@@ -109,7 +122,7 @@ async function main(): Promise<void> {
   const releases = changelog.error
     ? `no releases (${changelog.error}); the changelog links to GitHub`
     : `${changelog.entries.length} releases`;
-  console.log(`website: ${pages} guide pages, ${media} GIFs, ${releases}`);
+  console.log(`website: ${pages} guide pages, ${media.gifs} GIFs, ${media.clips} clips, ${releases}`);
 }
 
 await main();
