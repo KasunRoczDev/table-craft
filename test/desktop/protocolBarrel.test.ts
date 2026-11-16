@@ -143,6 +143,7 @@ const METHODS = [
   "catalog.databases",
   "catalog.describe",
   "catalog.inferredKeys",
+  "catalog.search",
   "catalog.qualifiedName",
   "catalog.definition",
   "catalog.script",

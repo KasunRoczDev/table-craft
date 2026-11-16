@@ -18,7 +18,9 @@ browse schemas, tables, columns and key names, but every query that returns rows
 value, waits for you the same way, and writes are refused. While a statement waits, **Plan** in
 the request shows how the database would run it, without running it, and marks steps such as a
 full table scan or, on TiDB, estimates made without statistics; the request keeps waiting until
-you answer. A data source marked read-only stays at Read only, and one coloured
+you answer. The statement is highlighted and laid out by the formatter with your
+[Reformat Code](console.md) settings; turn **Format** off to read it as the agent sent it, which is
+always what runs, and the next request opens the same way. A data source marked read-only stays at Read only, and one coloured
 red can be raised past Read only only on its own page in the Data Sources dialog. Answers carry at
 most `mcp.rowCap` rows. An agent pages further with `fetch_rows`; when the statement carries its
 [row limit in its SQL](data.md#result-grid), rows past the ones TableCraft holds mean running it
@@ -44,7 +46,9 @@ TableCraft, and every agent statement is kept in the query history, tagged with 
   **Timeout** overrides `mcp.statementTimeoutSeconds`. The (i) before it says what really stops a
   statement there, from the server the data source last connected to: amber when some statements
   keep running past the limit, ringed when TableCraft has not seen the server yet.
-- **Tools.** Besides the catalog and query tools, agents can check SQL against the inspections,
+- **Tools.** Besides the catalog and query tools, agents can search tables and columns by name
+  across the schemas you show them (**search catalog**, which skips system schemas unless the agent
+  names one), check SQL against the inspections,
   hand a statement to a new console for you to run (**open in console**, which never runs it), read
   the focused console when its data source is exposed, and scan and read Redis keys. They can also
   read `tablecraft://<data source>/<schema>/<table>` resources and two prompts.

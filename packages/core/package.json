@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Plugin loader, sessions and result sets; interface-agnostic",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "dependencies": {
     "@table-craft/plugin-api": "workspace:*",

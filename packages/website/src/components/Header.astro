@@ -1,0 +1,141 @@
+---
+import config from "virtual:starlight/user-config";
+import Search from "virtual:starlight/components/Search";
+import SiteTitle from "virtual:starlight/components/SiteTitle";
+import ThemeSelect from "virtual:starlight/components/ThemeSelect";
+import { Icon } from "@astrojs/starlight/components";
+import repositoryJson from "../generated/repository.json";
+import { formatStars, type Repository } from "../../scripts/repository";
+import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE, REPOSITORY_URL } from "../../scripts/site";
+
+const links = [
+  { label: "Docs", href: DOCS_ROUTE },
+  { label: "Changelog", href: CHANGELOG_ROUTE },
+];
+const path = Astro.url.pathname;
+const { stars } = repositoryJson as Repository;
+const starLabel = stars === undefined ? "TableCraft on GitHub" : `Star TableCraft on GitHub, ${stars} stars`;
+---
+
+<div class="header">
+  <div class="title-wrapper sl-flex"><SiteTitle /></div>
+  <div class="sl-flex print:hidden search">{config.pagefind && <Search />}</div>
+  <div class="sl-flex print:hidden right-group">
+    <nav class="site-nav sl-flex" aria-label="Site">
+      {
+        links.map((link) => (
+          <a href={link.href} aria-current={path.startsWith(link.href) ? "page" : undefined}>
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+    <a class="star" href={REPOSITORY_URL} aria-label={starLabel}>
+      <Icon name="github" size="1.125rem" />
+      <span>Star</span>
+      {stars !== undefined && <span class="star-count">{formatStars(stars)}</span>}
+    </a>
+    <div class="sl-hidden md:sl-flex"><ThemeSelect /></div>
+    <a class="tc-button download" data-variant="primary" href={DOWNLOAD_ROUTE} aria-current={path.startsWith(DOWNLOAD_ROUTE) ? "page" : undefined}>
+      Download
+    </a>
+  </div>
+</div>
+
+<script>
+  const root = document.documentElement;
+  const mark = () => root.toggleAttribute("data-scrolled", window.scrollY > 0);
+  mark();
+  window.addEventListener("scroll", mark, { passive: true });
+</script>
+
+<style>
+  .header {
+    display: flex;
+    gap: var(--sl-nav-gap);
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+  }
+  .title-wrapper {
+    overflow: clip;
+    padding: 0.25rem;
+    margin: -0.25rem;
+    min-width: 0;
+  }
+  .right-group {
+    gap: 1.25rem;
+    align-items: center;
+  }
+  .site-nav {
+    gap: 1.5rem;
+    font-size: var(--sl-text-sm);
+  }
+  .site-nav a {
+    color: var(--tc-ink-muted);
+    text-decoration: none;
+    transition: color var(--tc-motion-fast) ease-out;
+  }
+  .site-nav a:hover,
+  .site-nav a[aria-current="page"] {
+    color: var(--tc-ink);
+  }
+  .star {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.25rem;
+    padding-inline: 0.75rem;
+    border-radius: var(--tc-radius-popover);
+    background: var(--tc-panel);
+    color: var(--tc-ink);
+    font-size: var(--sl-text-sm);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color var(--tc-motion-fast) ease-out;
+  }
+  .star:hover {
+    background: var(--tc-raised);
+    color: var(--tc-ink);
+  }
+  .star:focus-visible {
+    outline: 2px solid var(--tc-accent);
+    outline-offset: 2px;
+  }
+  .star-count {
+    padding-inline-start: 0.5rem;
+    box-shadow: inset 1px 0 0 var(--tc-border);
+    color: var(--tc-ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .download {
+    height: 2.25rem;
+    padding-inline: 1rem;
+  }
+  @media (max-width: 40rem) {
+    .site-nav,
+    .star {
+      display: none;
+    }
+  }
+  @media (min-width: 50rem) {
+    .header {
+      display: grid;
+      grid-template-columns: minmax(calc(var(--sl-sidebar-width) - var(--sl-nav-pad-x)), auto) 1fr auto;
+      align-content: center;
+    }
+    /* Without a sidebar the bar lines up with the page's content column, as Linear's does. */
+    :global(html:not([data-has-sidebar])) .header {
+      grid-template-columns: auto 1fr auto;
+      max-width: var(--sl-content-width);
+      margin-inline: auto;
+    }
+    :global(html:not([data-has-sidebar])) .search {
+      justify-content: flex-end;
+    }
+    :global(html:not([data-has-sidebar])) .search :global(button[data-open-modal]) {
+      max-width: 15rem;
+    }
+  }
+</style>

@@ -1,0 +1,373 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Clips from "../components/Clips.astro";
+import Keys from "../components/Keys.astro";
+import Reveal from "../components/Reveal.astro";
+import Shot from "../components/Shot.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import Stage from "../components/Stage.astro";
+import changelogJson from "../generated/changelog.json";
+import { AGENT_ACCESS, DATABASES, HERO_LEAD, HERO_TITLE, HIGHLIGHTS } from "../../scripts/landing";
+import type { Changelog } from "../../scripts/releases";
+import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOAD_ROUTE, REPOSITORY_URL, SITE_DESCRIPTION, SITE_TAGLINE, SITE_TITLE } from "../../scripts/site";
+import { docsRoute } from "../../scripts/guide";
+
+const changelog = changelogJson as Changelog;
+const latest = changelog.entries[0];
+const featured = HIGHLIGHTS.filter((highlight) => highlight.clip);
+const more = HIGHLIGHTS.filter((highlight) => !highlight.media);
+---
+
+<StarlightPage frontmatter={{ title: SITE_TAGLINE, description: SITE_DESCRIPTION, template: "splash", pagefind: false, hero: { title: SITE_TAGLINE } }}>
+  <div class="tc-page tc-landing not-content">
+    <div class="tc-hero">
+      <div class="tc-hero-text tc-enter">
+        <h1 class="tc-display">{HERO_TITLE}</h1>
+        <p class="tc-lead">{HERO_LEAD}</p>
+        <div class="tc-actions">
+          <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
+          <a class="tc-button" href={DOCS_ROUTE}>Read the docs</a>
+          <a class="tc-button" href={REPOSITORY_URL}>GitHub</a>
+          {
+            latest && (
+              <a class="tc-hero-version" href={CHANGELOG_ROUTE}>
+                {latest.version}, {new Date(latest.date).toLocaleDateString("en", { dateStyle: "medium" })}
+              </a>
+            )
+          }
+        </div>
+      </div>
+      <Shot class="tc-hero-shot" clip="how-it-works" file="console.gif" eager alt="Adding a PostgreSQL data source, opening its tables and running a query" />
+    </div>
+
+    <section class="tc-agents" aria-labelledby="agents-title">
+      <div class="tc-section-head tc-reveal">
+        <h2 id="agents-title" class="tc-section-title">Let AI agents query your databases</h2>
+        <p class="tc-lead">
+          Claude Code, OpenCode or Cursor connect over MCP, on this machine only, each with its own token. You
+          decide per data source how far an agent gets, and passwords never leave {SITE_TITLE}.
+        </p>
+      </div>
+      <div class="tc-agents-body">
+        <Shot file="agents-approval.gif" alt="OpenCode reads freely, then asks before it writes and waits for Allow once" />
+        <div class="tc-agents-levels">
+          <ol class="tc-reveal-items">
+            {
+              AGENT_ACCESS.map((access) => (
+                <li>
+                  <h3>{access.level}</h3>
+                  <p>{access.text}</p>
+                </li>
+              ))
+            }
+          </ol>
+          <p class="tc-muted tc-reveal">
+            A request nobody answers is denied after a minute, and every agent statement lands in the query
+            history with the client's name.
+          </p>
+          <a class="tc-link" href={docsRoute("agents")}>Set up an agent <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <Stage highlights={featured} />
+
+    <section class="tc-split" aria-labelledby="databases-title">
+      <div class="tc-split-text tc-reveal">
+        <h2 id="databases-title" class="tc-section-title">Every database is a plugin</h2>
+        <p class="tc-lead">
+          SQLite and MySQL come in the box and work offline. The rest download from npm the first time you add
+          one, and yours can load the same way.
+        </p>
+        <a class="tc-link" href={docsRoute("plugins")}>How plugins load <span aria-hidden="true">→</span></a>
+      </div>
+      <figure class="tc-result tc-reveal">
+        <figcaption><code><span data-syntax="keyword">SELECT</span> name, plugin <span data-syntax="keyword">FROM</span> databases;</code></figcaption>
+        <div class="tc-grid" tabindex="0" role="region" aria-label="Supported databases">
+          <table>
+            <thead>
+              <tr><th scope="col" class="tc-grid-row">#</th><th scope="col">name</th><th scope="col">plugin</th></tr>
+            </thead>
+            <tbody>
+              {
+                DATABASES.map((database, index) => (
+                  <tr style={`--tint: var(--tc-datasource-${database.tint})`}>
+                    <td class="tc-grid-row">{index + 1}</td>
+                    <td><span class="tc-database-dot" aria-hidden="true" />{database.name}</td>
+                    <td data-plugin={database.builtIn ? "built-in" : undefined}>{database.builtIn ? "in the box" : "on demand"}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </figure>
+    </section>
+
+    <section class="tc-split" data-flip aria-labelledby="themes-title">
+      <div class="tc-split-text tc-reveal">
+        <h2 id="themes-title" class="tc-section-title">Darcula, IntelliJ Light and 43 more</h2>
+        <p class="tc-lead">
+          Dark, Light and High contrast, ported themes such as Gruvbox, Nord and Solarized, or your own theme
+          file, in a comfortable or a compact density. This site wears the app's Dark and Light.
+        </p>
+        <a class="tc-link" href={docsRoute("themes")}>Themes <span aria-hidden="true">→</span></a>
+      </div>
+      <Shot clip="themes" file="themes.gif" alt="Switching between the Dark, Light and ported themes" />
+    </section>
+
+    <section aria-labelledby="more-title">
+      <div class="tc-section-head tc-reveal">
+        <h2 id="more-title" class="tc-section-title">Built for the daily loop</h2>
+      </div>
+      <ul class="tc-more tc-reveal-items">
+        {
+          more
+            .filter((highlight) => highlight.href !== docsRoute("themes"))
+            .map((highlight) => (
+              <li>
+                <a href={highlight.href}>
+                  <h3>{highlight.title}</h3>
+                  <p>{highlight.text}</p>
+                </a>
+              </li>
+            ))
+        }
+      </ul>
+    </section>
+
+    <section class="tc-cta tc-reveal">
+      <h2 class="tc-section-title">Open a console in a minute</h2>
+      <p class="tc-lead">Download the app, add a data source with <Keys keys={["⌘", "N"]} />, and run a query with <Keys keys={["⌘", "↩"]} />.</p>
+      <div class="tc-actions">
+        <a class="tc-button" data-variant="primary" href={DOWNLOAD_ROUTE} data-download-button>Download</a>
+        <a class="tc-button" href={`${DOCS_ROUTE}install/`}>Install guide</a>
+      </div>
+    </section>
+
+    <SiteFooter />
+    <Reveal />
+    <Clips />
+  </div>
+</StarlightPage>
+
+<script>
+  import { detectPlatform } from "../../scripts/platform";
+  import { PLATFORM_NAMES } from "../../scripts/site";
+
+  const platform = detectPlatform(navigator.userAgent, navigator.platform);
+  if (platform) {
+    for (const button of document.querySelectorAll<HTMLAnchorElement>("[data-download-button]")) {
+      button.textContent = `Download for ${PLATFORM_NAMES[platform]}`;
+    }
+  }
+</script>
+
+<style>
+  .tc-hero {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 1.5rem + 3vw, 4.5rem);
+    padding-top: clamp(1rem, 3vw, 3rem);
+  }
+  .tc-hero-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
+  }
+  .tc-hero-text .tc-display {
+    max-width: 16ch;
+  }
+  .tc-hero-text .tc-lead {
+    max-width: 40rem;
+    font-size: var(--sl-text-lg);
+    color: var(--tc-ink-muted);
+  }
+  .tc-hero-text .tc-actions {
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+  .tc-hero-version {
+    margin-inline-start: 0.5rem;
+    font-size: var(--sl-text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--tc-ink-muted);
+    text-decoration: none;
+  }
+  .tc-hero-version:hover {
+    color: var(--tc-ink);
+  }
+  .tc-agents {
+    display: flex;
+    flex-direction: column;
+  }
+  .tc-agents .tc-section-head .tc-lead {
+    max-width: 44rem;
+  }
+  .tc-agents-body {
+    display: grid;
+    gap: 2.5rem 3.5rem;
+    align-items: start;
+  }
+  .tc-agents-levels {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
+  }
+  .tc-agents-levels ol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tc-agents-levels li {
+    padding: 1rem 1.25rem;
+    background: var(--tc-panel);
+    border-radius: var(--tc-radius-island);
+  }
+  .tc-agents-levels li:last-child {
+    background: var(--tc-selection);
+  }
+  .tc-agents-levels h3 {
+    font-size: var(--sl-text-base);
+    font-weight: 600;
+    color: var(--tc-ink);
+  }
+  .tc-agents-levels li p {
+    margin-top: 0.25rem;
+    line-height: 1.55;
+    color: var(--tc-ink-muted);
+  }
+  .tc-agents-levels li:last-child p {
+    color: var(--tc-ink);
+  }
+  .tc-agents-levels > .tc-muted {
+    line-height: 1.6;
+  }
+  @media (min-width: 64rem) {
+    .tc-agents-body {
+      grid-template-columns: 7fr 4fr;
+    }
+  }
+  .tc-section-head {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+  .tc-split {
+    display: grid;
+    gap: 2.5rem 4rem;
+    align-items: center;
+  }
+  .tc-split-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+  @media (min-width: 64rem) {
+    .tc-split {
+      grid-template-columns: 5fr 7fr;
+    }
+    .tc-split[data-flip] {
+      grid-template-columns: 7fr 5fr;
+    }
+    .tc-split[data-flip] > .tc-split-text {
+      order: 2;
+    }
+  }
+  .tc-link {
+    color: var(--tc-accent);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .tc-link:hover {
+    text-decoration: underline;
+  }
+  .tc-result {
+    margin: 0;
+    padding: 0.5rem;
+    background: var(--tc-panel);
+    border-radius: calc(var(--tc-radius-island) + 0.5rem);
+  }
+  .tc-result figcaption {
+    padding: 1rem 1rem 1.25rem;
+    font-size: clamp(0.95rem, 0.8rem + 0.5vw, 1.25rem);
+  }
+  .tc-result code {
+    font-family: var(--tc-font-mono);
+    color: var(--tc-ink);
+  }
+  .tc-result [data-syntax="keyword"] {
+    color: var(--tc-syntax-keyword);
+  }
+  .tc-result td[data-plugin] {
+    color: var(--tc-success);
+  }
+  .tc-database-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-inline-end: 0.625rem;
+    border-radius: 50%;
+    background: var(--tint);
+    vertical-align: 0.1em;
+  }
+  .tc-more {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    gap: 2.5rem 2rem;
+    padding: 0;
+    list-style: none;
+  }
+  .tc-more a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    height: 100%;
+    text-decoration: none;
+  }
+  .tc-more h3 {
+    font-size: var(--sl-text-lg);
+    color: var(--tc-ink);
+    transition: color var(--tc-motion-fast) ease-out;
+  }
+  .tc-more a:hover h3 {
+    color: var(--tc-accent);
+  }
+  .tc-more p {
+    line-height: 1.6;
+    color: var(--tc-ink-muted);
+  }
+  .tc-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
+    padding: clamp(2.5rem, 1.5rem + 4vw, 5rem);
+    background: var(--tc-accent);
+    color: var(--tc-accent-ink);
+    border-radius: calc(var(--tc-radius-island) + 0.75rem);
+  }
+  .tc-cta :is(.tc-section-title, .tc-lead) {
+    color: var(--tc-accent-ink);
+  }
+  .tc-cta .tc-button[data-variant="primary"] {
+    background: var(--tc-accent-ink);
+    color: var(--tc-accent);
+  }
+  .tc-cta .tc-button:not([data-variant]) {
+    background: color-mix(in srgb, var(--tc-accent-ink) 14%, transparent);
+    color: var(--tc-accent-ink);
+  }
+  .tc-cta :global(.tc-key) {
+    background: color-mix(in srgb, var(--tc-accent-ink) 14%, transparent);
+    color: var(--tc-accent-ink);
+  }
+</style>

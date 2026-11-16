@@ -1,0 +1,8 @@
+---
+interface Props {
+  keys: readonly string[];
+}
+const { keys } = Astro.props;
+---
+
+<kbd class="tc-keys">{keys.map((key) => <kbd class="tc-key">{key}</kbd>)}</kbd>

@@ -1,8 +1,8 @@
 /**
  * Stages the publishable `@tablecraft-app/plugin-api` in `packages/plugin-api/release/` (decision 107):
  * JavaScript and declarations compiled from `src/` into `dist/`, a `package.json` whose exports
- * point there and whose version is `API_VERSION`, this package's README and the repository's
- * LICENSE. The workspace package stays private and exports TypeScript source; only the staged copy
+ * point there and whose version is `API_VERSION`, this package's README and its own
+ * MIT LICENSE. The workspace package stays private and exports TypeScript source; only the staged copy
  * is publishable (`npm publish release/`, which this repository does not run yet).
  * `bun run --cwd packages/plugin-api build` stages it.
  */
@@ -96,7 +96,7 @@ export function stagePackage(): string {
   compile(join(RELEASE_DIRECTORY, DIST));
   writeFileSync(join(RELEASE_DIRECTORY, PACKAGE_FILE), `${JSON.stringify(releaseManifest(), null, JSON_INDENT)}\n`);
   copyFileSync(join(PACKAGE_DIRECTORY, README_FILE), join(RELEASE_DIRECTORY, README_FILE));
-  copyFileSync(join(ROOT, LICENSE_FILE), join(RELEASE_DIRECTORY, LICENSE_FILE));
+  copyFileSync(join(PACKAGE_DIRECTORY, LICENSE_FILE), join(RELEASE_DIRECTORY, LICENSE_FILE));
   return RELEASE_DIRECTORY;
 }
 

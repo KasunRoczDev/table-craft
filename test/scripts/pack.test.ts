@@ -13,7 +13,7 @@ import { pluginPackageName, release, startRegistry, type LoopbackRegistry } from
 const FROZEN_API_VERSION = `${String(parseVersion(API_VERSION)?.major)}.0.0`;
 const FROZEN_SQLITE = join(import.meta.dirname, "..", "support", "frozen-plugins", `sqlite-${FROZEN_API_VERSION}`);
 const VERSION = "1.4.2";
-const PACKED_FILES = ["LICENSE", "README.md", "index.js", "package.json", MANIFEST_FILE];
+const PACKED_FILES = ["LICENSE", "LICENSE-EXCEPTION", "README.md", "index.js", "package.json", MANIFEST_FILE];
 const NPM_TIMEOUT_MS = 60_000;
 const BETA = "1.5.0-beta.1";
 const SQLITE = pluginPackageName("sqlite");
@@ -54,7 +54,7 @@ describe("plugin packages", () => {
       version: VERSION,
       type: "module",
       main: "index.js",
-      license: "MIT",
+      license: "GPL-3.0-or-later",
       tableCraft: { id: "sqlite", apiVersion: FROZEN_API_VERSION },
       repository: { type: "git", directory: "plugins/sqlite" },
     });
@@ -78,7 +78,7 @@ describe("plugin packages", () => {
   });
 
   it(
-    "givenStagedPlugin_whenPacked_thenTarballHoldsExactlyTheBundleManifestReadmeLicenseAndPackageJson",
+    "givenStagedPlugin_whenPacked_thenTarballHoldsExactlyTheBundleManifestReadmeLicensesAndPackageJson",
     async () => {
       const paths = builtSqlite();
 

@@ -1,0 +1,202 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import Reveal from "../components/Reveal.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import changelogJson from "../generated/changelog.json";
+import type { Changelog } from "../../scripts/releases";
+import { CHANGELOG_ROUTE, DOCS_ROUTE, DOWNLOADS, PLATFORM_NAMES, RELEASES_URL, repositoryFileUrl, SITE_TITLE } from "../../scripts/site";
+
+const changelog = changelogJson as Changelog;
+const latest = changelog.entries[0];
+const installGuide = `${DOCS_ROUTE}install/`;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "Download",
+    description: `Download ${SITE_TITLE} for macOS, Windows and Linux.`,
+    template: "splash",
+    hero: { title: "Download" },
+  }}
+>
+  <div class="tc-page not-content">
+    <section class="tc-download-head tc-enter">
+      <h1 class="tc-display">Get {SITE_TITLE}</h1>
+      <p class="tc-lead">
+        One installer per platform. Once installed, {SITE_TITLE} updates itself.{" "}
+        {
+          latest && (
+            <>
+              The latest release is <a href={CHANGELOG_ROUTE}>{latest.version}</a>, from{" "}
+              {new Date(latest.date).toLocaleDateString("en", { dateStyle: "long" })}.
+            </>
+          )
+        }
+      </p>
+    </section>
+
+    <section aria-label="Installers">
+      <ul class="tc-downloads tc-reveal-items">
+        {
+          DOWNLOADS.map((download) => (
+            <li data-platform={download.platform}>
+              <div class="tc-download-card">
+                <h2 class="tc-download-title">
+                  {download.label}
+                  <span class="sr-only" data-your-system hidden>
+                    (your system)
+                  </span>
+                </h2>
+                <code>{download.file}</code>
+                <a class="tc-button" href={download.url} data-download={download.platform}>
+                  Download for {PLATFORM_NAMES[download.platform]}
+                </a>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+      <p class="tc-muted tc-download-note">
+        Older versions and the <code>SHA256SUMS</code> of every file are on <a href={RELEASES_URL}>GitHub Releases</a>; the
+        install guide shows how to <a href={`${installGuide}#check-a-download`}>check a download</a>.
+      </p>
+    </section>
+
+    <section class="tc-first-launch" aria-labelledby="first-launch-title">
+      <h2 id="first-launch-title" class="tc-section-title">The first launch</h2>
+      <p class="tc-lead">The builds are not signed with a paid certificate, so each platform asks once.</p>
+      <div class="tc-steps tc-reveal-items">
+        <div>
+          <h3>macOS</h3>
+          <p>
+            Drag <code>TableCraft.app</code> to Applications, then clear the download attribute once:
+          </p>
+          <pre><code>xattr -dr com.apple.quarantine /Applications/TableCraft.app</code></pre>
+          <a href={`${installGuide}#running-the-unsigned-macos-app`}>More on the unsigned macOS app</a>
+        </div>
+        <div>
+          <h3>Windows</h3>
+          <p>SmartScreen says <em>Windows protected your PC</em>: click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+        </div>
+        <div>
+          <h3>Linux</h3>
+          <p>Make the AppImage executable, then run it:</p>
+          <pre><code>chmod +x TableCraft-*.AppImage</code></pre>
+        </div>
+      </div>
+      <p class="tc-muted">
+        Building from source instead? See <a href={repositoryFileUrl("CONTRIBUTING.md#set-up")}>CONTRIBUTING</a>.
+      </p>
+    </section>
+
+    <SiteFooter />
+    <Reveal />
+  </div>
+</StarlightPage>
+
+<script>
+  import { detectPlatform } from "../../scripts/platform";
+
+  const platform = detectPlatform(navigator.userAgent, navigator.platform);
+  for (const item of document.querySelectorAll<HTMLElement>("[data-platform]")) {
+    const recommended = item.dataset.platform === platform;
+    item.toggleAttribute("data-recommended", recommended);
+    item.querySelector<HTMLElement>("[data-your-system]")?.toggleAttribute("hidden", !recommended);
+    const button = item.querySelector<HTMLElement>("[data-download]");
+    if (recommended) button?.setAttribute("data-variant", "primary");
+    else button?.removeAttribute("data-variant");
+  }
+</script>
+
+<style>
+  .tc-download-head {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .tc-downloads {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: var(--tc-gap-island);
+    padding: 0;
+    list-style: none;
+  }
+  .tc-download-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.875rem;
+    height: 100%;
+    padding: 1.5rem;
+    background: var(--tc-panel);
+    border-radius: var(--tc-radius-island);
+  }
+  [data-recommended] > .tc-download-card {
+    background: var(--tc-raised);
+  }
+  .tc-download-title {
+    font-size: var(--sl-text-lg);
+    color: var(--tc-ink);
+  }
+  .tc-download-card code {
+    font-family: var(--tc-font-mono);
+    font-size: var(--sl-text-xs);
+    color: var(--tc-ink-muted);
+    white-space: nowrap;
+    background: none;
+    padding: 0;
+  }
+  .tc-download-card .tc-button {
+    margin-top: auto;
+  }
+  .tc-download-card .tc-button:not([data-variant]) {
+    background: var(--tc-raised);
+  }
+  .tc-download-note {
+    margin-top: 1.25rem;
+    font-size: var(--sl-text-sm);
+  }
+  .tc-first-launch {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .tc-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 2rem 3rem;
+    margin-block: 1.5rem;
+  }
+  .tc-steps > div {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .tc-steps h3 {
+    font-size: var(--sl-text-base);
+    color: var(--tc-ink);
+  }
+  .tc-steps h3 {
+    font-size: var(--sl-text-xl);
+  }
+  .tc-steps pre {
+    max-width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--tc-panel);
+    border-radius: var(--tc-radius-popover);
+    overflow-x: auto;
+  }
+  .tc-steps pre code {
+    font-family: var(--tc-font-mono);
+    font-size: var(--sl-text-xs);
+    color: var(--tc-ink);
+  }
+  .tc-page :not(pre) > code {
+    font-family: var(--tc-font-mono);
+    font-size: 0.875em;
+  }
+  .tc-page a:not(.tc-button, .tc-footer a) {
+    color: var(--tc-accent);
+  }
+</style>

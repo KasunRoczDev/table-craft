@@ -33,6 +33,8 @@ import {
   toolWindow,
   type RunningApp,
   type SavedDatasource,
+  approvalStatement,
+  squashed,
 } from "./harness.js";
 
 const captureWindow = evidenceFor("134");
@@ -259,7 +261,7 @@ describe.runIf(SMOKE_ENABLED)("Notifications for waiting agent requests", () => 
       await clickLastNotice(app);
       const dialog = page.getByTestId("mcp-approval");
       await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
-      expect(await dialog.getByTestId("mcp-approval-sql").textContent()).toContain(RENAME_CUSTOMER);
+      expect(await approvalStatement(dialog)).toContain(squashed(RENAME_CUSTOMER));
       await expect.poll(() => page.evaluate(DENY_FOCUSED)).toBe(true);
       await captureWindow(page, "02-click-opens-approval");
 

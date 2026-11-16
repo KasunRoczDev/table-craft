@@ -156,6 +156,7 @@ export default tseslint.config(
       "**/release/**",
       "test/fixtures/**",
       "test/support/frozen-plugins/**",
+      "packages/website/.astro/**",
     ],
   },
   js.configs.recommended,

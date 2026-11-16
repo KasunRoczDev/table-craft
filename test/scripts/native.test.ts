@@ -68,6 +68,7 @@ describe("native plugin packages", () => {
       expect(packed.files).toEqual(
         [
           "LICENSE",
+          "LICENSE-EXCEPTION",
           "README.md",
           "THIRD-PARTY-NOTICES",
           "duckdb.node",

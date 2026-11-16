@@ -192,6 +192,14 @@ registry, instead of npm:
 - Publish with `npm publish` to the registry, then tell users the package name and the registry's
   address and scope, which they add as described in [Private registries](plugins.md#private-registries).
 
+## Licensing your plugin
+
+TableCraft is GPL-3.0-or-later, and `@tablecraft-app/plugin-api` is MIT. A plugin that talks to
+TableCraft only through the plugin API may use any license, open or closed: the
+[plugin exception](../../LICENSE-EXCEPTION) grants that on top of the GPL. A plugin that imports
+other TableCraft code, such as `@table-craft/core` or the desktop app, is a derivative of the GPL'd
+code and must be GPL-3.0-or-later itself.
+
 ## From 1.x to 2.0
 
 Plugin API 2.0 groups everything a capability brings under its key. TableCraft on plugin API 2.0 refuses a

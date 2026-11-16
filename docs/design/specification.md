@@ -2977,6 +2977,7 @@ port or `enabled`, restarts the host. `rowCap` changes reach the running host wi
 | `list_datasources` |                    | The exposed datasources with their access                               |
 | `list_schemas`     | `schemaTree`       | `catalog.namespaces`, limited to the shown namespaces (decision 117)    |
 | `list_tables`      | `schemaTree`       | `catalog.describe` of one schema: tables and views with column counts   |
+| `search_catalog`   | `schemaTree`       | `catalog.search`: names over shown non-system schemas (decision 164)    |
 | `describe_table`   | `schemaTree`       | Columns, keys, foreign keys and indexes                                 |
 | `get_ddl`          | `schemaTree`,`ddl` | `catalog.definition`                                                    |
 | `run_query`        | `sql`              | One statement; reads capped at `rowCap`, writes after approval          |
@@ -3013,6 +3014,15 @@ on that datasource for the rest of the MCP session (**Allow reads on …** for a
 SQL. Unanswered for 60 seconds the request is denied; with no window open, or while agents are
 paused, it is denied at once. A denied read is recorded as cancelled, like a denied write.
 
+**Statement view** (decision 167). The SQL shows read-only in the console's editor, wrapped, with
+line numbers, highlighted by the plugin's language as the console picks it (`highlighterOf`), and
+scrolls inside a box as tall as the plan. When the plugin declares `sql` it opens laid out by
+`sql.format` on the datasource's language engine with the user's Reformat Code settings, and a
+**Format** toggle at the right of the SQL / Plan row (action `mcp.formatApproval`) shows it as sent;
+the choice holds for every request until the app quits. Formatting is display only: Allow, Open in
+Console, the badge, the history and the log keep the statement as sent. While the formatter works,
+or when it fails, the statement shows as sent, a failure with a muted line saying why.
+
 **Plan** (decision 130). When the datasource's plugin declares `explain`, a statement request (not
 a key) offers a **SQL / Plan** toggle above the statement. Plan runs the action Explain Agent
 Request (`mcp.explainRequest`), which `renderer/state/approvalPlans.ts` answers: `sql.explainable`
@@ -3042,7 +3052,7 @@ popover offers Allow and Block, which write the list. Unanswered for 60 seconds,
 the call is refused. The name is what the client says it is; the token is the authentication.
 
 **Per-datasource policy.** `agentSchemas` (top-level namespace names; absent, the shown
-namespaces) narrows `list_schemas`, `list_tables`, `describe_table`, `get_ddl` and resources, never
+namespaces) narrows `list_schemas`, `list_tables`, `search_catalog`, `describe_table`, `get_ddl` and resources, never
 SQL (decision 008). `agentRowCap` (1–1,000) overrides `rowCap`, and `agentTimeoutSeconds`
 (1–3,600) overrides `statementTimeoutSeconds`. All three are set over
 `datasources.setAgentPolicy`.

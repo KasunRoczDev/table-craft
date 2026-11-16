@@ -125,6 +125,38 @@ export interface InferredKey {
   readonly target: { readonly relation: string; readonly columns: readonly string[] };
 }
 
+/** Mirrors `CATALOG_SEARCH_SCOPES` in core. */
+export const CATALOG_SEARCH_SCOPES = ["tables", "columns", "all"] as const;
+export type CatalogSearchScope = (typeof CATALOG_SEARCH_SCOPES)[number];
+/** The most namespaces one `catalog.search` describes, so one call cannot introspect a whole server. */
+export const CATALOG_SEARCH_MAX_PATHS = 50;
+
+/** Mirrors `CatalogMatch` in core. */
+export type CatalogMatch = "exact" | "prefix" | "word" | "contains" | "comment";
+
+/** Mirrors `CatalogSearchHit` in core: a table, view or column whose name or comment holds the query (plan 159). */
+export interface CatalogSearchHit {
+  readonly path: readonly string[];
+  readonly relation: string;
+  readonly kind: RelationKind;
+  readonly column?: { readonly name: string; readonly type: string };
+  readonly match: CatalogMatch;
+}
+
+/** A namespace `catalog.search` could not describe, and why. */
+export interface UnreadNamespace {
+  readonly path: readonly string[];
+  readonly message: string;
+}
+
+export interface CatalogSearch {
+  /** The best `limit` hits. */
+  readonly hits: readonly CatalogSearchHit[];
+  /** Every hit, including those past `limit`. */
+  readonly total: number;
+  readonly unread: readonly UnreadNamespace[];
+}
+
 /** Mirrors `COMPLETION_KINDS` in plugin-api. */
 export const COMPLETION_KINDS = [
   "namespace",

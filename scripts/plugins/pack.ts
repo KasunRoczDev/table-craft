@@ -1,7 +1,7 @@
 /**
  * Wraps each optional plugin as the npm package the app downloads (decision 109): the same
  * `index.js` the app would load, its manifest stamped with the release version, a README, the
- * repository's LICENSE and a `package.json` with no dependencies or scripts. Also stages and packs
+ * repository's LICENSE and LICENSE-EXCEPTION, and a `package.json` with no dependencies or scripts. Also stages and packs
  * the publishable `@tablecraft-app/plugin-api` (decision 107). Built-in plugins are never packed.
  *
  * `bun scripts/plugins/pack.ts [--out <dir>] [--version <x.y.z>] [--no-build] [--reuse-published
@@ -31,7 +31,9 @@ import { fetchBinding, type FetchBinding, type NativeBinding } from "./native.js
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const DESKTOP = join(ROOT, "packages", "desktop");
 const PLUGIN_API_PACKAGE = join(ROOT, "packages", "plugin-api", "package.json");
+const ROOT_PACKAGE = join(ROOT, "package.json");
 const LICENSE_FILE = "LICENSE";
+const LICENSE_EXCEPTION_FILE = "LICENSE-EXCEPTION";
 const README_FILE = "README.md";
 const PACKAGE_FILE = "package.json";
 const ENTRY_FILE = "index.js";
@@ -84,6 +86,12 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, JSON_INDENT)}\n`);
 }
 
+function repositoryLicense(): string {
+  const { license } = readJson<{ license?: string }>(ROOT_PACKAGE);
+  if (license === undefined) throw new PackError(`${ROOT_PACKAGE} names no license.`);
+  return license;
+}
+
 function repositoryUrl(): string {
   const { repository } = readJson<{ repository?: { url?: string } }>(PLUGIN_API_PACKAGE);
   if (repository?.url === undefined) throw new PackError(`${PLUGIN_API_PACKAGE} names no repository.url.`);
@@ -104,10 +112,10 @@ export function pluginPackageJson(manifest: BuiltManifest, version: string): Rec
     name: officialPackage(manifest.id),
     version,
     description: `The ${manifest.name} datasource plugin for TableCraft, downloaded by the app when a data source needs it.`,
-    license: "MIT",
+    license: repositoryLicense(),
     type: "module",
     main: ENTRY_FILE,
-    files: [ENTRY_FILE, MANIFEST_FILE],
+    files: [ENTRY_FILE, MANIFEST_FILE, LICENSE_EXCEPTION_FILE],
     keywords: [PLUGIN_KEYWORD, "tablecraft", manifest.id],
     repository: { type: "git", url: repositoryUrl(), directory: `plugins/${manifest.id}` },
     publishConfig: { access: "public" },
@@ -150,7 +158,7 @@ export function stagePlugin(id: string, version: string, built: string, stage: s
     readFileSync(join(source, ENTRY_FILE), "utf8").replace(SOURCE_MAP_COMMENT, "\n"),
   );
   writeFileSync(join(directory, README_FILE), pluginReadme(manifest, packageJson.name as string));
-  copyFileSync(join(ROOT, LICENSE_FILE), join(directory, LICENSE_FILE));
+  for (const file of [LICENSE_FILE, LICENSE_EXCEPTION_FILE]) copyFileSync(join(ROOT, file), join(directory, file));
   return directory;
 }
 
@@ -189,7 +197,7 @@ export function stageNativePlugin(
     ...generic,
     name,
     description: `${String(generic.description)} This package is for ${platform}.`,
-    files: [ENTRY_FILE, MANIFEST_FILE, ...nativeFiles, NOTICES_FILE],
+    files: [ENTRY_FILE, MANIFEST_FILE, LICENSE_EXCEPTION_FILE, ...nativeFiles, NOTICES_FILE],
     ...osAndCpu(platform),
     tableCraft: { ...tableCraft, platform },
   });

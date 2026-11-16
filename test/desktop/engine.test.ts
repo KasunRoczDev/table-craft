@@ -13,6 +13,7 @@ import sqlitePlugin from "@table-craft/plugin-sqlite";
 import { createEngine, probeDatasource } from "@table-craft/desktop/engine/engine.js";
 import { createLifetime } from "@table-craft/desktop/engine/lifetime.js";
 import type {
+  CatalogSearch,
   ClassifiedStatement,
   DescribedCatalog,
   InferredKey,
@@ -694,6 +695,82 @@ describe("engine catalog", () => {
     // The seed declares `orders.customer_id`, the one column the rule would otherwise match.
     expect(resultOf<InferredKey[]>(response)).toEqual([]);
     expect(opened()).toBe(1);
+  });
+
+  it("givenSeededCatalog_whenCatalogSearch_thenTheColumnIsFoundAndCounted", async () => {
+    const { engine } = countingSqlite();
+
+    const response = await engine.connect().handle({
+      id: 1,
+      type: "catalog.search",
+      paths: [["main"]],
+      query: "email",
+      scope: "all",
+      limit: 50,
+    });
+
+    expect(resultOf<CatalogSearch>(response)).toEqual({
+      hits: [
+        {
+          path: ["main"],
+          relation: "customers",
+          kind: "table",
+          column: { name: "email", type: "TEXT" },
+          match: "exact",
+        },
+      ],
+      total: 1,
+      unread: [],
+    });
+  });
+
+  it("givenPathThatFails_whenCatalogSearch_thenItIsUnreadAndOthersAnswer", async () => {
+    const { engine } = countingSqlite();
+
+    const response = await engine.connect().handle({
+      id: 1,
+      type: "catalog.search",
+      paths: [["nowhere"], ["main"]],
+      query: "customers",
+      scope: "tables",
+      limit: 50,
+    });
+
+    const search = resultOf<CatalogSearch>(response);
+    expect(search.hits.map((hit) => hit.relation)).toEqual(["customers"]);
+    expect(search.unread).toEqual([{ path: ["nowhere"], message: expect.any(String) as string }]);
+  });
+
+  it("givenEveryPathFails_whenCatalogSearch_thenIntrospectionFailed", async () => {
+    const { engine } = countingSqlite();
+
+    const response = await engine.connect().handle({
+      id: 1,
+      type: "catalog.search",
+      paths: [["nowhere"]],
+      query: "customers",
+      scope: "all",
+      limit: 50,
+    });
+
+    expect(response).toMatchObject({ id: 1, type: "engine.error", error: { code: "introspectionFailed" } });
+  });
+
+  it("givenLimit_whenCatalogSearch_thenHitsCappedAndTotalFull", async () => {
+    const { engine } = countingSqlite();
+
+    const response = await engine.connect().handle({
+      id: 1,
+      type: "catalog.search",
+      paths: [["main"]],
+      query: "id",
+      scope: "columns",
+      limit: 2,
+    });
+
+    const search = resultOf<CatalogSearch>(response);
+    expect(search.hits).toHaveLength(2);
+    expect(search.total).toBeGreaterThan(2);
   });
 
   it("givenIntrospectionLinkDropped_whenDescribed_thenFreshSessionAnswers", async () => {
