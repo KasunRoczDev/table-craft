@@ -11,10 +11,9 @@ import {
 } from "@table-craft/desktop/renderer/state/modal.js";
 import { ListPicker } from "@table-craft/desktop/renderer/ui/ListPicker.js";
 import { OutcomeDot } from "@table-craft/desktop/renderer/ui/Outcome.js";
-import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
-import { PRESSED_TOGGLE } from "@table-craft/desktop/renderer/ui/pressClasses.js";
+import { FormatToggle } from "@table-craft/desktop/renderer/ui/FormatToggle.js";
 import { SqlView } from "@table-craft/desktop/renderer/ui/SqlView.js";
-import { Tooltip } from "@table-craft/desktop/renderer/ui/Tooltip.js";
+import { useFormatted } from "@table-craft/desktop/renderer/ui/useFormatted.js";
 
 type HistoryRequest = Extract<ModalRequest, { kind: "history" }>;
 
@@ -59,52 +58,6 @@ function OriginFilter({ origin, onOrigin }: { readonly origin: Origin; readonly 
 
 const FORMAT_HINT = "Show the statement laid out by the formatter; Copy and Insert keep it as it ran";
 
-/** A view of the preview, not a filter of the list, so it sits on the preview as the value panel's `{}` does. */
-function FormatToggle({ on, onToggle }: { readonly on: boolean; readonly onToggle: (next: boolean) => void }) {
-  return (
-    <Tooltip label={FORMAT_HINT} side="bottom">
-      <button
-        type="button"
-        aria-pressed={on}
-        data-testid="history-format"
-        className={cn("ml-auto h-segment shrink-0 rounded px-cell text-ink hover:bg-hover", PRESSED_TOGGLE)}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onToggle(!on)}
-      >
-        Format
-      </button>
-    </Tooltip>
-  );
-}
-
-interface Formatted {
-  readonly sql: string;
-  readonly text: string | null;
-  readonly error: string | null;
-}
-
-/** The statement through `format` while `on`; null while it is off, absent or still working. */
-function useFormatted(sql: string, format: HistoryRequest["format"], on: boolean): Formatted | null {
-  const [formatted, setFormatted] = useState<Formatted | null>(null);
-  useEffect(() => {
-    let current = true;
-    if (on && format !== undefined && sql !== "") {
-      format(sql).then(
-        (text) => {
-          if (current) setFormatted({ sql, text, error: null });
-        },
-        (cause: unknown) => {
-          if (current) setFormatted({ sql, text: null, error: toError(cause).message });
-        },
-      );
-    }
-    return () => {
-      current = false;
-    };
-  }, [sql, format, on]);
-  return on && formatted?.sql === sql ? formatted : null;
-}
-
 function Preview({
   statement,
   request,
@@ -133,7 +86,9 @@ function Preview({
       <div className="flex h-picker-list flex-col overflow-hidden rounded border border-line bg-canvas">
         <div className="flex h-row-loose shrink-0 items-center gap-gap border-b border-line px-cell">
           <span className="text-ink-muted">Statement</span>
-          {request.format === undefined ? null : <FormatToggle on={formatOn} onToggle={onFormat} />}
+          {request.format === undefined ? null : (
+            <FormatToggle on={formatOn} onToggle={onFormat} hint={FORMAT_HINT} testId="history-format" />
+          )}
         </div>
         <SqlView
           text={formatted?.text ?? sql}
