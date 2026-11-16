@@ -41,6 +41,7 @@ export const MCP_ACTION_IDS = {
   cancel: "mcp.cancel",
   handOff: "mcp.handOff",
   explainRequest: "mcp.explainRequest",
+  formatApproval: "mcp.formatApproval",
   activity: "mcp.activity",
   openInConsole: "mcp.openInConsole",
   testDatasource: "mcp.testDatasource",
@@ -332,6 +333,18 @@ export const MCP_ACTIONS: readonly AnyAction[] = [
     run: (_context, approvalId) => {
       const target = approvalId ?? useMcp.getState().status.approvals[0]?.id;
       return target === undefined ? undefined : explainRequest(target);
+    },
+  }),
+  defineAction<boolean | undefined>({
+    id: MCP_ACTION_IDS.formatApproval,
+    title: "Toggle Formatted Agent Request",
+    category: "App",
+    icon: "reformat",
+    available: waiting,
+    // The palette passes nothing, so it flips; the dialog's Format toggle says which.
+    run: (_context, formatted) => {
+      const mcp = useMcp.getState();
+      mcp.setApprovalFormatted(formatted ?? !mcp.approvalFormatted);
     },
   }),
   defineAction<number | undefined>({

@@ -42,6 +42,7 @@ import {
   type RunningApp,
   type SavedDatasource,
   showServices,
+  linesOf,
 } from "./harness.js";
 import { applyFilter } from "./workflows.js";
 
@@ -114,10 +115,6 @@ function historyEntries(page: Page, datasource: string) {
 
 function entryLabels(page: Page, datasource: string): Promise<(string | null)[]> {
   return ariaLabels(historyEntries(page, datasource));
-}
-
-async function linesOf(page: Page, testId: string): Promise<string> {
-  return (await page.getByTestId(testId).locator(".cm-line").allTextContents()).join("\n");
 }
 
 async function editorText(page: Page): Promise<string> {

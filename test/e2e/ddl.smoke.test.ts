@@ -35,6 +35,7 @@ import {
   waitUntilReady,
   type Datasource,
   type RunningApp,
+  linesOf,
 } from "./harness.js";
 
 const captureWindow = evidenceFor("010");
@@ -91,10 +92,6 @@ function ddlTabs(page: Page) {
 
 function consoleTabs(page: Page) {
   return editorTabs(page).filter({ has: page.locator('[data-tab-kind="console"]') });
-}
-
-async function linesOf(page: Page, testId: string): Promise<string> {
-  return (await page.getByTestId(testId).locator(".cm-line").allTextContents()).join("\n");
 }
 
 function ddlText(page: Page): Promise<string> {

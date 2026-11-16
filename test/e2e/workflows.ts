@@ -29,6 +29,7 @@ import {
   treeNode,
   waitUntilReady,
   showServices,
+  linesOf,
 } from "./harness.js";
 
 /** What the loop needs to know about the datasource it drives. */
@@ -372,8 +373,4 @@ function resultTab(page: Page, title: string): Locator {
     .getByRole("tablist", { name: "Results" })
     .getByRole("tab")
     .filter({ hasText: new RegExp(`^${title}$`) });
-}
-
-async function linesOf(page: Page, testId: string): Promise<string> {
-  return (await page.getByTestId(testId).locator(".cm-line").allTextContents()).join("\n");
 }
