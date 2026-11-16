@@ -1,138 +1,115 @@
 # SQL console
 
-`⌘↩` runs the statement at the caret, or exactly the selected text; `⇧⌘↩` runs the whole console. Each result
-opens its own tab next to **Output**, which logs every statement with its row count and time,
-followed by the warnings and notices the server left about it (MySQL's and TiDB's `SHOW WARNINGS`,
-PostgreSQL's `RAISE NOTICE`); the result tab shows how many warnings there were.
-`UPDATE` or `DELETE` without a `WHERE`, `DROP` and `TRUNCATE` are listed in a confirmation before
-anything runs. Switch
-**Tx: Auto** to **Tx: Manual** to work in a transaction, then **Commit** or **Rollback**; while a
-transaction is open the mode turns amber with a dot. The console toolbar groups Run, Run All,
-Explain and Cancel, then Query History, Reformat Code and Run Settings, then the transaction
-controls; the schema switcher and the data source sit at its right. While a statement runs, the title bar shows
-its elapsed time, to the millisecond, beside **Cancel** where the database can cancel it; with a transaction open, it shows **Tx open** with **Commit**
-and **Rollback**, so you can end it from any tab layout. Consoles
-are saved as files as you type. Drag the line between the editor and its results to give either
-more room; every console keeps the split you last dragged to, across launches.
+A console is an editor tab where you write and run SQL against one data source. Consoles save
+themselves as you type.
 
-**Open File…** (`⌘O`) opens `.sql` files from anywhere on disk, such as the migrations in your
-project, as file consoles on the data source you are in; each file remembers its data source and
-schema for next time, and **File → Recent Files** lists the last ten. A file console saves itself
-as you type, as DataGrip does; its tab shows a dot until the write lands. **Save** (`⌘S`) in a
-scratch console and **Save As…** (`⇧⌘S`) in any console write it to a file of your choosing, which
-it then follows, and **Rename File…** renames the console or the file. When another program
-changes the file, a clean console reloads it as the window comes back to the front; one with edits
-not yet written shows a banner to reload or keep yours, and is never written over without asking.
-Files are UTF-8; Windows line endings are kept as they were.
+## Run statements
 
-Right-click an editor tab to close the others, all, or those to its right; to copy its file's path,
-show it in Finder (or its folder elsewhere) or rename it; to **Duplicate** it as a new console on
-the same data source and schema; or to **Pin** it at the left, where closing many tabs leaves it
-open. **Reopen Closed Tab** (`⇧⌘T`) brings back the consoles you closed, newest first. At the right
-of the tab strip, **+** opens a new console on the current data source, **Open Tabs** lists every
-tab on that side, even those scrolled out of sight, and **Tab Actions** closes the others or all,
-reopens a closed tab, and splits or unsplits.
+`⌘↩` runs the statement at the caret, or exactly the selected text. `⇧⌘↩` runs the whole console.
 
-Drag a tab toward the left or right side of the editor, or right-click it and choose **Split Left**
-or **Split Right**, to work in two consoles side by side. Each side keeps its own selected tab;
-click inside one to send Run, shortcuts and new consoles there. Drag the divider to resize them.
-Splitting moves the existing console, keeping its text, results and connection. With two sides
-already open, splitting moves the tab to that side; **Unsplit** brings all tabs together. Closing
-the last tab on one side also removes the split. Bulk tab closing and next/previous tab stay within
-the selected side. Saved console and table tabs remember their sides and the divider width.
+Each result opens in its own tab next to Output. Output logs every statement with its row count,
+time and any warnings the server returned.
 
-**Run SQL Script…**, on a data source or schema in the Database pane, runs one or more `.sql` files
-without opening them: the files are streamed, so a multi-gigabyte dump uses flat memory, and the
-run shows its statements and bytes under **SQL Scripts** in Services, where you can cancel it. A
-failing statement is handled as in a console run (below): the line asks **Skip**, **Skip All**,
-**Stop** or **Retry**, a run that went on ends `done, 2 failed`, and **Go to statement** opens the
-file where the database pointed, every failure of that file underlined.
+TableCraft asks you to confirm an `UPDATE` or `DELETE` without a `WHERE`, a `DROP` or a `TRUNCATE`
+before it runs. While a statement runs, the title bar shows its elapsed time, with Cancel when the database supports it.
 
-When a statement fails, the console underlines where the database says it went wrong, with a mark in
-the gutter and the message on hover. The error itself sits above the results, with **Go to Error**
-to jump there, **Show in Log** and **Run Again**; `F2` / `⇧F2`
-step through the marks. Editing the statement drops its mark. When one of several statements fails,
-the run asks above the results: **Skip** it, **Skip All** failures from now on, **Stop**, or
-**Retry**. Settings → Advanced → Running → _When a statement fails_ can stop or continue without asking; a run that
-went on ends with `12 run, 2 failed.` in Output. In an open transaction PostgreSQL refuses every
-later statement until it is rolled back, and Output says so.
-
-While you type, the console checks SQL the way DataGrip does, without running anything: an empty
-`WHERE`, a reserved word used as a table name or an unknown column is underlined in red, a
-`DELETE` without `WHERE` or `= NULL` in amber, and a redundant `ASC` or alias is greyed out. Hover
-a mark for its message and fixes; `⌥↩` (Show Context Actions) at the caret lists them, with
-**Suppress for statement**, which writes a `-- noinspection <Id>` line above it, and **Disable
-inspection**. `F2` / `⇧F2` visit these too, errors first. Settings → Editor → Inspections turns each
-check, or all of them, off. The checks know your tables once the data source is connected.
-
-![Inspections and a failing statement](../media/inspections.gif)
-
-**Reformat Code** (`⌥⌘L`) lays out the selection, or the whole console, and one `⌘Z` takes it
-back. It works while the data source is disconnected or its server is down, and never asks for a
-password. Queries get the aligned layout: the first item on the keyword's line, the rest of a list
-under it, `AS` lined up, `AND`/`OR` under `WHERE`, the values of an `IN (...)` list one per line under
-the first; other statements keep the standard layout. A statement with `:name`, `?` or (on PostgreSQL) `$1` placeholders asks for their values
-before it runs; they are bound by the driver, never pasted into the SQL, and the next run starts
-from them.
+A statement with `:name`, `?` or (on PostgreSQL) `$1` placeholders asks for their values first. The
+driver binds them, so they are never pasted into the SQL.
 
 ![SQL console](../media/console.gif)
 
-**New Console** in the tab strip opens another console on the current data source; from a node
-in the Database tool window it starts in that node's database or schema
-([Explorer](explorer.md)). Right-click a tab
-and choose **Split Right** or **Split Left** to put it in a group of its own beside the current
-one; each group has its own toolbar, runs and results, and tabs drag from one group to another.
-Closing a group's last tab closes the group.
+## Transactions
+
+Switch Tx: Auto to Tx: Manual to work in a transaction, then click Commit or Rollback. While a
+transaction is open, the mode turns amber and the title bar shows Commit and Rollback, so you can
+end it from any tab.
+
+## When a statement fails
+
+The console underlines where the database says the statement went wrong. The error appears above
+the results with Go to Error and Run Again, and `F2` and `⇧F2` step through the marks.
+
+When one of several statements fails, the run asks whether to Skip it, Skip All failures, Stop or
+Retry. To decide in advance, set When a statement fails in Settings > Advanced > Running.
+
+## Inspections
+
+As you type, the console checks your SQL without running it. Errors such as an unknown column are
+underlined in red, risky code such as a `DELETE` without `WHERE` in amber, and redundant code is
+greyed out.
+
+Hover a mark for its message, or press `⌥↩` at the caret for fixes. Suppress for statement adds a
+`-- noinspection <Id>` comment above the statement. Turn checks off in Settings > Editor >
+Inspections.
+
+![Inspections and a failing statement](../media/inspections.gif)
+
+## Reformat code
+
+`⌥⌘L` formats the selection or the whole console, and one `⌘Z` undoes it. Queries get an aligned
+layout, with list items, `AS` aliases and `AND`/`OR` conditions lined up. Reformatting works while
+the data source is disconnected.
+
+## Files
+
+Open File… (`⌘O`) opens `.sql` files from disk, such as your project's migrations. Each file
+remembers its data source and schema, and File > Recent Files lists the last ten.
+
+A file console saves as you type. Save (`⌘S`) or Save As… (`⇧⌘S`) writes a scratch console to a
+file. When another program changes the file, the console reloads it, or asks first if you have
+unsaved edits.
+
+## Run SQL scripts
+
+To run `.sql` files without opening them, right-click a data source or schema in the Database pane
+and choose Run SQL Script…. The files are streamed, so a large dump does not fill memory. Progress
+shows under SQL Scripts in Services, where you can cancel the run. Failures ask Skip, Skip All, Stop
+or Retry, as in a console.
+
+## Tabs and split view
+
+Right-click an editor tab to close, duplicate, rename or pin it. Reopen Closed Tab (`⇧⌘T`) brings
+back closed consoles, newest first.
+
+To work in two consoles side by side, drag a tab to the left or right edge of the editor, or
+right-click it and choose Split Left or Split Right. Each side has its own toolbar, runs and
+results. Click inside a side to send Run and shortcuts there. Unsplit brings all tabs back
+together.
 
 ![Console groups](../media/console-groups.gif)
 
-See [SQL console](../design/specification.md#sql-console).
-
 ## Find and replace
 
-**Find in Console** (`⌘F`) opens a find bar above the console's text, as DataGrip does; **Replace
-in Console** (`⌘R`) adds a replace row under it. A short selection becomes the query, and a
-selection over several lines turns on **In Selection**, so the search and Replace All stay inside
-it, shaded in the text. Typing selects the nearest match from the caret, and the counter reads `2/7`, `?/7` while the
-caret is off a match, or `0/0` in red; counting stops at 10,000 (`1/10,000+`).
+Find in Console (`⌘F`) opens a find bar above the text, and Replace in Console (`⌘R`) adds a replace
+row. Selecting several lines first limits the search to the selection.
 
-- `Cc`, `W` and `.*` inside the field (`⌥C`, `⌥W`, `⌥X`) turn on Match Case, whole Words and Regex. The query is
-  literal until `.*` is on, so `\n` finds a backslash and an `n`; with Regex on it finds a line
-  break, and the replacement can use `$1`.
-- `Aa` in the replace field is **Preserve Case**: replacing `Customer`, `customer` and `CUSTOMER`
-  with `client` writes `Client`, `client` and `CLIENT` (`⌥P`). It is off while Regex is on.
-- `↩` and `⇧↩` in the find field go to the next and previous match; `⌘G`, `⇧⌘G`, `F3` and `⇧F3` do
-  the same from the editor. `↩` in the replace field replaces the current match and moves on.
-- **Replace All** (`⌥⌘↩`) is one undo step. **Exclude** strikes the current match through and
-  leaves it out.
-- **Select All Occurrences** (`⌥⇧⌘J`) puts a cursor on every match and returns to the editor.
-- The magnifier, or `⌥↓` in a field, lists the last 20 searches or replacements of this session.
-- `Esc` closes the bar and returns to the editor. Switching tabs keeps each console's bar and query.
+| Shortcut                    | What it does                                                    |
+| --------------------------- | --------------------------------------------------------------- |
+| `⌥C`, `⌥W`, `⌥X`            | Match case, whole words, regex                                  |
+| `⌥P`                        | Preserve case: `Customer` replaced with `client` gives `Client` |
+| `↩` / `⇧↩`, or `⌘G` / `⇧⌘G` | Next and previous match                                         |
+| `⌥⌘↩`                       | Replace all, in one undo step                                   |
+| `⌥⇧⌘J`                      | Put a cursor on every match                                     |
+| `Esc`                       | Close the bar                                                   |
 
 ## Run settings for one console
 
-The gear on the console toolbar, **Run Settings…**, sets how this console runs without touching
-Settings. **Rows** is **Default** (the page size in Settings → Data Editor), **Custom** (a page size
-of 10 to 10,000 rows) or **All**, which reads the whole result as soon as it opens, as **Fetch All**
-does, up to the Fetch All limit, in one run when the row limit goes into the SQL; an export still writes every row. **Statement timeout** is **Default** (the data source's own
-timeout, else Settings → Advanced), **Custom** (1 to 86,400 seconds) or **None**; a console's
-timeout wins over the data source's. Changes apply from the next statement and stay with the
-console until you close it; a dot on the gear says the console has its own settings, and its
-tooltip names them. A result read with the console's page size says so beside its row count, and a
-statement stopped by the console's timeout offers **Run Settings…** beside **Run Again**. A data
-source that cannot cancel a statement but whose database can stop one itself still offers the
-timeout, and the popover says what the database stops; one that can do neither has no timeout to
-set. **Restore Defaults** goes back to
-Settings.
+The gear on the console toolbar, Run Settings…, changes how this console runs without touching
+Settings:
+
+- Rows: the page size, or All to read the whole result when it opens.
+- Statement timeout: from 1 to 86,400 seconds, or None. It wins over the data source's timeout.
+
+The settings last until you close the console, and a dot on the gear shows they are set. Restore
+Defaults goes back to Settings.
 
 ## Explain
 
-**Explain Plan** (`⇧⌘E`) shows the plan of the statement at the caret as a tree with estimated rows
-and cost; select a node to see its details. **Explain Analyse** runs the statement and adds actual
-rows, time and loops; when the statement writes, it asks first. PostgreSQL, MySQL, TiDB and Oracle
-support both (Oracle's Explain Analyse needs `SELECT_CATALOG_ROLE`); SQLite has Explain Plan only. Warnings the server gives while planning, such as a hint it
-could not apply, show in Output and on the plan tab.
+Explain Plan (`⇧⌘E`) shows how the database would run the statement at the caret, as a tree with
+estimated rows and cost. Explain Analyse runs the statement and adds actual rows, time and loops; it
+asks first when the statement writes.
+
+PostgreSQL, MySQL, TiDB and Oracle support both (Oracle's Explain Analyse needs
+`SELECT_CATALOG_ROLE`). SQLite has Explain Plan only.
 
 ![Explain](../media/explain.gif)
-
-See [Explain](../design/specification.md#explain).
