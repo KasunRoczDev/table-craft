@@ -50,11 +50,15 @@ import {
   optionDisabled,
   optionValue,
   showServices,
+  approvalStatement,
+  linesOf,
+  squashed,
 } from "./harness.js";
 
 const captureWindow = evidenceFor("117");
 const captureAskReads = evidenceFor("120");
 const captureSearch = evidenceFor("159");
+const captureFormat = evidenceFor("162");
 const writeSearch = evidenceTextFor("159");
 
 const TOKEN_PATTERN = /Bearer (tc_[\w-]+)/;
@@ -74,6 +78,9 @@ const LONG_SELECT = `SELECT id, ${Array.from({ length: 40 }, (_, index) => `'pad
 const SELECT_CUSTOMERS = "SELECT id, name FROM customers ORDER BY id";
 const SELECT_ORDERS = "SELECT id, customer_id FROM orders ORDER BY id";
 const READ_REASON = "Checking the customer list";
+const ORDER_COUNTS =
+  "SELECT c.id, c.name, COUNT(o.id) AS order_count FROM customers c LEFT JOIN orders o ON o.customer_id = c.id " +
+  "WHERE c.id > 0 GROUP BY c.id, c.name ORDER BY order_count DESC, c.id LIMIT 5";
 const KEY_NAME = "user:{42}:session";
 const { password: MYSQL_PASSWORD, ...MYSQL_PLAIN } = MYSQL_CONFIG;
 const { password: REDIS_PASSWORD, ...REDIS_PLAIN } = REDIS_CONFIG;
@@ -89,6 +96,11 @@ type MysqlConfig = typeof MYSQL_CONFIG | typeof TIDB_CONFIG;
 
 interface AttributeHolder {
   getAttribute(name: string): string | null;
+}
+
+interface ScrollBox {
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
 }
 
 function shop(): SavedDatasource {
@@ -205,13 +217,14 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
   async function launchServing(
     datasources: readonly SavedDatasource[],
     clients: readonly { name: string; allowed: boolean }[] = KNOWN_CLIENTS,
+    appearance: Readonly<Record<string, string>> = {},
   ): Promise<{ page: Page; port: number }> {
     const port = await freePort();
     const userDataDir = newProfile();
     seedDatasources(userDataDir, datasources);
     seedSettings(userDataDir, {
       version: 1,
-      appearance: { motion: "off" },
+      appearance: { motion: "off", ...appearance },
       mcp: { enabled: true, port, rowCap: 100, clients },
     });
     running = await launchApp(null, { userDataDir });
@@ -422,7 +435,7 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
       expect(await dialog.getByRole("heading").first().textContent()).toContain("OpenCode wants to change data");
       expect(await dialog.getByTestId("mcp-approval-datasource").textContent()).toContain("shop");
-      expect(await dialog.getByTestId("mcp-approval-sql").textContent()).toContain(RENAME_CUSTOMER);
+      expect(await approvalStatement(dialog)).toContain(squashed(RENAME_CUSTOMER));
       expect(await dialog.textContent()).toContain(RENAME_REASON);
       expect(await dialog.getByTestId("mcp-approval-countdown").textContent()).toMatch(
         /Denied automatically in [01]:\d\d/,
@@ -670,7 +683,7 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       const dialog = approval(page);
       await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
       expect(await dialog.getByRole("heading").first().textContent()).toContain("OpenCode wants to read data");
-      expect(await dialog.getByTestId("mcp-approval-sql").textContent()).toContain(SELECT_CUSTOMERS);
+      expect(await approvalStatement(dialog)).toContain(squashed(SELECT_CUSTOMERS));
       expect(await dialog.textContent()).toContain("Data read");
       expect(await dialog.textContent()).toContain(READ_REASON);
       await expect.poll(() => page.evaluate(DENY_FOCUSED)).toBe(true);
@@ -757,6 +770,80 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
     SCENARIO_TIMEOUT_MS,
   );
 
+  it(
+    "givenAReadApproval_whenTheDialogOpens_thenTheStatementIsFormattedHighlightedAndRunsAsSent",
+    async () => {
+      const { page, port } = await launchServing([askingShop()]);
+      const agent = await agentAs(page, port, "OpenCode");
+
+      const first = agent.tool("run_query", { datasource: "shop", sql: ORDER_COUNTS, reason: READ_REASON });
+      await untilWaiting(page);
+      await chip(page).click();
+      const dialog = approval(page);
+      await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+      const format = dialog.getByTestId("mcp-approval-format");
+      expect(await format.getAttribute("aria-pressed")).toBe("true");
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toContain("\n");
+      expect(await approvalStatement(dialog)).toBe(squashed(ORDER_COUNTS));
+      expect(await dialog.getByTestId("mcp-approval-sql").locator(".cm-line span").count()).toBeGreaterThan(0);
+      expect(await dialog.getByTestId("mcp-approval-format-error").count()).toBe(0);
+      await expect.poll(() => page.evaluate(DENY_FOCUSED)).toBe(true);
+      await captureFormat(page, "01-formatted");
+
+      await format.click();
+      expect(await format.getAttribute("aria-pressed")).toBe("false");
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toBe(ORDER_COUNTS);
+      await expect.poll(() => page.evaluate(DENY_FOCUSED)).toBe(true);
+      await captureFormat(page, "02-as-sent");
+
+      await dialog.getByTestId("mcp-allow").click();
+      const rows = await first;
+      expect(rows.isError).toBe(false);
+      expect(rows.text).toContain("Rows 1–");
+
+      const second = agent.tool("run_query", { datasource: "shop", sql: SELECT_ORDERS });
+      await untilWaiting(page);
+      await chip(page).click();
+      await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+      expect(await format.getAttribute("aria-pressed")).toBe("false");
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toBe(SELECT_ORDERS);
+      await captureFormat(page, "03-remembered");
+      await format.click();
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toContain("\n");
+      await dialog.getByTestId("mcp-allow").click();
+      expect((await second).isError).toBe(false);
+
+      const calls = await activityRows(page, 2);
+      await calls.filter({ hasText: "COUNT(o.id)" }).dblclick();
+      await expect.poll(() => linesOf(page, "sql-editor"), { timeout: LAUNCH_TIMEOUT_MS }).toBe(ORDER_COUNTS);
+      await captureFormat(page, "04-ran-as-sent");
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it(
+    "givenALongStatementInTheDarkTheme_whenTheDialogOpens_thenItIsHighlightedAndScrollsInsideItsBox",
+    async () => {
+      const { page, port } = await launchServing([askingShop()], KNOWN_CLIENTS, { theme: "dark" });
+      const agent = await agentAs(page, port, "OpenCode");
+
+      const read = agent.tool("run_query", { datasource: "shop", sql: LONG_SELECT, reason: READ_REASON });
+      await untilWaiting(page);
+      await chip(page).click();
+      const dialog = approval(page);
+      await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+      const scroller = dialog.getByTestId("mcp-approval-sql").locator(".cm-scroller");
+      await expect
+        .poll(() => scroller.evaluate((element: ScrollBox) => element.scrollHeight > element.clientHeight))
+        .toBe(true);
+      expect(await approvalStatement(dialog)).toBe(squashed(LONG_SELECT));
+      await captureFormat(page, "07-long-dark");
+      await dialog.getByTestId("mcp-deny").click();
+      expect((await read).isError).toBe(true);
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
   it.skipIf(!DATABASES_ENABLED || WITHOUT_REDIS)(
     "givenAskReads_whenGetKey_thenDialogShowsKeyAndDatabase",
     async () => {
@@ -780,12 +867,36 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       expect(key).toContain("database 0");
       expect(await dialog.getByTestId("mcp-approval-sql").count()).toBe(0);
       expect(await dialog.getByTestId("mcp-approval-view").count()).toBe(0);
+      expect(await dialog.getByTestId("mcp-approval-format").count()).toBe(0);
       await captureAskReads(page, "08-key");
 
       await dialog.getByTestId("mcp-allow").click();
       const answer = await value;
       expect(answer.isError).toBe(false);
       expect(answer.text).toContain("token-42");
+    },
+    SCENARIO_TIMEOUT_MS,
+  );
+
+  it.skipIf(!DATABASES_ENABLED || WITHOUT_REDIS)(
+    "givenAskReads_whenAgentRunsARedisCommand_thenItIsHighlightedWithoutFormat",
+    async () => {
+      const { page, port } = await launchServing([askingRedis()]);
+      const agent = await agentAs(page, port, "OpenCode");
+      await connectWithPassword(page, "redis", REDIS_PASSWORD);
+
+      const command = `GET ${KEY_NAME}`;
+      const read = agent.tool("run_query", { datasource: "redis", sql: command, reason: READ_REASON });
+      await untilWaiting(page);
+      await chip(page).click();
+      const dialog = approval(page);
+      await dialog.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toBe(command);
+      expect(await dialog.getByTestId("mcp-approval-sql").locator(".cm-line span").count()).toBeGreaterThan(0);
+      expect(await dialog.getByTestId("mcp-approval-format").count()).toBe(0);
+      await captureFormat(page, "06-redis-command");
+      await dialog.getByTestId("mcp-deny").click();
+      expect((await read).isError).toBe(true);
     },
     SCENARIO_TIMEOUT_MS,
   );
@@ -925,9 +1036,13 @@ describe.runIf(SMOKE_ENABLED)("MCP server live test", () => {
       expect(await chip(page).getAttribute("data-tone")).toBe("waiting");
       expect(await dialog.getByTestId("mcp-approval-countdown").isVisible()).toBe(true);
       await captureAskReads(page, "10-plan-mysql");
+      expect(await dialog.getByTestId("mcp-approval-format").count()).toBe(0);
 
       await dialog.getByTestId("mcp-approval-view").getByRole("button", { name: "SQL" }).click();
-      expect(await dialog.getByTestId("mcp-approval-sql").textContent()).toContain(RENAME_EVERYONE);
+      expect(await approvalStatement(dialog)).toContain(squashed(RENAME_EVERYONE));
+      expect(await dialog.getByTestId("mcp-approval-format").getAttribute("aria-pressed")).toBe("true");
+      await expect.poll(() => linesOf(dialog, "mcp-approval-sql")).toContain("\n");
+      await captureFormat(page, "05-mysql-update");
       await dialog.getByTestId("mcp-deny").click();
       expect((await update).isError).toBe(true);
       expect(await countOn(MYSQL_CONFIG, `SELECT COUNT(*) FROM customers WHERE name = '${GONE}'`)).toBe(0);

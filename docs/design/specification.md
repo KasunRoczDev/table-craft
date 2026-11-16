@@ -3014,6 +3014,15 @@ on that datasource for the rest of the MCP session (**Allow reads on …** for a
 SQL. Unanswered for 60 seconds the request is denied; with no window open, or while agents are
 paused, it is denied at once. A denied read is recorded as cancelled, like a denied write.
 
+**Statement view** (decision 167). The SQL shows read-only in the console's editor, wrapped, with
+line numbers, highlighted by the plugin's language as the console picks it (`highlighterOf`), and
+scrolls inside a box as tall as the plan. When the plugin declares `sql` it opens laid out by
+`sql.format` on the datasource's language engine with the user's Reformat Code settings, and a
+**Format** toggle at the right of the SQL / Plan row (action `mcp.formatApproval`) shows it as sent;
+the choice holds for every request until the app quits. Formatting is display only: Allow, Open in
+Console, the badge, the history and the log keep the statement as sent. While the formatter works,
+or when it fails, the statement shows as sent, a failure with a muted line saying why.
+
 **Plan** (decision 130). When the datasource's plugin declares `explain`, a statement request (not
 a key) offers a **SQL / Plan** toggle above the statement. Plan runs the action Explain Agent
 Request (`mcp.explainRequest`), which `renderer/state/approvalPlans.ts` answers: `sql.explainable`

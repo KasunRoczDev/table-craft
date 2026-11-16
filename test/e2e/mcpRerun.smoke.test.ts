@@ -29,6 +29,8 @@ import {
   toolWindow,
   waitUntilReady,
   type RunningApp,
+  approvalStatement,
+  squashed,
 } from "./harness.js";
 
 const captureWindow = evidenceFor("159");
@@ -116,7 +118,7 @@ describe.runIf(SMOKE_ENABLED)("fetch_rows re-run approval live test", () => {
       expect(await dialog.getByTestId("mcp-approval-scope").textContent()).toMatch(
         /^Data read · 1 statement, run again up to row 1\D?100$/,
       );
-      expect(await dialog.getByTestId("mcp-approval-sql").textContent()).toContain(COUNT_TO_1200);
+      expect(await approvalStatement(dialog)).toContain(squashed(COUNT_TO_1200));
       expect(await dialog.textContent()).toContain(RERUN_REASON);
       expect(await dialog.textContent()).toContain("Allow re-runs on reports for the rest of this agent session");
       await captureWindow(page, "01-rerun-approval");

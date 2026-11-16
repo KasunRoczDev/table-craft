@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { SEGMENT, SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { invoke } from "@table-craft/desktop/renderer/actions/index.js";
 import { MCP_ACTION_IDS, type ApprovalAnswerArgs } from "@table-craft/desktop/renderer/actions/mcpActions.js";
 import {
@@ -13,11 +13,16 @@ import {
 import { McpApprovalPlan } from "@table-craft/desktop/renderer/dialogs/McpApprovalPlan.js";
 import { countdown } from "@table-craft/desktop/renderer/model/mcp.js";
 import { useApprovalPlans } from "@table-craft/desktop/renderer/state/approvalPlans.js";
-import { capabilitiesOf, useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
+import { highlighterOf } from "@table-craft/desktop/renderer/console/Editor.js";
+import { pluginOf, useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
 import { useMcp } from "@table-craft/desktop/renderer/state/mcp.js";
+import { formatterOf } from "@table-craft/desktop/renderer/state/statementFormat.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
+import { FormatToggle } from "@table-craft/desktop/renderer/ui/FormatToggle.js";
 import { CAP_CENTRED } from "@table-craft/desktop/renderer/ui/KeyTypeBadge.js";
+import { SqlView } from "@table-craft/desktop/renderer/ui/SqlView.js";
 import { useClock } from "@table-craft/desktop/renderer/ui/useClock.js";
+import { useFormatted } from "@table-craft/desktop/renderer/ui/useFormatted.js";
 import type { ApprovalKind, McpApprovalView } from "@table-craft/desktop/settings/mcp.js";
 
 const KIND_LABELS: Readonly<Record<ApprovalKind, string>> = {
@@ -45,6 +50,11 @@ const STATEMENT_VIEWS: readonly { readonly view: StatementView; readonly label: 
 ];
 
 const STATEMENT_BOX = "max-h-48 overflow-auto rounded border border-line bg-canvas";
+/** The editor scrolls inside it, so the box only clips the corners. */
+const SQL_BOX = "overflow-hidden rounded border border-line bg-canvas";
+
+const FORMAT_HINT =
+  "Show the statement laid out by the formatter; Allow and Open in Console run it as the agent sent it";
 
 function badgeTone(approval: McpApprovalView): string {
   if (approval.kind === "ddl" || approval.destructive !== null) return "border-danger text-danger";
@@ -72,11 +82,22 @@ function Request({ approval, of }: { readonly approval: McpApprovalView; readonl
   const [allowKind, setAllowKind] = useState(false);
   const [view, setView] = useState<StatementView>("sql");
   const plan = useApprovalPlans((state) => state.plans[approval.id]);
-  const explainable = useDatasources((state) => {
-    if (approval.subject === "key") return false;
-    const datasource = state.datasources.find((candidate) => candidate.id === approval.datasourceId);
-    return datasource !== undefined && capabilitiesOf(state.plugins, datasource.pluginId).includes("explain");
-  });
+  const datasource = useDatasources((state) =>
+    state.datasources.find((candidate) => candidate.id === approval.datasourceId),
+  );
+  const plugin = useDatasources((state) =>
+    datasource === undefined ? undefined : pluginOf(state.plugins, datasource.pluginId),
+  );
+  const statement = approval.subject !== "key";
+  const explainable = statement && plugin?.capabilities.includes("explain") === true;
+  const language = useMemo(() => highlighterOf(plugin), [plugin]);
+  const format = useMemo(
+    () => (datasource === undefined || plugin === undefined ? undefined : formatterOf(datasource).format),
+    [datasource, plugin],
+  );
+  const formatOn = useMcp((state) => state.approvalFormatted);
+  const formatted = useFormatted(approval.sql, format, statement && formatOn);
+  const formatShown = statement && format !== undefined && view === "sql";
   const leading = keywordOf(approval);
   const keyword = leading ?? KIND_LABELS[approval.kind];
   const reads = approval.kind === "read";
@@ -131,35 +152,58 @@ function Request({ approval, of }: { readonly approval: McpApprovalView; readonl
           </span>
         </FieldRow>
       </div>
-      {explainable ? (
-        <div role="group" aria-label="Statement view" data-testid="mcp-approval-view" className={SEGMENT_GROUP}>
-          {STATEMENT_VIEWS.map(({ view: shown, label }) => (
-            <button
-              key={shown}
-              type="button"
-              aria-pressed={view === shown}
-              className={SEGMENT}
-              onClick={() => {
-                setView(shown);
-                if (shown === "plan") void invoke(MCP_ACTION_IDS.explainRequest, approval.id);
-              }}
-            >
-              {label}
-            </button>
-          ))}
+      {explainable || formatShown ? (
+        <div className="flex items-center gap-gap">
+          {explainable ? (
+            <div role="group" aria-label="Statement view" data-testid="mcp-approval-view" className={SEGMENT_GROUP}>
+              {STATEMENT_VIEWS.map(({ view: shown, label }) => (
+                <button
+                  key={shown}
+                  type="button"
+                  aria-pressed={view === shown}
+                  className={SEGMENT}
+                  onClick={() => {
+                    setView(shown);
+                    if (shown === "plan") void invoke(MCP_ACTION_IDS.explainRequest, approval.id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {formatShown ? (
+            <FormatToggle
+              on={formatOn}
+              onToggle={(next) => invoke(MCP_ACTION_IDS.formatApproval, next)}
+              hint={FORMAT_HINT}
+              testId="mcp-approval-format"
+            />
+          ) : null}
         </div>
       ) : null}
-      {approval.subject === "key" ? null : view === "plan" && explainable ? (
+      {!statement ? null : view === "plan" && explainable ? (
         <div className={cn(STATEMENT_BOX, "max-h-64")}>
           <McpApprovalPlan plan={plan} />
         </div>
       ) : (
-        <pre
-          data-testid="mcp-approval-sql"
-          className={cn(STATEMENT_BOX, "p-cell font-grid whitespace-pre-wrap select-text")}
-        >
-          {approval.sql}
-        </pre>
+        <>
+          <div className={SQL_BOX}>
+            <SqlView
+              text={formatted?.text ?? approval.sql}
+              language={language}
+              wrap
+              label="Statement"
+              testId="mcp-approval-sql"
+              className="[&_.cm-editor]:max-h-64"
+            />
+          </div>
+          {formatted?.error == null ? null : (
+            <p data-testid="mcp-approval-format-error" className="wrap-anywhere text-ink-muted">
+              Could not format the statement, so it shows as sent: {formatted.error}
+            </p>
+          )}
+        </>
       )}
       {approval.allowable ? (
         <label htmlFor={allowKindId} className="flex items-center gap-cell">

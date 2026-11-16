@@ -630,3 +630,18 @@ export function evidenceTextFor(plan: string): WriteEvidence {
     writeFileSync(join(directory, file), text);
   };
 }
+
+/** A CodeMirror view's text by line, without the gutter's line numbers. */
+export async function linesOf(scope: Page | Locator, testId: string): Promise<string> {
+  return (await scope.getByTestId(testId).locator(".cm-line").allTextContents()).join("\n");
+}
+
+/** SQL with whitespace and case folded away, so a statement compares the same laid out by the formatter or not. */
+export function squashed(sql: string): string {
+  return sql.replace(/\s+/g, "").toLowerCase();
+}
+
+/** The statement an approval dialog shows, folded by `squashed`: it opens laid out by the formatter (decision 167). */
+export async function approvalStatement(dialog: Locator): Promise<string> {
+  return squashed(await linesOf(dialog, "mcp-approval-sql"));
+}

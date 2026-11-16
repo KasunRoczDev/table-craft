@@ -18,7 +18,9 @@ browse schemas, tables, columns and key names, but every query that returns rows
 value, waits for you the same way, and writes are refused. While a statement waits, **Plan** in
 the request shows how the database would run it, without running it, and marks steps such as a
 full table scan or, on TiDB, estimates made without statistics; the request keeps waiting until
-you answer. A data source marked read-only stays at Read only, and one coloured
+you answer. The statement is highlighted and laid out by the formatter with your
+[Reformat Code](console.md) settings; turn **Format** off to read it as the agent sent it, which is
+always what runs, and the next request opens the same way. A data source marked read-only stays at Read only, and one coloured
 red can be raised past Read only only on its own page in the Data Sources dialog. Answers carry at
 most `mcp.rowCap` rows. An agent pages further with `fetch_rows`; when the statement carries its
 [row limit in its SQL](data.md#result-grid), rows past the ones TableCraft holds mean running it

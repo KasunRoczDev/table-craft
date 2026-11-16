@@ -15,10 +15,16 @@ export interface McpStore {
   readonly approvalOpen: boolean;
   /** Whether the Agent Activity dialog is open. */
   readonly activityOpen: boolean;
+  /**
+   * Whether the approval dialog shows the statement laid out by the formatter (decision 167). It
+   * holds for every request until the app quits; what runs is always the statement as sent.
+   */
+  readonly approvalFormatted: boolean;
   readonly changed: (status: McpStatus) => void;
   readonly setPopover: (open: boolean) => void;
   readonly setApproval: (open: boolean) => void;
   readonly setActivity: (open: boolean) => void;
+  readonly setApprovalFormatted: (formatted: boolean) => void;
 }
 
 export const useMcp = create<McpStore>()((set) => ({
@@ -26,6 +32,7 @@ export const useMcp = create<McpStore>()((set) => ({
   popoverOpen: false,
   approvalOpen: false,
   activityOpen: false,
+  approvalFormatted: true,
   changed: (status) =>
     set((previous) => ({
       status,
@@ -35,6 +42,7 @@ export const useMcp = create<McpStore>()((set) => ({
   setPopover: (popoverOpen) => set({ popoverOpen }),
   setApproval: (approvalOpen) => set({ approvalOpen }),
   setActivity: (activityOpen) => set({ activityOpen }),
+  setApprovalFormatted: (approvalFormatted) => set({ approvalFormatted }),
 }));
 
 /** Asks main for the MCP status once and follows it; returns the unsubscribe. */
