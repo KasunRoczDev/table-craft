@@ -211,6 +211,24 @@ describe("datasource service", () => {
       await expect(app.connect(id!, {}, WINDOW)).rejects.toThrow("No data source");
     });
 
+    it.each([
+      { change: "user", draft: { ...PG_DRAFT, config: { ...PG_DRAFT.config, user: "other-user" } } },
+      { change: "read-only", draft: { ...PG_DRAFT, readOnly: true } },
+    ])("givenDiscoveredDatabase_whenSource$changeChanges_thenRebuildsChild", async ({ draft }) => {
+      const { service: app } = await service();
+      const source = await app.save(saving(PG_DRAFT, SECRET));
+      const [before] = app.addDatabases(source.id, ["other"]);
+      await app.save(saving({ ...draft, id: source.id }, SECRET));
+      expect(app.list().datasources.map((item) => item.id)).toEqual([source.id]);
+      const [after] = app.addDatabases(source.id, ["other"]);
+      expect(after).not.toBe(before);
+      expect(app.list().datasources.find((item) => item.id === after)).toMatchObject({
+        databaseSourceId: source.id,
+        readOnly: draft.readOnly ?? false,
+        config: { user: draft.config.user },
+      });
+    });
+
     it("givenRunningChild_whenShownDatabasesChange_thenKeepsItsConnection", async () => {
       const { service: app } = await service();
       const source = await app.save(saving(PG_DRAFT, SECRET));

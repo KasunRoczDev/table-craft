@@ -506,7 +506,8 @@ export async function createDatasourceService<Target>(
       (previous.pluginId !== next.pluginId ||
         JSON.stringify(previous.config) !== JSON.stringify(next.config) ||
         JSON.stringify(previous.ssh) !== JSON.stringify(next.ssh) ||
-        JSON.stringify(previous.secretModes) !== JSON.stringify(next.secretModes));
+        JSON.stringify(previous.secretModes) !== JSON.stringify(next.secretModes) ||
+        previous.readOnly !== next.readOnly);
     if (connectionChanged) requireDisconnectedDatabases(id);
     checkRequired(plugin, next.config);
     checkTunnel(next.ssh);
