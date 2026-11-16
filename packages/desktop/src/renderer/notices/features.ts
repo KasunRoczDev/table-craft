@@ -7,9 +7,9 @@ import type { FeatureNotice } from "@table-craft/desktop/renderer/model/notices.
  */
 export const FEATURE_NOTICES: readonly FeatureNotice[] = [
   {
-    id: "agent-rerun-approval",
-    title: "An agent asks before it runs a query again",
-    body: "When an agent pages past the rows TableCraft holds, the database reads every row again up to the last one asked. That page now waits for your approval, and shows in Services and Query History. Query History's preview also has a Format toggle for long statements.",
+    id: "agent-approval-formatted",
+    title: "Approvals show the agent's statement formatted",
+    body: "When an agent asks to run a statement, the approval now lays it out with your Reformat Code settings and colours it like the console. Turn Format off to read it exactly as the agent sent it; Allow always runs it as sent.",
   },
   {
     id: "agent-catalog-search",
