@@ -922,7 +922,9 @@ Starlight theme toggle switching between them. High contrast and the ported them
 The layout follows Linear's dense dark sites, after a survey of awesome-design-md: surfaces
 separated by a tone step, never a line or a shadow, as Islands are (cards and buttons are filled,
 never outlined); the header and sidebar wear the page's `colors.canvas`, as Linear's do, and the
-header takes one `colors.border` line only once the page scrolls under it; no eyebrow
+header frosts (80% canvas, a 16 px backdrop blur) once the page scrolls under it, as OpenChamber's
+does. A docs page shares the sidebar's canvas, with no line or step between them; tables pad their
+first column; no eyebrow
 labels and no monospace outside code; display type at weight 600, capped at 4rem and two lines;
 screenshots with an Islands radius; keycaps for chords. The landing page opens, as Linear's does, on
 a sans headline over the app recording a data source, a browse and a query; agents (MCP) come next,

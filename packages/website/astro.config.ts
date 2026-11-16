@@ -36,6 +36,7 @@ export default defineConfig({
           borderRadius: "var(--tc-radius-popover)",
           borderColor: "transparent",
           codeFontFamily: "var(--tc-font-mono)",
+          codeBackground: "var(--tc-panel)",
           frames: { shadowColor: "transparent" },
         },
       },
