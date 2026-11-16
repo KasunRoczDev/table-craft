@@ -18,9 +18,6 @@
   --tc-rise: 1.5rem;
   --tc-header-veil: 80%;
   --tc-header-blur: 16px;
-  /* Half a tone step: far enough from the canvas to part the page from the sidebar, close enough
-   * that panels inside it still read a full step up. */
-  --tc-docs-page: color-mix(in srgb, var(--tc-canvas) 60%, var(--tc-panel));
 }
 
 body {
@@ -73,14 +70,6 @@ body {
   .page > header.header button[data-open-modal],
   .page > header.header button[data-open-modal]:hover {
     background-color: transparent;
-  }
-}
-
-/* A docs page is half a tone step above the sidebar's canvas, so the two part without a line. */
-@media (min-width: 50rem) {
-  :root[data-has-sidebar] .main-frame > div {
-    min-height: calc(100vh - var(--sl-nav-height));
-    background-color: var(--tc-docs-page);
   }
 }
 
