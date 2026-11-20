@@ -58,7 +58,7 @@ function mainCheckoutDotEnv(): string | null {
  * The remote settings from the checkout's `.env`, or the main checkout's. Bun loads it for `bun <file>`, but Vitest runs
  * under Node, so its global setup would not see them otherwise.
  */
-function dotEnv(): Record<string, string> {
+export function dotEnv(prefix = REMOTE_PREFIX): Record<string, string> {
   const file = [DOT_ENV, mainCheckoutDotEnv()].find((path) => path !== null && existsSync(path));
   if (file === undefined || file === null) return {};
   const entries = readFileSync(file, "utf8")
@@ -66,7 +66,7 @@ function dotEnv(): Record<string, string> {
     .map((line) => DOT_ENV_LINE.exec(line))
     .filter((match) => match !== null)
     .map((match) => [match[1] ?? "", match[2] ?? ""] as const);
-  return Object.fromEntries(entries.filter(([key]) => key.startsWith(REMOTE_PREFIX)));
+  return Object.fromEntries(entries.filter(([key]) => key.startsWith(prefix)));
 }
 
 export async function resolveTidbTarget(processEnv: NodeJS.ProcessEnv = process.env): Promise<TidbTarget> {
