@@ -151,6 +151,8 @@ export interface SqlFileChannels<Sender> {
   stat(paths: readonly string[]): Promise<readonly (number | null)[]>;
   attach(path: string, attachment: FileAttachment): Promise<void>;
   recent(): Promise<readonly string[]>;
+  /** The files the OS asked to open before the window could take them (plan 163). */
+  launched(): readonly string[];
 }
 
 export interface SqlFileChannelsOptions<Sender> {
@@ -159,6 +161,8 @@ export interface SqlFileChannelsOptions<Sender> {
   readonly choose: (sender: Sender, title: string) => Promise<readonly string[]>;
   /** The recent files moved; main rebuilds File → Recent Files. */
   readonly recentChanged: (recent: readonly string[]) => void;
+  /** Hands over the files the OS named; none when TableCraft was not opened with any. */
+  readonly launched?: () => readonly string[];
 }
 
 export function createSqlFileChannels<Sender>(options: SqlFileChannelsOptions<Sender>): SqlFileChannels<Sender> {
@@ -188,6 +192,7 @@ export function createSqlFileChannels<Sender>(options: SqlFileChannelsOptions<Se
     stat: statSqlFiles,
     attach: (path, attachment) => attachments.attach(absolute(path), attachment),
     recent: () => attachments.recent(),
+    launched: options.launched ?? (() => []),
   };
 }
 

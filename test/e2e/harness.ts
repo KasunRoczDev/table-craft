@@ -3,6 +3,7 @@
  * grid, and save window screenshots as plan evidence (decision 016). Needs a fresh build of
  * `packages/desktop` and a display.
  */
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -163,6 +164,8 @@ export interface LaunchOptions {
    * an update does to stored passwords, and only with a build whose keychain item is its own.
    */
   readonly systemKeychain?: boolean;
+  /** Arguments after the entry, as a file manager or a terminal passes the files to open (plan 163). */
+  readonly args?: readonly string[];
 }
 
 export interface GridText {
@@ -175,6 +178,29 @@ function electronBinary(): string {
   return createRequire(join(DESKTOP_ROOT, "package.json"))("electron") as string;
 }
 
+interface LaunchCommand {
+  readonly executablePath: string;
+  readonly args: string[];
+  readonly env: Record<string, string>;
+}
+
+function launchCommand(datasource: Datasource | null, userDataDir: string, options: LaunchOptions): LaunchCommand {
+  const env = { ...process.env } as Record<string, string>;
+  delete env[DATASOURCE_ENV];
+  if (datasource !== null) env[DATASOURCE_ENV] = JSON.stringify(datasource);
+  env[USER_DATA_ENV] = userDataDir;
+  Object.assign(env, options.env);
+  const executable = options.executable ?? APP_EXECUTABLE;
+  const entry = executable === undefined ? [MAIN_ENTRY] : [];
+  const mockKeychain = process.platform === "darwin" && options.systemKeychain !== true;
+  const flags = [...(mockKeychain ? [MOCK_KEYCHAIN_FLAG] : []), ...(HEADLESS ? HEADLESS_FLAGS : [])];
+  return {
+    executablePath: executable ?? electronBinary(),
+    args: [...flags, ...entry, ...(options.args ?? [])],
+    env,
+  };
+}
+
 /**
  * Launches the app with `datasource` as its ephemeral datasource, which opens a console on it;
  * null launches with only what the profile's `datasources.json` holds.
@@ -183,20 +209,26 @@ export async function launchApp(
   datasource: Datasource | null = SCRATCH,
   options: LaunchOptions = {},
 ): Promise<RunningApp> {
-  const env = { ...process.env } as Record<string, string>;
-  delete env[DATASOURCE_ENV];
-  if (datasource !== null) env[DATASOURCE_ENV] = JSON.stringify(datasource);
   const userDataDir = options.userDataDir ?? newProfile();
-  env[USER_DATA_ENV] = userDataDir;
-  Object.assign(env, options.env);
-  const executable = options.executable ?? APP_EXECUTABLE;
-  const entry = executable === undefined ? [MAIN_ENTRY] : [];
-  const mockKeychain = process.platform === "darwin" && options.systemKeychain !== true;
-  const flags = [...(mockKeychain ? [MOCK_KEYCHAIN_FLAG] : []), ...(HEADLESS ? HEADLESS_FLAGS : [])];
-  const args = [...flags, ...entry];
-  const app = await _electron.launch({ executablePath: executable ?? electronBinary(), args, env });
+  const app = await _electron.launch(launchCommand(datasource, userDataDir, options));
   const page = await app.firstWindow();
   return { app, page, userDataDir };
+}
+
+/**
+ * Starts the app again on a running app's profile, as a file manager does to open a file in it, and
+ * resolves with its exit code once the single-instance lock has sent it away (plan 163).
+ */
+export function launchSecondInstance(
+  userDataDir: string,
+  options: LaunchOptions & { readonly cwd?: string } = {},
+): Promise<number | null> {
+  const { executablePath, args, env } = launchCommand(null, userDataDir, options);
+  const child = spawn(executablePath, args, { env, cwd: options.cwd, stdio: "ignore" });
+  return new Promise((settle, fail) => {
+    child.once("error", fail);
+    child.once("exit", (code) => settle(code));
+  });
 }
 
 /**

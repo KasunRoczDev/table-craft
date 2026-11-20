@@ -9,7 +9,12 @@ import {
   restoreConsoles,
 } from "@table-craft/desktop/renderer/actions/consoleCommands.js";
 import { currentContext, focusedRegion, modalOpen, trackFocus } from "@table-craft/desktop/renderer/actions/context.js";
-import { openRecentFromMenu, syncFileConsoles } from "@table-craft/desktop/renderer/actions/fileActions.js";
+import {
+  openLaterLaunchedFiles,
+  openLaunchedFiles,
+  openRecentFromMenu,
+  syncFileConsoles,
+} from "@table-craft/desktop/renderer/actions/fileActions.js";
 import { invoke, registry } from "@table-craft/desktop/renderer/actions/index.js";
 import { installKeymap } from "@table-craft/desktop/renderer/actions/keymap.js";
 import { currentShortcuts } from "@table-craft/desktop/renderer/actions/shortcuts.js";
@@ -48,21 +53,24 @@ import { installDatasourceSync } from "@table-craft/desktop/renderer/state/wirin
 import { TooltipProvider } from "@table-craft/desktop/renderer/ui/Tooltip.js";
 
 /** The `TABLE_CRAFT_DATASOURCE` seam opens straight into a console on it, as before (decision 018). */
-function openEphemeralConsole(): void {
+async function openEphemeralConsole(): Promise<void> {
   const ephemeral = useDatasources.getState().datasources.find((datasource) => datasource.ephemeral);
-  if (ephemeral !== undefined && useTabs.getState().tabs.length === 0) void openConsole(ephemeral.id);
+  if (ephemeral !== undefined && useTabs.getState().tabs.length === 0) await openConsole(ephemeral.id);
 }
 
 /**
- * The first datasource list is in: reopen the remembered consoles (or the ephemeral one), then
- * start remembering and saving them. Remembering starts after, so an empty strip at launch never
+ * The first datasource list is in: reopen the remembered consoles (or the ephemeral one) and open
+ * the files TableCraft was launched with, then start remembering and saving them. Remembering starts after, so an empty strip at launch never
  * overwrites the layout it is about to restore.
  */
 let stopConsoleSync: (() => void) | null = null;
 function onFirstList(): void {
   void restoreConsoles().then(() => {
     if (stopConsoleSync === null) restoreTables();
-    openEphemeralConsole();
+    const launching = stopConsoleSync === null;
+    // After the ephemeral console, so a launched file lands on the data source it puts in focus.
+    const openLaunched = () => (launching ? openLaunchedFiles(currentContext) : undefined);
+    void openEphemeralConsole().then(openLaunched, openLaunched);
     installNotices();
     if (stopConsoleSync !== null) return;
     const forget = rememberOpenConsoles();
@@ -119,6 +127,8 @@ export function App() {
   useEffect(() => installHostKeyPrompts(), []);
 
   useEffect(() => openRecentFromMenu(currentContext), []);
+
+  useEffect(() => openLaterLaunchedFiles(currentContext), []);
 
   useEffect(() => syncFileConsoles(window), []);
 

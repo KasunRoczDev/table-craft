@@ -104,6 +104,12 @@ const bridge: TableCraftBridge = {
       if (typeof path === "string") listener(path);
     });
   },
+  launchedSqlFiles: () => invoke(INVOKE_CHANNELS.launchedSqlFiles),
+  onOpenLaunchedFiles(listener) {
+    return subscribe<unknown>(CHANNELS.openLaunchedFiles, (paths) => {
+      if (Array.isArray(paths)) listener(paths.filter((path): path is string => typeof path === "string"));
+    });
+  },
   historyRecord: (entry) => invoke(INVOKE_CHANNELS.historyRecord, entry),
   historySearch: (datasourceId, query) => invoke(INVOKE_CHANNELS.historySearch, { datasourceId, query }),
   historyClear: (datasourceId) => invoke(INVOKE_CHANNELS.historyClear, { datasourceId }),
