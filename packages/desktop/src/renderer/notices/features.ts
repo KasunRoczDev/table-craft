@@ -12,8 +12,8 @@ export const FEATURE_NOTICES: readonly FeatureNotice[] = [
     body: "When an agent asks to run a statement, the approval now lays it out with your Reformat Code settings and colours it like the console. Turn Format off to read it exactly as the agent sent it; Allow always runs it as sent.",
   },
   {
-    id: "agent-catalog-search",
-    title: "Agents find tables and columns by name",
-    body: "An agent can now search every schema you show it for tables, views and columns by name in one call, instead of listing each schema and guessing. It reads names only, so it never asks for approval, and hidden schemas stay hidden.",
+    id: "open-sql-from-os",
+    title: "Open .sql files from Finder, Explorer and file managers",
+    body: "TableCraft now appears under Open With for .sql files, and opens a file you double-click or name on the command line as a file console. It never takes over as the default app for .sql; choose it yourself if you want it there.",
   },
 ];
