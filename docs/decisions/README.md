@@ -161,3 +161,6 @@ started, not when it is merged.
 | 166 | [The website is built from the guide and the app tokens](166-the-website-is-built-from-the-guide-and-the-app-tokens.md)                                                |
 | 167 | [Approvals show the statement formatted](167-approvals-show-the-statement-formatted.md)                                                                                |
 | 168 | [TableCraft is an alternate handler for .sql files](168-tablecraft-is-an-alternate-sql-handler.md)                                                                     |
+| 169 | [Stream services are capabilities with their own tree](169-stream-services-are-capabilities-with-their-own-tree.md)                                                    |
+| 170 | [Browsing a topic never joins a consumer group](170-browsing-a-topic-never-joins-a-group.md)                                                                           |
+| 171 | [The Kafka plugin has its own Schema Registry client](171-the-kafka-plugin-has-its-own-schema-registry-client.md)                                                      |

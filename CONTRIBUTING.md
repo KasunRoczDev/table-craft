@@ -32,6 +32,7 @@ bun run test                   # unit tests and the plugin contract against SQLi
 bun run test:db                # the contract against MySQL in Docker, and TiDB
 bun run test:db:postgres       # the same against PostgreSQL (also :oracle, :mssql, :all)
 bun run test:db:redis          # the Redis plugin against 7.4, 6.2 and 5.0, standalone and Cluster
+bun run test:db:kafka          # the Kafka plugin against Kafka in docker, or the remote one in .env
 bun run test:smoke             # drive the built app with Playwright
 bun run test:smoke:db          # the same against MySQL, TiDB and SQLite
 bun run test:smoke:headless    # test:smoke in a Linux container, off your screen
@@ -68,15 +69,15 @@ database state. Each data source gets its own engine, a utility process that loa
 runs queries. The renderer is a pure view that reaches its engine over a `MessagePort`; every
 capability is a message in `packages/desktop/src/engine/protocol.ts`.
 
-| Folder                 | Holds                                                                                     |
-| :--------------------- | :---------------------------------------------------------------------------------------- |
-| `packages/plugin-api/` | The plugin contract: types, schemas, capabilities, the shared SQL kit                     |
-| `packages/core/`       | The plugin loader, sessions, result sets, edits, history, the catalog cache               |
-| `packages/desktop/`    | The Electron app: `main/`, `preload/`, `engine/` and `renderer/`                          |
-| `packages/website/`    | The website: landing, download, changelog, and the guide as docs                          |
-| `plugins/<id>/`        | One datasource plugin each: MySQL, SQLite, PostgreSQL, Redis, Oracle, MSSQL, etcd, DuckDB |
-| `test/`                | Vitest suites, the database fixtures and the Playwright harness                           |
-| `docs/`                | The guide, the specification, the design system and the decisions                         |
+| Folder                 | Holds                                                                                            |
+| :--------------------- | :----------------------------------------------------------------------------------------------- |
+| `packages/plugin-api/` | The plugin contract: types, schemas, capabilities, the shared SQL kit                            |
+| `packages/core/`       | The plugin loader, sessions, result sets, edits, history, the catalog cache                      |
+| `packages/desktop/`    | The Electron app: `main/`, `preload/`, `engine/` and `renderer/`                                 |
+| `packages/website/`    | The website: landing, download, changelog, and the guide as docs                                 |
+| `plugins/<id>/`        | One datasource plugin each: MySQL, SQLite, PostgreSQL, Redis, Oracle, MSSQL, etcd, DuckDB, Kafka |
+| `test/`                | Vitest suites, the database fixtures and the Playwright harness                                  |
+| `docs/`                | The guide, the specification, the design system and the decisions                                |
 
 [AGENTS.md](AGENTS.md#layout) maps every folder in more detail.
 

@@ -361,7 +361,10 @@ width a token (`w-dialog`, `w-generator`, …), never a literal.
   inline with no X; Escape closes both.
 - The footer is `DialogFooter`: secondary actions that do something else (Test Connection, a
   destructive Clear…) start it on the left, then a spacer, then Cancel or Close, Apply where it
-  applies, and the primary button last, rightmost and filled. Enter submits a `Modal` form.
+  applies, and the primary button last, rightmost and filled. Enter submits a `Modal` form, except
+  in a dialog that previews what it will change before it applies it (Reset Offsets, Delete Records,
+  Produce Message): there Enter refreshes the preview, and only a click on the button that applies
+  it runs it.
 
 ## Settings dialog
 
