@@ -44,6 +44,28 @@ export function openRecentFromMenu(context: () => ActionContext): () => void {
 }
 
 /**
+ * Opens the files the OS asked TableCraft to open before the window was ready (plan 163); called
+ * once the layout is restored, so the file's tab is the active one beside the restored tabs.
+ */
+export async function openLaunchedFiles(context: () => ActionContext): Promise<void> {
+  let paths: readonly string[];
+  try {
+    paths = await unwrap(bridge().launchedSqlFiles());
+  } catch (cause) {
+    await noticeFailure("Could not open the files TableCraft was opened with", cause);
+    return;
+  }
+  if (paths.length > 0) await fileConsoles.open(paths, targetDatasource(context()));
+}
+
+/** Opens the files of each later Open With, double-click or second launch naming files. */
+export function openLaterLaunchedFiles(context: () => ActionContext): () => void {
+  return bridge().onOpenLaunchedFiles((paths) => {
+    void fileConsoles.open(paths, targetDatasource(context()));
+  });
+}
+
+/**
  * Keeps file consoles and their files in step (decision 089): autosaves as typing pauses, writes
  * what is pending when the window loses focus, and looks for changes made on disk when it gains it.
  */

@@ -55,6 +55,12 @@ the data source is disconnected.
 Open File… (`⌘O`) opens `.sql` files from disk, such as your project's migrations. Each file
 remembers its data source and schema, and File > Recent Files lists the last ten.
 
+TableCraft also opens `.sql` files from your system: **Open With** in Finder or Windows Explorer,
+your Linux file manager, or `TableCraft report.sql` in a terminal. The file opens as a file console
+in the running window, beside the tabs you left open, on its remembered data source or else the one
+in focus. TableCraft is offered as an alternative, never set as the default; choose it as the
+default yourself in your system's file settings.
+
 A file console saves as you type. Save (`⌘S`) or Save As… (`⇧⌘S`) writes a scratch console to a
 file. When another program changes the file, the console reloads it, or asks first if you have
 unsaved edits.

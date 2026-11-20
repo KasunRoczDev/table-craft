@@ -55,9 +55,37 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Finder lists TableCraft under Open With for .sql files without making it the default (plan 163,
+  # decision 168). Written here, not as fileAssociations: electron-builder's mac output has no
+  # LSItemContentTypes, and macOS matches .sql by its UTI, org.iso.sql.
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: SQL File
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - org.iso.sql
+        CFBundleTypeExtensions:
+          - sql
+    # macOS declares org.iso.sql itself; importing it keeps .sql files typed on a system that does not.
+    UTImportedTypeDeclarations:
+      - UTTypeIdentifier: org.iso.sql
+        UTTypeDescription: SQL File
+        UTTypeConformsTo:
+          - public.plain-text
+          - public.source-code
+        UTTypeTagSpecification:
+          public.filename-extension:
+            - sql
+          public.mime-type:
+            - application/sql
 
 win:
   target: nsis
+
+# build/installer.nsh lists TableCraft under Open with for .sql files (plan 163, decision 168).
+nsis:
+  include: build/installer.nsh
 
 linux:
   target: AppImage
@@ -65,3 +93,9 @@ linux:
   # Otherwise the binary is named after the package, `@table-craft/desktop`; Linux binaries are
   # lower case, so it is not `TableCraft` (decision 037).
   executableName: table-craft
+  # The desktop entry's MimeType: file managers offer TableCraft for .sql files. The AppImage does
+  # not register a default, so whatever opens .sql files today still does.
+  fileAssociations:
+    - ext: sql
+      name: SQL File
+      mimeType: application/sql

@@ -489,6 +489,7 @@ export function registerIpc<Sender>(ipc: InvokeRegistrar<Sender>, options: IpcOp
     return null;
   });
   handle(INVOKE_CHANNELS.recentSqlFiles, noRequest, () => sqlFiles.recent());
+  handle(INVOKE_CHANNELS.launchedSqlFiles, noRequest, () => sqlFiles.launched());
 
   const { settings } = options;
   handle(INVOKE_CHANNELS.readSnippets, noRequest, () => options.snippets.read());
