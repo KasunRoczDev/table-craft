@@ -8,6 +8,7 @@ import { KeyTasks } from "./tasks.js";
 import { maintenanceOperations } from "./maintenance.js";
 import { keyTransferOperations } from "./transfers.js";
 import { watchExportOperations } from "./watchExport.js";
+import { TopicTails } from "@table-craft/desktop/engine/topicTails.js";
 
 const MAX_SECRET_BYTES = 16_384;
 const secretChange = z.strictObject({
@@ -26,6 +27,7 @@ export function keyOperations(context: EngineContext) {
     watches,
     watchExport: watchExportOperations(watches, tasks, context.options.operationFiles),
     renewals: new KeyRenewals(scope),
+    topicTails: new TopicTails(scope),
     maintenance: maintenanceOperations(tasks, context.options.operationFiles),
     transfer: keyTransferOperations(scope, tasks, context.options.operationFiles),
   };

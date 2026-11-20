@@ -52,6 +52,7 @@ import type {
   ExecutedStatement,
   ExplainedStatement,
   OpenedKey,
+  OpenedTopic,
   ParameterValue,
   RequestOf,
   ResultEditable,
@@ -428,6 +429,45 @@ export function statementRunners(live: LiveContext) {
     }
   }
 
+  /** Reads a topic on the topic tab's session; its rows are held like a statement's (plan 164). */
+  async function openTopic(request: RequestOf<"topics.open">): Promise<OpenedTopic> {
+    const open = sessionFor(request.sessionId);
+    const readOnly = options.datasource.readOnly;
+    open.running += 1;
+    try {
+      const { value: opened } = await onLiveSession(
+        request.sessionId,
+        open,
+        request.timeoutSeconds ?? 0,
+        async (session) => {
+          const { result, scanned, matched, exhausted, resume, warnings } = await serviceOf(session, "topics").read(
+            request.request,
+          );
+          return {
+            read: { scanned, matched, exhausted, resume, warnings },
+            summary: await results.put(result, request),
+          };
+        },
+        (cause) => (cause instanceof EngineFailure ? cause : statementFailed(cause, readOnly)),
+        (late) => void results.release(late.summary.handle),
+      );
+      const { read, summary } = opened;
+      if (sessions.get(request.sessionId) !== open) {
+        await results.release(summary.handle);
+        sessionFor(request.sessionId);
+      }
+      handles.set(summary.handle, request.sessionId);
+      if (results.holdsCursor(summary.handle)) cursors.set(request.sessionId, summary.handle);
+      return {
+        read,
+        statement: { ...summary, firstWindow: results.window(summary.handle, 0), transactionOpen: false },
+      };
+    } finally {
+      open.running -= 1;
+      open.lastUsed = now();
+    }
+  }
+
   /** Whether a console result can be edited (decision 056); remembers an editable one for `edits.*`. */
   async function resultEditable(request: RequestOf<"result.editable">): Promise<ResultEditable> {
     const handle = ownedHandle(request.handle);
@@ -638,6 +678,7 @@ export function statementRunners(live: LiveContext) {
     explainStatement,
     queryTable,
     openKey,
+    openTopic,
     resultEditable,
     tableFor,
     editStatements,

@@ -15,6 +15,10 @@ import * as results from "@table-craft/desktop/engine/protocol/results.js";
 import * as sessions from "@table-craft/desktop/engine/protocol/sessions.js";
 import * as sql from "@table-craft/desktop/engine/protocol/sql.js";
 import * as server from "@table-craft/desktop/engine/protocol/server.js";
+import * as topics from "@table-craft/desktop/engine/protocol/topics.js";
+import * as groups from "@table-craft/desktop/engine/protocol/groups.js";
+import * as schemas from "@table-craft/desktop/engine/protocol/schemas.js";
+import * as streamCalls from "@table-craft/desktop/engine/protocol/streamCalls.js";
 import * as tables from "@table-craft/desktop/engine/protocol/tables.js";
 import * as transfer from "@table-craft/desktop/engine/protocol/transfer.js";
 import * as wire from "@table-craft/desktop/engine/protocol/wire.js";
@@ -29,16 +33,20 @@ const AREAS = {
   calls,
   catalog,
   datasource,
+  groups,
   inspection,
   keyspace,
   keyAdvanced,
   keyAdvancedCalls,
   objects,
   results,
+  schemas,
   server,
   sessions,
   sql,
+  streamCalls,
   tables,
+  topics,
   transfer,
   wire,
 };
@@ -175,6 +183,36 @@ const METHODS = [
   "sessions.list",
   "sessions.cancel",
   "sessions.terminate",
+  "topics.list",
+  "topics.describe",
+  "topics.open",
+  "topics.produce",
+  "topics.create",
+  "topics.alterConfigs",
+  "topics.addPartitions",
+  "topics.prepareDeleteRecords",
+  "topics.deleteRecords",
+  "topics.delete",
+  "topics.tailStart",
+  "topics.tailWindow",
+  "topics.tailStop",
+  "topics.tailClear",
+  "topics.tailList",
+  "groups.list",
+  "groups.describe",
+  "groups.consumersOf",
+  "groups.prepareReset",
+  "groups.applyReset",
+  "groups.deleteOffsets",
+  "groups.delete",
+  "schemas.status",
+  "schemas.subjects",
+  "schemas.versions",
+  "schemas.get",
+  "schemas.check",
+  "schemas.register",
+  "schemas.compatibility",
+  "schemas.delete",
 ] as const;
 
 async function lintProtocolModule(source: string): Promise<string[]> {

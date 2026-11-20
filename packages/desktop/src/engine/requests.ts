@@ -43,21 +43,18 @@ import {
 } from "@table-craft/desktop/engine/protocol.js";
 import {
   EXPORT_STALL_SECONDS_RANGE,
-  FETCH_ALL_CAP_RANGE,
   INDENT_WIDTH_RANGE,
   LINES_BETWEEN_STATEMENTS_RANGE,
-  PAGE_ROWS_RANGE,
-  STATEMENT_TIMEOUT_SECONDS_RANGE,
 } from "@table-craft/desktop/settings/settings.js";
+import { paging, requestId, sessionId, statementLimit } from "@table-craft/desktop/engine/requestParts.js";
+import { STREAM_REQUESTS } from "@table-craft/desktop/engine/streamRequests.js";
 
-const requestId = z.number().int().nonnegative();
 const DECIMAL_MAX_LENGTH = 20;
 const leaseId = z
   .string()
   .regex(/^-?[1-9][0-9]*$/)
   .max(DECIMAL_MAX_LENGTH);
 const handle = z.string().min(1);
-const sessionId = z.string().min(1);
 const namespacePath = z.array(z.string()).min(1);
 const index = z.number().int().nonnegative();
 const extractor = z.enum(EXTRACTOR_KINDS);
@@ -214,18 +211,6 @@ const importErrors = z.discriminatedUnion("mode", [
   z.strictObject({ mode: z.literal("stop") }),
   z.strictObject({ mode: z.literal("skip"), limit: z.number().int().nonnegative() }),
 ]);
-const paging = {
-  pageRows: z.number().int().min(PAGE_ROWS_RANGE.min).max(PAGE_ROWS_RANGE.max),
-  fetchAllCap: z.number().int().min(FETCH_ALL_CAP_RANGE.min).max(FETCH_ALL_CAP_RANGE.max),
-  limitInSql: z.boolean().optional(),
-};
-const timeoutSeconds = z
-  .number()
-  .int()
-  .min(STATEMENT_TIMEOUT_SECONDS_RANGE.min)
-  .max(STATEMENT_TIMEOUT_SECONDS_RANGE.max)
-  .optional();
-const statementLimit = { timeoutSeconds, serverEnforced: z.boolean().optional() };
 const cellInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("text"), text: z.string() }),
   z.strictObject({ kind: z.literal("null") }),
@@ -847,6 +832,7 @@ export const engineRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ id: requestId, type: z.literal("sessions.list") }),
   z.strictObject({ id: requestId, type: z.literal("sessions.cancel"), target: sessionTarget }),
   z.strictObject({ id: requestId, type: z.literal("sessions.terminate"), target: sessionTarget }),
+  ...STREAM_REQUESTS,
 ]) satisfies z.ZodType<EngineRequest>;
 
 const idOnly = z.object({ id: requestId });
