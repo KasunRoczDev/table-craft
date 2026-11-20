@@ -14,6 +14,7 @@ import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { useDatasources, type TreeSelection } from "@table-craft/desktop/renderer/state/datasources.js";
 import { useKeys } from "@table-craft/desktop/renderer/state/keys.js";
 import { useLayout } from "@table-craft/desktop/renderer/state/layout.js";
+import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 
 /** Names a relation to reveal, as Search Everywhere's Tables tab does. */
 export interface RevealArgs {
@@ -27,6 +28,7 @@ export interface RevealArgs {
 
 const canIntrospect = (context: ActionContext) => context.datasource?.capabilities.includes("schemaTree") === true;
 const browsesKeys = (context: ActionContext) => context.datasource?.capabilities.includes("keyValue") === true;
+const browsesStreams = (context: ActionContext) => context.datasource?.capabilities.includes("topics") === true;
 
 /**
  * What Synchronize reads again: the selected namespace when the selection is inside the target
@@ -127,9 +129,13 @@ export const EXPLORER_ACTIONS: readonly AnyAction[] = [
     category: "Database",
     icon: "synchronize",
     shortcut: "Mod+Alt+Y",
-    when: (context) => canIntrospect(context) || browsesKeys(context),
+    when: (context) => canIntrospect(context) || browsesKeys(context) || browsesStreams(context),
     run: async (context) => {
       if (context.datasource === null) return;
+      if (browsesStreams(context)) {
+        await useStreams.getState().synchronize(context.datasource.view.id);
+        return;
+      }
       if (browsesKeys(context)) {
         await useKeys.getState().synchronize(context.datasource.view.id);
         return;
@@ -170,7 +176,7 @@ export const EXPLORER_ACTIONS: readonly AnyAction[] = [
     run: async (context) => {
       const { selection } = context;
       if (selection?.kind !== "catalog" || selection.name === null) return;
-      if (browsesKeys(context)) {
+      if (browsesKeys(context) || browsesStreams(context)) {
         await writeClipboard(selection.name);
         return;
       }

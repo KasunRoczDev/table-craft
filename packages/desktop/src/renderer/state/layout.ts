@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import { EXTRACTOR_KINDS, type ExtractorKind } from "@table-craft/desktop/engine/protocol.js";
+import {
+  EXTRACTOR_KINDS,
+  MESSAGE_FORMATS,
+  type ExtractorKind,
+  type MessageFormat,
+} from "@table-craft/desktop/engine/protocol.js";
 import { VALUE_FORMATS, type ValueFormat } from "@table-craft/desktop/renderer/model/valueFormats.js";
 import type { EditorGroupId } from "@table-craft/desktop/renderer/state/tabs.js";
 
@@ -9,7 +14,7 @@ import type { EditorGroupId } from "@table-craft/desktop/renderer/state/tabs.js"
  */
 export const LAYOUT_STORAGE_KEY = "table-craft.layout.v1";
 
-export const TOOL_WINDOWS = ["database", "services", "log", "watch"] as const;
+export const TOOL_WINDOWS = ["database", "services", "log", "watch", "tail"] as const;
 export type ToolWindowId = (typeof TOOL_WINDOWS)[number];
 
 export interface Layout {
@@ -34,11 +39,24 @@ export interface Layout {
   readonly valuePanelWidthPx: number | null;
   /** The value panel's format per key pattern, such as `session:*` → gzip (plan 058 decision 15). */
   readonly valueFormats: Readonly<Record<string, ValueFormat>>;
+  /** A topic's key and value formats, by `topicFormatKey` (plan 164 decision 7). */
+  readonly messageFormats: Readonly<Record<string, MessageFormats>>;
   /** Percent of a console's height its SQL editor takes, the rest going to its results (plan 060). */
   readonly consoleEditor: number;
   readonly editorGroupWidth: number;
   /** Whether Settings › MCP Server shows the red data source warning; its (i) brings it back (plan 117). */
   readonly productionNote: boolean;
+}
+
+/** The decoders a topic's reads use. */
+export interface MessageFormats {
+  readonly key: MessageFormat;
+  readonly value: MessageFormat;
+}
+
+/** Where a topic's formats are remembered: per datasource, since two clusters can share a topic name. */
+export function topicFormatKey(datasourceId: string, topic: string): string {
+  return JSON.stringify([datasourceId, topic]);
 }
 
 /**
@@ -76,8 +94,8 @@ export const MIN_VALUE_PANEL_PX = 200;
 const MAX_VALUE_PANEL_PX = 2000;
 
 export const DEFAULT_LAYOUT: Layout = {
-  visible: { database: true, services: false, log: false, watch: false },
-  sizes: { database: 22, services: 28, log: 30, watch: 30 },
+  visible: { database: true, services: false, log: false, watch: false, tail: false },
+  sizes: { database: 22, services: 28, log: 30, watch: 30, tail: 30 },
   hidden: null,
   showSystemSchemas: false,
   showEmptyDatabases: false,
@@ -87,6 +105,7 @@ export const DEFAULT_LAYOUT: Layout = {
   valuePanel: false,
   valuePanelWidthPx: null,
   valueFormats: {},
+  messageFormats: {},
   consoleEditor: DEFAULT_CONSOLE_EDITOR_PERCENT,
   editorGroupWidth: DEFAULT_EDITOR_GROUP_WIDTH,
   productionNote: true,
@@ -168,6 +187,21 @@ function valueFormatsOf(value: unknown): Readonly<Record<string, ValueFormat>> {
   );
 }
 
+const isMessageFormat = (value: unknown): value is MessageFormat =>
+  (MESSAGE_FORMATS as readonly unknown[]).includes(value);
+
+function messageFormatsOf(value: unknown): Readonly<Record<string, MessageFormats>> {
+  if (typeof value !== "object" || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, MessageFormats] => {
+      const formats: unknown = entry[1];
+      if (typeof formats !== "object" || formats === null) return false;
+      const { key, value: decoded } = formats as Record<string, unknown>;
+      return isMessageFormat(key) && isMessageFormat(decoded);
+    }),
+  );
+}
+
 const clampedValuePanelPx = (widthPx: number) =>
   Math.round(Math.min(MAX_VALUE_PANEL_PX, Math.max(MIN_VALUE_PANEL_PX, widthPx)));
 
@@ -202,6 +236,7 @@ export function loadLayout(storage: Pick<Storage, "getItem">): Layout {
     valuePanel,
     valuePanelWidthPx,
     valueFormats,
+    messageFormats,
     consoleEditor,
     editorGroupWidth,
     productionNote,
@@ -221,6 +256,7 @@ export function loadLayout(storage: Pick<Storage, "getItem">): Layout {
     valuePanel: valuePanel === true,
     valuePanelWidthPx: valuePanelWidthOf(valuePanelWidthPx),
     valueFormats: valueFormatsOf(valueFormats),
+    messageFormats: messageFormatsOf(messageFormats),
     consoleEditor: isConsoleEditorSize(consoleEditor) ? consoleEditor : DEFAULT_CONSOLE_EDITOR_PERCENT,
     editorGroupWidth: isGroupSize(editorGroupWidth) ? editorGroupWidth : DEFAULT_EDITOR_GROUP_WIDTH,
     productionNote: productionNote !== false,
@@ -241,7 +277,7 @@ export function hiddenAll(layout: Layout): Layout {
   if (anyVisible)
     return {
       ...layout,
-      visible: { database: false, services: false, log: false, watch: false },
+      visible: { database: false, services: false, log: false, watch: false, tail: false },
       hidden: layout.visible,
     };
   if (layout.hidden !== null) return { ...layout, visible: layout.hidden, hidden: null };
@@ -287,6 +323,8 @@ export interface LayoutState {
   readonly resizeEditorGroups: (percent: number) => void;
   /** Remembers `format` for keys like `pattern`; Auto forgets it. */
   readonly setValueFormat: (pattern: string, format: ValueFormat) => void;
+  /** Remembers a topic's formats; Auto for both forgets them. */
+  readonly setMessageFormats: (key: string, formats: MessageFormats) => void;
 }
 
 /** A layout store over `storage`; the app passes `localStorage`, tests a map. */
@@ -331,6 +369,12 @@ export function createLayoutStore(storage: LayoutStorage) {
         const { [pattern]: current, ...rest } = get().layout.valueFormats;
         if ((current ?? "auto") === format) return;
         update({ ...get().layout, valueFormats: format === "auto" ? rest : { ...rest, [pattern]: format } });
+      },
+      setMessageFormats(key, formats) {
+        const { [key]: current, ...rest } = get().layout.messageFormats;
+        if ((current?.key ?? "auto") === formats.key && (current?.value ?? "auto") === formats.value) return;
+        const auto = formats.key === "auto" && formats.value === "auto";
+        update({ ...get().layout, messageFormats: auto ? rest : { ...rest, [key]: formats } });
       },
     };
   });

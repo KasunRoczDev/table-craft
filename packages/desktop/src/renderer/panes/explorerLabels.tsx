@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { GROUP_LABELS, type ExplorerNode, type ExplorerRow } from "@table-craft/desktop/renderer/model/explorerTree.js";
 import { keyIdentity, ROOT_KEY, ttlText } from "@table-craft/desktop/renderer/model/keyTree.js";
+import {
+  brokerDetail,
+  lagText,
+  STREAM_SECTION_LABELS,
+  subjectDetail,
+  topicDetail,
+} from "@table-craft/desktop/renderer/model/streamTree.js";
 import { KeyTreeContent, KeyTreeMetadata } from "@table-craft/desktop/renderer/panes/KeyTreeMetadata.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import { KeyTypeBadge, keyTypeLabel } from "@table-craft/desktop/renderer/ui/KeyTypeBadge.js";
@@ -22,6 +29,10 @@ import {
   TableIcon,
   ViewIcon,
   WarningIcon,
+  TopicIcon,
+  ConsumerGroupIcon,
+  BrokerIcon,
+  SubjectIcon,
 } from "@table-craft/desktop/renderer/ui/icons.js";
 
 const ICON_CLASS = "size-icon shrink-0";
@@ -137,6 +148,27 @@ export function NodeIcon({ node }: { readonly node: ExplorerNode }) {
       return <KeyFilterIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
     case "clusterNode":
       return <ServerNodeIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "streamSection": {
+      const Glyph =
+        node.section === "groups"
+          ? ConsumerGroupIcon
+          : node.section === "brokers"
+            ? BrokerIcon
+            : node.section === "subjects"
+              ? SubjectIcon
+              : FolderIcon;
+      return <Glyph aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    }
+    case "topicFolder":
+      return <FolderIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "topic":
+      return <TopicIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "consumerGroup":
+      return <ConsumerGroupIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "broker":
+      return <BrokerIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "subject":
+      return <SubjectIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
     default:
       return null;
   }
@@ -208,6 +240,38 @@ export function NodeDetail({ node }: { readonly node: ExplorerNode }) {
       ) : node.info === null ? null : (
         <Detail>{ttlText(node.info.ttlMs)}</Detail>
       );
+    case "streamSection":
+    case "topicFolder":
+      return <Detail>{node.count.toLocaleString("en-US")}</Detail>;
+    case "topic":
+      return <Detail>{topicDetail(node.topic)}</Detail>;
+    case "consumerGroup":
+      return (
+        <>
+          <Detail>{node.group.state}</Detail>
+          <span
+            data-testid="group-lag"
+            data-lagging={node.lagging || undefined}
+            className={cn(
+              "ml-auto flex shrink-0 items-center gap-1 pl-gap font-grid tabular-nums",
+              node.lagging ? "text-warning" : "text-ink-muted",
+            )}
+            title={node.group.lag === null ? "Nothing committed" : `${lagText(node.group.lag)} messages behind`}
+          >
+            {node.lagging ? (
+              <>
+                <WarningIcon aria-hidden weight="fill" className="size-3 shrink-0" />
+                <span className="font-ui">lagging</span>
+              </>
+            ) : null}
+            {lagText(node.group.lag)}
+          </span>
+        </>
+      );
+    case "broker":
+      return <Detail>{brokerDetail(node.broker)}</Detail>;
+    case "subject":
+      return <Detail>{subjectDetail(node.subject)}</Detail>;
     default:
       return null;
   }
@@ -217,6 +281,7 @@ export function NodeDetail({ node }: { readonly node: ExplorerNode }) {
 export function nodeText(row: ExplorerRow): string {
   const { node } = row;
   if (node.kind === "objectGroup" || node.kind === "relationGroup") return GROUP_LABELS[node.group];
+  if (node.kind === "streamSection") return STREAM_SECTION_LABELS[node.section];
   if (node.kind === "loading") return "loading…";
   return row.label;
 }
@@ -252,6 +317,17 @@ export function nodeAriaLabel(row: ExplorerRow): string {
       if (node.serverChildren === true)
         return `${text}, key${node.revision === undefined ? "" : `, version ${node.revision.version}${node.revision.lease === "0" ? "" : `, lease ${node.revision.lease}`}`}`;
       return node.info === null ? text : `${keyTypeLabel(node.info)} ${text}, ${ttlText(node.info.ttlMs)}`;
+    case "streamSection":
+    case "topicFolder":
+      return `${text} ${String(node.count)}`;
+    case "topic":
+      return `${node.topic.name}, topic, ${topicDetail(node.topic)}`;
+    case "consumerGroup":
+      return `${text}, consumer group, ${node.group.state}${node.group.lag === null ? "" : `, lag ${lagText(node.group.lag)}`}${node.lagging ? ", lagging" : ""}`;
+    case "broker":
+      return `Broker ${text}, ${brokerDetail(node.broker)}`;
+    case "subject":
+      return `${text}, subject, ${subjectDetail(node.subject)}`;
     default:
       return text;
   }
@@ -270,6 +346,7 @@ export function nodeTitle(node: ExplorerNode): string | undefined {
       ? `${node.prefix}${node.exactCount == null ? "" : ` · ${exactKeys(node.exactCount)}`}`
       : `${node.accessError.message} ${node.accessError.hint}`;
   if (node.kind === "keyEntry") return `${node.key.text}${node.key.hex === null ? "" : ` · Hex: ${node.key.hex}`}`;
+  if (node.kind === "topic") return `${node.topic.name} · ${topicDetail(node.topic)}, estimated`;
   return undefined;
 }
 

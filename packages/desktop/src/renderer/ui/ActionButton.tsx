@@ -56,6 +56,7 @@ export function ActionButton({
   hint,
   tone,
   icon,
+  testId,
 }: {
   readonly actionId: string;
   readonly primary?: boolean;
@@ -74,6 +75,7 @@ export function ActionButton({
   readonly tone?: ActionTone;
   /** Draws another glyph than the action's own, as the tab strip's New Console reads as `+`. */
   readonly icon?: ActionIcon;
+  readonly testId?: string;
 }) {
   const enabled = useActionEnabled(actionId);
   const busy = useDelayedFlag(useActionBusy(actionId), BUSY_SPINNER_DELAY_MS);
@@ -99,6 +101,7 @@ export function ActionButton({
         aria-expanded={expanded}
         aria-busy={busy ? true : undefined}
         data-copied={copied ? "" : undefined}
+        data-testid={testId}
         // A disabled button gets no pointer events, so Radix never opens; the native tooltip still does.
         title={!enabled && reason != null ? reason : undefined}
         className={cn("app-no-drag", buttonClass(primary, compact, tone))}

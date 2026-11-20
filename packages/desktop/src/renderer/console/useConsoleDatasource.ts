@@ -8,6 +8,9 @@ import { useKeyTabs } from "@table-craft/desktop/renderer/state/keyTabs.js";
 import { useServer } from "@table-craft/desktop/renderer/state/server.js";
 import { useSessions } from "@table-craft/desktop/renderer/state/sessions.js";
 import { useTables } from "@table-craft/desktop/renderer/state/tables.js";
+import { useTopicTabs } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { useGroupTabs } from "@table-craft/desktop/renderer/state/groupTabs.js";
+import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
 
 /** The datasource a console, table, DDL, diagram or Sessions tab works on; undefined once it is deleted, until its tab closes. */
 export function useConsoleDatasource(tabId: string): DatasourceView | undefined {
@@ -19,6 +22,9 @@ export function useConsoleDatasource(tabId: string): DatasourceView | undefined 
   const serverDatasource = useServer((state) => state.tabs[tabId]?.datasourceId);
   const adminDatasource = useKeyAdmin((state) => state.tabs[tabId]?.datasourceId);
   const diagramDatasource = useDiagrams((state) => state.tabs[tabId]?.datasourceId);
+  const topicDatasource = useTopicTabs((state) => state.tabs[tabId]?.datasourceId);
+  const groupDatasource = useGroupTabs((state) => state.tabs[tabId]?.datasourceId);
+  const subjectDatasource = useSubjectTabs((state) => state.tabs[tabId]?.datasourceId);
   return useDatasources((state) =>
     datasourceById(
       state,
@@ -29,7 +35,10 @@ export function useConsoleDatasource(tabId: string): DatasourceView | undefined 
         keyDatasource ??
         serverDatasource ??
         adminDatasource ??
-        diagramDatasource,
+        diagramDatasource ??
+        topicDatasource ??
+        groupDatasource ??
+        subjectDatasource,
     ),
   );
 }

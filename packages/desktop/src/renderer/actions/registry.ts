@@ -10,6 +10,7 @@ export type ActionCategory =
   | "Result Grid"
   | "Table Editor"
   | "Key Editor"
+  | "Streams"
   | "Database"
   | "Editor Tabs"
   | "Tool Windows"
@@ -100,7 +101,11 @@ export type ActionIcon =
   | "tables"
   | "exportSvg"
   | "exportPng"
-  | "chart";
+  | "chart"
+  | "topic"
+  | "group"
+  | "produce"
+  | "tail";
 
 export interface Action<A = void> {
   readonly id: string;

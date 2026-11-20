@@ -35,11 +35,16 @@ import {
 } from "@table-craft/desktop/renderer/panes/menuEntries.js";
 import { KEY_ACTION_IDS, type KeyDatabaseArgs } from "@table-craft/desktop/renderer/actions/keyActions.js";
 import { KEY_EDIT_ACTION_IDS, type KeyChildrenArgs } from "@table-craft/desktop/renderer/actions/keyEditActions.js";
+import {
+  activateStreamRow,
+  streamMenuOf,
+  streamRowAttributes,
+} from "@table-craft/desktop/renderer/panes/streamRows.js";
+import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { invoke, registry, subscribeToActions, useActionEnabled } from "@table-craft/desktop/renderer/actions/index.js";
 import { ROUTINE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/routineActions.js";
 import { SERVER_ACTION_IDS } from "@table-craft/desktop/renderer/actions/serverActions.js";
 import { SESSIONS_ACTION_IDS } from "@table-craft/desktop/renderer/actions/sessionsActions.js";
-import { SETTINGS_ACTION_IDS } from "@table-craft/desktop/renderer/actions/settingsActions.js";
 import { TABLE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/tableActions.js";
 import type { OpenTableArgs } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 import { buildTree } from "@table-craft/desktop/renderer/model/datasourceTree.js";
@@ -93,7 +98,8 @@ import {
 } from "@table-craft/desktop/renderer/state/datasources.js";
 import { useLayout } from "@table-craft/desktop/renderer/state/layout.js";
 import { ICON_BUTTON_ROW_INSET } from "@table-craft/desktop/renderer/shell/islands.js";
-import { themeOf, useIslands, useRowHeightPx, useSettings } from "@table-craft/desktop/renderer/state/settings.js";
+import { useIslands, useRowHeightPx } from "@table-craft/desktop/renderer/state/settings.js";
+import { LoadWarning, SettingsNotice } from "@table-craft/desktop/renderer/panes/DatabaseNotices.js";
 import { DatasourceGlyph, useBrandLogo, useDatasourceBrand } from "@table-craft/desktop/renderer/ui/brandIcons.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import { isRunningOn, useConsoles } from "@table-craft/desktop/renderer/state/consoles.js";
@@ -115,7 +121,6 @@ import {
   ExpandedIcon,
   FolderIcon,
   ReadOnlyIcon,
-  WarningIcon,
 } from "@table-craft/desktop/renderer/ui/icons.js";
 import { TINT_SWATCH } from "@table-craft/desktop/renderer/ui/tint.js";
 import { AgentAccessBadge } from "@table-craft/desktop/renderer/ui/AgentAccessBadge.js";
@@ -219,6 +224,13 @@ const COLUMN_MENU = [
   null,
   ACTION_IDS.toggleSystemSchemas,
 ] as const;
+/** What lets a datasource's node expand: a catalog, keys (decision 113) or topics (decision 169). */
+const TREE_CAPABILITIES = ["schemaTree", "keyValue", "topics"] as const;
+/**
+ * A row spans the widest row, so the browser's focus scroll would centre it sideways and hide every
+ * name's start; the virtualizer brings the row into view instead.
+ */
+const ROW_FOCUS: FocusOptions = { preventScroll: true };
 const DOT_CLASS = {
   disconnected: null,
   connecting: "bg-ink-muted animate-pulse",
@@ -343,6 +355,8 @@ function menuOf(node: ExplorerNode): readonly MenuEntry[] {
   if (node.kind === "column") return COLUMN_MENU;
   if (node.kind === "routine") return ROUTINE_MENU;
   if (node.kind === "keyEntry") return KEY_MENU;
+  const stream = streamMenuOf(node);
+  if (stream !== null) return stream;
   if (KEY_TREE_KINDS.has(node.kind)) return [KEY_EDIT_ACTION_IDS.refreshFolder, ...KEYSPACE_MENU];
   if (node.kind === "namespace" || node.kind === "objectGroup") return NAMESPACE_MENU;
   return CATALOG_MENU;
@@ -507,6 +521,7 @@ function TreeRow({
           data-drop={dropInto ? "into" : undefined}
           data-state={connection?.status ?? (failedNamespace ? "failed" : undefined)}
           data-kind={node.kind}
+          {...streamRowAttributes(node)}
           style={{
             paddingLeft:
               node.kind === "keyFilter" && node.serverChildren === true
@@ -590,59 +605,6 @@ function EmptyState() {
   );
 }
 
-function LoadWarning() {
-  const warning = useDatasources((state) => state.warning);
-  const dismiss = useDatasources((state) => state.dismissWarning);
-  if (warning === null) return null;
-  return (
-    <div
-      role="alert"
-      className="mx-pane-inset mb-gap flex items-start gap-cell rounded border border-danger p-cell text-ink"
-    >
-      <WarningIcon aria-hidden weight="fill" className="mt-0.5 size-icon shrink-0 text-danger" />
-      <span className="min-w-0 flex-1">{warning}</span>
-      <button type="button" className="text-ink-muted hover:text-ink" onClick={dismiss}>
-        Dismiss
-      </button>
-    </div>
-  );
-}
-
-/** Why settings.json was set aside, a save failed, or the chosen theme could not be used. */
-function SettingsNotice() {
-  const notice = useSettings((state) => state.notice);
-  const themeNotice = useSettings((state) => themeOf(state).notice);
-  const dismiss = useSettings((state) => state.dismissNotice);
-  if (notice === null && themeNotice === null) return null;
-  return (
-    <div
-      role="alert"
-      data-testid="settings-notice"
-      className="mx-pane-inset mb-gap flex items-start gap-cell rounded border border-warning p-cell text-ink"
-    >
-      <WarningIcon aria-hidden weight="fill" className="mt-0.5 size-icon shrink-0 text-warning" />
-      <span className="flex min-w-0 flex-1 flex-col gap-1 break-words">
-        {notice === null ? null : <span>{notice}</span>}
-        {themeNotice === null ? null : <span>{themeNotice}</span>}
-        <span className="flex justify-end gap-gap">
-          <button
-            type="button"
-            className="text-ink-muted hover:text-ink"
-            onClick={() => invoke(SETTINGS_ACTION_IDS.show)}
-          >
-            Settings…
-          </button>
-          {notice === null ? null : (
-            <button type="button" className="text-ink-muted hover:text-ink" onClick={dismiss}>
-              Dismiss
-            </button>
-          )}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 /** The index of the row's parent: the nearest row above it one level up. */
 function parentIndex(rows: readonly ExplorerRow[], index: number): number {
   const depth = rows[index]?.depth ?? 0;
@@ -682,6 +644,7 @@ export function DatabasePane() {
   const showSystem = useLayout((state) => state.layout.showSystemSchemas);
   const showEmptyDatabases = useLayout((state) => state.layout.showEmptyDatabases);
   const keyspaces = useKeys((state) => state.keyspaces);
+  const streams = useStreams((state) => state.streams);
   const elements = useRef(new Map<string, HTMLLIElement>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef<string | null>(null);
@@ -698,13 +661,15 @@ export function DatabasePane() {
         showSystem,
         canExpand: (datasource) => {
           const capabilities = capabilitiesOf(plugins, datasource.pluginId);
-          return capabilities.includes("schemaTree") || capabilities.includes("keyValue");
+          return TREE_CAPABILITIES.some((capability) => capabilities.includes(capability));
         },
         keyspaces,
         browsesKeys: (datasource) => capabilitiesOf(plugins, datasource.pluginId).includes("keyValue"),
         showEmptyDatabases,
+        streams,
+        browsesStreams: (datasource) => capabilitiesOf(plugins, datasource.pluginId).includes("topics"),
       }),
-    [tree, catalogs, expanded, collapsedFolders, showSystem, plugins, keyspaces, showEmptyDatabases],
+    [tree, catalogs, expanded, collapsedFolders, showSystem, plugins, keyspaces, showEmptyDatabases, streams],
   );
   const matches = useMemo(
     () =>
@@ -815,7 +780,7 @@ export function DatabasePane() {
     if (element === undefined) return;
     pendingFocus.current = null;
     // After the palette or a menu closes and restores focus, so this focus is the one that stays.
-    requestAnimationFrame(() => element.focus());
+    requestAnimationFrame(() => element.focus(ROW_FOCUS));
   });
 
   function selectIndex(index: number, gesture: SelectGesture = "click"): void {
@@ -830,7 +795,7 @@ export function DatabasePane() {
   function selectRow(row: ExplorerRow, keepFocus = false, gesture: SelectGesture = "click"): void {
     if (rowSelection(row) === null) return;
     setTreeSelection(nextSelection(treeSelectionOf(useDatasources.getState()), rows, rows.indexOf(row), gesture));
-    if (!keepFocus) elements.current.get(row.key)?.focus();
+    if (!keepFocus) elements.current.get(row.key)?.focus(ROW_FOCUS);
   }
 
   function gestureOf(event: MouseEvent<HTMLLIElement>): SelectGesture {
@@ -871,7 +836,9 @@ export function DatabasePane() {
       return;
     }
     if (node.kind === "folder") catalog.toggleFolder(node.path);
-    else if (node.kind === "datasource" && capabilitiesOf(plugins, node.datasource.pluginId).includes("keyValue")) {
+    else if (node.kind === "datasource" && capabilitiesOf(plugins, node.datasource.pluginId).includes("topics")) {
+      void useStreams.getState().expandDatasource(node.datasource.id);
+    } else if (node.kind === "datasource" && capabilitiesOf(plugins, node.datasource.pluginId).includes("keyValue")) {
       void useKeys.getState().expandDatasource(node.datasource.id);
     } else if (node.kind === "datasource") void catalog.expandDatasource(node.datasource.id);
     else if (node.kind === "keyDatabase") void useKeys.getState().expandDatabase(node.datasourceId, node.database);
@@ -889,6 +856,8 @@ export function DatabasePane() {
     else if (node.kind === "relation") {
       const args: OpenTableArgs = { datasourceId: node.datasourceId, path: node.path, relation: node.relation.name };
       invoke(TABLE_ACTION_IDS.openData, args);
+    } else if (activateStreamRow(node)) {
+      return;
     } else if (node.kind === "keyEntry") {
       const args: OpenKeyArgs = { datasourceId: node.datasourceId, database: node.database, key: node.key };
       invoke(KEY_ACTION_IDS.open, args);

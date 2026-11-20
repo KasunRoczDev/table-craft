@@ -106,6 +106,11 @@ import {
   TextIndent,
   X,
   Keyboard,
+  TextAlignLeft,
+  UsersThree,
+  BracketsSquare,
+  Broadcast,
+  PaperPlaneTilt,
   type Icon,
 } from "@phosphor-icons/react";
 import type { ActionIcon } from "@table-craft/desktop/renderer/actions/registry.js";
@@ -174,6 +179,11 @@ export {
   Robot as AgentIcon,
   Graph as DiagramIcon,
   ArrowSquareOut as ExternalTableIcon,
+  TextAlignLeft as TopicIcon,
+  UsersThree as ConsumerGroupIcon,
+  HardDrives as BrokerIcon,
+  BracketsSquare as SubjectIcon,
+  Broadcast as TailIcon,
 };
 
 /** The header's type glyph per column class (plan 007 decision 7); temporal reads as a date. */
@@ -270,4 +280,8 @@ export const ACTION_ICONS: Readonly<Record<ActionIcon, Icon>> = {
   tables: ListChecks,
   exportSvg: FileSvg,
   exportPng: FilePng,
+  topic: TextAlignLeft,
+  group: UsersThree,
+  produce: PaperPlaneTilt,
+  tail: Broadcast,
 };
