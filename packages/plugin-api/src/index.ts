@@ -1,4 +1,7 @@
+export * from "./groups.js";
 export * from "./keyAdvanced.js";
+export * from "./schemaRegistry.js";
+export * from "./topics.js";
 export {
   byName,
   type ColumnMeta,

@@ -23,7 +23,7 @@
     {
       "key": "CAPABILITIES",
       "kind": "addition",
-      "reason": "Adds the opt-in revisions, watch, leases, access, members, maintenance, coordination and bulkTransfer capabilities after the existing set, including serverTimeout, and rowLimit after savepoints. Existing plugins never declare them; the host only calls the matching optional services when declared (decisions 129, 136, 162)."
+      "reason": "Adds the opt-in revisions, watch, leases, access, members, maintenance, coordination and bulkTransfer capabilities after the existing set, including serverTimeout, and rowLimit after savepoints. Existing plugins never declare them; the host only calls the matching optional services when declared (decisions 129, 136, 162), and topics, consumerGroups and schemaRegistry after rowLimit (plan 164)."
     },
     {
       "key": "PLUGIN_ERROR_CODES",
@@ -43,7 +43,7 @@
     {
       "key": "pluginManifestSchema",
       "kind": "addition",
-      "reason": "Widens through CAPABILITIES (rowLimit, which requires sql), visibleWhen (and its list of values), hint and sets above; every manifest valid before still parses the same."
+      "reason": "Widens through CAPABILITIES (rowLimit, which requires sql; topics, consumerGroups and schemaRegistry, which require commands, topics excluding schemaTree and keyValue), visibleWhen (and its list of values), hint and sets above; every manifest valid before still parses the same."
     },
     {
       "key": "NamespaceStatementForm",
@@ -109,6 +109,21 @@
       "key": "LanguageServices.rowLimit",
       "kind": "addition",
       "reason": "A language holds Partial<LanguageServices> and a plugin's PluginLanguage<C> picks only the declared keys, so rowLimit is required of a plugin only when it declares the new rowLimit capability; the host reads it only through that check (decision 162)."
+    },
+    {
+      "key": "SessionServices.topics",
+      "kind": "addition",
+      "reason": "A session holds only the services of the capabilities its plugin declares (PluginSession picks them, decision 155); no plugin built for 2.2.0 declares the new opt-in capability, so none must provide it, and the host reaches it only through a declared-capability check (plan 164)."
+    },
+    {
+      "key": "SessionServices.consumerGroups",
+      "kind": "addition",
+      "reason": "A session holds only the services of the capabilities its plugin declares (PluginSession picks them, decision 155); no plugin built for 2.2.0 declares the new opt-in capability, so none must provide it, and the host reaches it only through a declared-capability check (plan 164)."
+    },
+    {
+      "key": "SessionServices.schemaRegistry",
+      "kind": "addition",
+      "reason": "A session holds only the services of the capabilities its plugin declares (PluginSession picks them, decision 155); no plugin built for 2.2.0 declares the new opt-in capability, so none must provide it, and the host reaches it only through a declared-capability check (plan 164)."
     }
   ]
 }
