@@ -1,5 +1,5 @@
 import type { SearchTarget } from "@table-craft/plugin-api";
-import { isForbidden, type ElasticClient } from "./client.js";
+import { isForbidden, requestJson, type ElasticTransport } from "./client.js";
 import type { Dialect } from "./dialect.js";
 import { nameMatcher } from "./glob.js";
 
@@ -48,20 +48,20 @@ function compareNames(a: string, b: string): number {
  * A listing the user may not read is left out, not failed.
  */
 export async function listTargets(
-  client: ElasticClient,
+  transport: ElasticTransport,
   dialect: Dialect,
   filter: string,
   signal?: AbortSignal,
 ): Promise<SearchTarget[]> {
   const wildcards = dialect.catExpandWildcards ? ALL_WILDCARDS : "";
   const [indices, aliases, streams] = await Promise.all([
-    client.json<CatIndex[]>("GET", `${CAT_INDICES}${wildcards}`, { signal }),
-    client.json<CatAlias[]>("GET", `${CAT_ALIASES}${wildcards}`, { signal }).catch((error: unknown) => {
+    requestJson<CatIndex[]>(transport, "GET", `${CAT_INDICES}${wildcards}`, { signal }),
+    requestJson<CatAlias[]>(transport, "GET", `${CAT_ALIASES}${wildcards}`, { signal }).catch((error: unknown) => {
       if (isForbidden(error)) return [];
       throw error;
     }),
     dialect.dataStreams
-      ? client.json<DataStreamList>("GET", DATA_STREAMS, { signal }).catch(() => ({ data_streams: [] }))
+      ? requestJson<DataStreamList>(transport, "GET", DATA_STREAMS, { signal }).catch(() => ({ data_streams: [] }))
       : Promise.resolve({ data_streams: [] }),
   ]);
   const matches = nameMatcher(filter);

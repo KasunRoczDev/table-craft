@@ -1,5 +1,5 @@
 import type { ServerInfo, ServerInfoSection, ServerNode } from "@table-craft/plugin-api";
-import { isForbidden, type ElasticClient } from "./client.js";
+import { isForbidden, requestJson, type ElasticTransport } from "./client.js";
 import { productName, type Dialect } from "./dialect.js";
 
 interface CatNode {
@@ -24,13 +24,13 @@ function text(value: unknown): string {
 }
 
 /** Every node, the elected master first; a user who may not read them sees only the address it dialled. */
-export async function nodeList(client: ElasticClient): Promise<ServerNode[]> {
+export async function nodeList(transport: ElasticTransport): Promise<ServerNode[]> {
   let rows: CatNode[];
   try {
-    rows = await client.json<CatNode[]>("GET", CAT_NODES);
+    rows = await requestJson<CatNode[]>(transport, "GET", CAT_NODES);
   } catch (error) {
     if (!isForbidden(error)) throw error;
-    const address = new URL(client.baseUrl).host;
+    const address = transport.address;
     return [{ id: address, address, role: "primary", slots: [], primaryId: null, state: "unknown" }];
   }
   const nodes = rows.map((row): ServerNode => ({
@@ -57,7 +57,11 @@ interface Health {
 }
 
 /** The cluster's health and, for one node, its figures from `_cat/nodes`. */
-export async function serverInfo(client: ElasticClient, dialect: Dialect, node: string | null): Promise<ServerInfo> {
+export async function serverInfo(
+  transport: ElasticTransport,
+  dialect: Dialect,
+  node: string | null,
+): Promise<ServerInfo> {
   const sections: ServerInfoSection[] = [
     {
       title: "Server",
@@ -67,7 +71,7 @@ export async function serverInfo(client: ElasticClient, dialect: Dialect, node: 
       ],
     },
   ];
-  const health = await client.json<Health>("GET", "/_cluster/health").catch((error: unknown) => {
+  const health = await requestJson<Health>(transport, "GET", "/_cluster/health").catch((error: unknown) => {
     if (isForbidden(error)) return null;
     throw error;
   });
@@ -80,7 +84,7 @@ export async function serverInfo(client: ElasticClient, dialect: Dialect, node: 
     });
   }
   if (node !== null) {
-    const rows = await client.json<CatNode[]>("GET", CAT_NODES).catch(() => []);
+    const rows = await requestJson<CatNode[]>(transport, "GET", CAT_NODES).catch(() => []);
     const row = rows.find((candidate) => text(candidate.id) === node);
     if (row !== undefined) {
       sections.push({
@@ -93,7 +97,7 @@ export async function serverInfo(client: ElasticClient, dialect: Dialect, node: 
 }
 
 /** `green`, `yellow` or `red`; null when the user may not read the cluster's health. */
-export async function clusterHealth(client: ElasticClient): Promise<string | null> {
-  const health = await client.json<Health>("GET", "/_cluster/health").catch(() => null);
+export async function clusterHealth(transport: ElasticTransport): Promise<string | null> {
+  const health = await requestJson<Health>(transport, "GET", "/_cluster/health").catch(() => null);
   return typeof health?.status === "string" ? health.status : null;
 }

@@ -7,7 +7,7 @@ import {
   type ParameterValue,
   type PluginSession,
 } from "@table-craft/plugin-api";
-import { isNetworkError, type ElasticClient } from "./client.js";
+import { isNetworkError, type ElasticTransport } from "./client.js";
 import type { ElasticConfig } from "./config.js";
 import { openConnection, type Connection } from "./connect.js";
 import { runRequest } from "./console.js";
@@ -41,7 +41,7 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
     this.#readOnly = options.readOnly;
     this.serverVersion = connection.dialect.versionText;
     this.serverBrand = connection.dialect.distribution;
-    this.#indices = new ElasticIndices(connection.client, connection.dialect, config.indexFilter, (work) =>
+    this.#indices = new ElasticIndices(connection.transport, connection.dialect, config.indexFilter, (work) =>
       this.#tracked(work),
     );
     this.services = {
@@ -58,7 +58,12 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
   }
 
   static async open(config: ElasticConfig, options: ConnectOptions): Promise<ElasticSession> {
-    return new ElasticSession(await openConnection(config, options), config, options);
+    return ElasticSession.attach(await openConnection(config, options), config, options);
+  }
+
+  /** A session over a connection opened elsewhere, such as through another transport. */
+  static attach(connection: Connection, config: ElasticConfig, options: ConnectOptions): ElasticSession {
+    return new ElasticSession(connection, config, options);
   }
 
   /** The cluster's name, null when the user may not read it. */
@@ -71,14 +76,14 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
     _params?: readonly ParameterValue[],
     _options?: ExecuteOptions,
   ): Promise<ExecuteResult> {
-    const client = this.#checked();
+    const transport = this.#checked();
     if (this.#busy) throw new PluginError("sessionBusy", BUSY_MESSAGE);
     this.#busy = true;
     const controller = new AbortController();
     this.#running.add(controller);
     try {
       return await runRequest(
-        { client, dialect: this.#connection.dialect, readOnly: this.#readOnly, signal: controller.signal },
+        { transport, dialect: this.#connection.dialect, readOnly: this.#readOnly, signal: controller.signal },
         command.trim(),
       );
     } finally {
@@ -113,9 +118,9 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
   }
 
   async #ping(): Promise<void> {
-    const client = this.#checked();
+    const transport = this.#checked();
     try {
-      await client.request("HEAD", "/", { accept: [403] });
+      await transport.request("HEAD", "/", { accept: [403] });
     } catch (cause) {
       if (cause instanceof PluginError) throw cause;
       throw new PluginError(isNetworkError(cause) ? "connectionLost" : "statementFailed", String(cause), { cause });
@@ -127,11 +132,11 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
     this.#closed = true;
     await this.#cancel();
     await this.#indices.close();
-    this.#connection.client.close();
+    this.#connection.transport.close();
   }
 
-  #checked(): ElasticClient {
+  #checked(): ElasticTransport {
     if (this.#closed) throw new PluginError("connectionLost", CLOSED_MESSAGE);
-    return this.#connection.client;
+    return this.#connection.transport;
   }
 }

@@ -2,12 +2,19 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isPluginError } from "@table-craft/plugin-api";
-import { ElasticClient, hasDotSegment, isForbidden, isReplyTooLarge } from "@table-craft/plugin-elasticsearch/client";
+import {
+  ElasticClient,
+  hasDotSegment,
+  isForbidden,
+  isReplyTooLarge,
+  isTimedOut,
+} from "@table-craft/plugin-elasticsearch/client";
 
 const AUTHORIZATION = "Basic dGVzdDp0ZXN0";
 const LARGE = "x".repeat(4096);
 const CHUNKS = 16;
 const SMALL_LIMIT = 1024;
+const SHORT_TIMEOUT_MS = 200;
 const seen: { path: string; authorization: string | undefined }[] = [];
 let server: Server;
 let client: ElasticClient;
@@ -39,6 +46,7 @@ beforeAll(async () => {
   server = createServer((request, response) => {
     const path = request.url ?? "";
     seen.push({ path, authorization: request.headers.authorization });
+    if (path.startsWith("/silent")) return;
     if (path.startsWith("/chunked")) {
       response.writeHead(200, { "Content-Type": "application/json" });
       for (let chunk = 0; chunk < CHUNKS; chunk += 1) response.write(LARGE);
@@ -133,5 +141,28 @@ describe("elasticsearch client", () => {
     controller.abort();
     const error = await failure(client.request("GET", "/", { signal: controller.signal }));
     expect(isPluginError(error) && error.code === "cancelled").toBe(true);
+  });
+
+  it("givenServerThatNeverAnswers_whenRequested_thenTimedOutWithAdvice", async () => {
+    const { port } = server.address() as AddressInfo;
+    const impatient = new ElasticClient({
+      baseUrl: `http://127.0.0.1:${String(port)}`,
+      authorization: null,
+      tls: null,
+      requestTimeoutMs: SHORT_TIMEOUT_MS,
+      connectTimeoutMs: SHORT_TIMEOUT_MS,
+    });
+    try {
+      const error = await failure(impatient.request("GET", "/silent"));
+      expect(isTimedOut(error)).toBe(true);
+      expect(String((error as Error).message)).toContain("raise the request timeout");
+    } finally {
+      impatient.close();
+    }
+  });
+
+  it("givenClient_whenAddressRead_thenItsHostAndPort", () => {
+    const { port } = server.address() as AddressInfo;
+    expect(client.address).toBe(`127.0.0.1:${String(port)}`);
   });
 });

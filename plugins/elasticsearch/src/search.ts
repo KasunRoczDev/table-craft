@@ -15,7 +15,7 @@ import {
   type SearchTargetDescription,
   type SearchTotal,
 } from "@table-craft/plugin-api";
-import { isForbidden, isReplyTooLarge, type ElasticClient } from "./client.js";
+import { isForbidden, isReplyTooLarge, requestJson, type ElasticTransport } from "./client.js";
 import { SEARCH_KEPT_BYTES, rowBytes } from "./limits.js";
 import { SCROLL_KEEP_ALIVE, type Dialect } from "./dialect.js";
 import { defaultFields, hitColumns, hitRow, type Hit, type HitColumns } from "./hits.js";
@@ -47,6 +47,14 @@ const MAPPING_SAMPLE = 4;
 const PAGE_SHRINK = 10;
 /** The span a histogram covers when its range has no start. */
 const OPEN_RANGE_MS = 24 * 60 * 60 * 1000;
+const HTTP_NOT_FOUND = 404;
+
+/**
+ * Sent in the body of every search, count and histogram, so a search the user abandoned, or whose
+ * reply a gateway dropped, stops on the shards instead of running on. A search past it answers
+ * with what it found and `timed_out: true`.
+ */
+export const SEARCH_TIMEOUT = "30s";
 
 function int(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -130,7 +138,7 @@ interface MappingOf {
  * lets the result go.
  */
 export class ElasticIndices implements IndexBrowser {
-  readonly #client: ElasticClient;
+  readonly #transport: ElasticTransport;
   readonly #dialect: Dialect;
   readonly #filter: string;
   readonly #track: TrackRequest;
@@ -138,13 +146,13 @@ export class ElasticIndices implements IndexBrowser {
   readonly #scrolls = new Set<string>();
 
   constructor(
-    client: ElasticClient,
+    transport: ElasticTransport,
     dialect: Dialect,
     filter: string,
     track: TrackRequest = UNTRACKED,
     keptBytes: number = SEARCH_KEPT_BYTES,
   ) {
-    this.#client = client;
+    this.#transport = transport;
     this.#dialect = dialect;
     this.#filter = filter;
     this.#track = track;
@@ -152,13 +160,14 @@ export class ElasticIndices implements IndexBrowser {
   }
 
   list(): Promise<readonly SearchTarget[]> {
-    return this.#track((signal) => listTargets(this.#client, this.#dialect, this.#filter, signal));
+    return this.#track((signal) => listTargets(this.#transport, this.#dialect, this.#filter, signal));
   }
 
   /** The indices behind a target, sorted, or null when `_cat` is not allowed. */
   async #indexNames(target: string, signal: AbortSignal): Promise<string[] | null> {
     try {
-      const rows = await this.#client.json<readonly { index?: unknown }[]>(
+      const rows = await requestJson<readonly { index?: unknown }[]>(
+        this.#transport,
         "GET",
         `/_cat/indices/${encoded(target)}?format=json&h=index`,
         { signal },
@@ -182,7 +191,7 @@ export class ElasticIndices implements IndexBrowser {
     const names = await this.#indexNames(target, signal);
     const sampled = names !== null && names.length > MAPPING_SAMPLE ? names.slice(-MAPPING_SAMPLE) : null;
     const read = sampled === null ? encoded(target) : sampled.map((name) => encodeURIComponent(name)).join(",");
-    const reply = await this.#client.json<Record<string, unknown>>("GET", `/${read}/_mapping`, { signal });
+    const reply = await requestJson<Record<string, unknown>>(this.#transport, "GET", `/${read}/_mapping`, { signal });
     const { fields, mappingType } = parseMapping(reply, this.#dialect.mappingTypes);
     const indices = names !== null && names.length > 0 ? names : Object.keys(reply).sort();
     return { reply, fields, mappingType, indices, read, sampled: sampled !== null };
@@ -197,13 +206,13 @@ export class ElasticIndices implements IndexBrowser {
           `The mapping and settings shown are those of the last ${String(MAPPING_SAMPLE)} of ${indices.length.toLocaleString("en-US")} indices by name, the newest of a rollover family.`,
         );
       }
-      const settingsReply = await this.#client
-        .json<Record<string, unknown>>("GET", `/${read}/_settings`, { signal })
-        .catch((error: unknown) => {
-          if (!isForbidden(error)) throw error;
-          warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
-          return null;
-        });
+      const settingsReply = await requestJson<Record<string, unknown>>(this.#transport, "GET", `/${read}/_settings`, {
+        signal,
+      }).catch((error: unknown) => {
+        if (!isForbidden(error)) throw error;
+        warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      });
       const kind = indices.length === 1 && indices[0] === target ? "index" : "alias";
       return {
         name: target,
@@ -237,9 +246,10 @@ export class ElasticIndices implements IndexBrowser {
     let body: Record<string, unknown> = {};
     let first: SearchReply | null = null;
     while (first === null) {
-      body = { query, size, ...(sort.length === 0 ? {} : { sort }) };
+      body = { query, size, timeout: SEARCH_TIMEOUT, ...(sort.length === 0 ? {} : { sort }) };
       try {
-        first = await this.#client.json<SearchReply>(
+        first = await requestJson<SearchReply>(
+          this.#transport,
           "POST",
           `/${encoded(request.target)}/_search?scroll=${SCROLL_KEEP_ALIVE}`,
           { body, signal },
@@ -287,7 +297,7 @@ export class ElasticIndices implements IndexBrowser {
       while (current !== null && kept < this.#keptBytes) {
         const scrollId = current;
         const reply: SearchReply = await this.#track((signal) =>
-          this.#client.json<SearchReply>("POST", "/_search/scroll", {
+          requestJson<SearchReply>(this.#transport, "POST", "/_search/scroll", {
             body: { scroll: SCROLL_KEEP_ALIVE, scroll_id: scrollId },
             signal,
           }),
@@ -313,9 +323,16 @@ export class ElasticIndices implements IndexBrowser {
 
   async #clearScroll(id: string): Promise<void> {
     this.#scrolls.delete(id);
-    await this.#client
-      .request("DELETE", "/_search/scroll", { body: { scroll_id: [id] }, accept: [404] })
-      .catch(() => undefined);
+    await this.#release([id]);
+  }
+
+  /** Frees scrolls through the transport when it can, else by `DELETE _search/scroll`; a failure is let go, the keep-alive ends them anyway. */
+  async #release(ids: readonly string[]): Promise<void> {
+    const sent: Promise<unknown> =
+      this.#transport.releaseCursors === undefined
+        ? this.#transport.request("DELETE", "/_search/scroll", { body: { scroll_id: ids }, accept: [HTTP_NOT_FOUND] })
+        : this.#transport.releaseCursors(ids);
+    await sent.catch(() => undefined);
   }
 
   /** Scrolls the session still holds, for a test that checks every one was cleared. */
@@ -325,11 +342,17 @@ export class ElasticIndices implements IndexBrowser {
 
   count(request: SearchRequest): Promise<string> {
     return this.#track(async (signal) => {
-      const reply = await this.#client.json<{ count?: unknown }>("POST", `/${encoded(request.target)}/_count`, {
-        body: { query: queryOf(request) },
+      const reply = await requestJson<SearchReply>(this.#transport, "POST", `/${encoded(request.target)}/_search`, {
+        body: { size: 0, track_total_hits: true, timeout: SEARCH_TIMEOUT, query: queryOf(request) },
         signal,
       });
-      return String(int(reply.count));
+      if (reply.timed_out === true) {
+        throw new PluginError(
+          "statementFailed",
+          `The count timed out on the server after ${SEARCH_TIMEOUT}; narrow the query or the time range.`,
+        );
+      }
+      return totalOf(reply.hits?.total)?.value ?? "0";
     });
   }
 
@@ -346,6 +369,7 @@ export class ElasticIndices implements IndexBrowser {
     const intervalKey = this.#dialect.fixedInterval ? "fixed_interval" : "interval";
     const body = {
       size: 0,
+      timeout: SEARCH_TIMEOUT,
       query: queryOf(request),
       aggs: {
         [HISTOGRAM_AGG]: {
@@ -358,7 +382,10 @@ export class ElasticIndices implements IndexBrowser {
         },
       },
     };
-    const reply = await this.#client.json<SearchReply>("POST", `/${encoded(request.target)}/_search`, { body, signal });
+    const reply = await requestJson<SearchReply>(this.#transport, "POST", `/${encoded(request.target)}/_search`, {
+      body,
+      signal,
+    });
     const agg = reply.aggregations?.[HISTOGRAM_AGG] as
       { buckets?: readonly { key?: unknown; doc_count?: unknown }[] } | undefined;
     return {
@@ -376,7 +403,8 @@ export class ElasticIndices implements IndexBrowser {
     if (request.field !== null) body.field = request.field;
     else if (request.analyzer !== null) body.analyzer = request.analyzer;
     return this.#track(async (signal) => {
-      const reply = await this.#client.json<{ detail?: AnalyzeDetail }>(
+      const reply = await requestJson<{ detail?: AnalyzeDetail }>(
+        this.#transport,
         "POST",
         `/${encoded(request.target)}/_analyze`,
         { body, signal },
@@ -389,9 +417,7 @@ export class ElasticIndices implements IndexBrowser {
     const ids = [...this.#scrolls];
     this.#scrolls.clear();
     if (ids.length === 0) return;
-    await this.#client
-      .request("DELETE", "/_search/scroll", { body: { scroll_id: ids }, accept: [404] })
-      .catch(() => undefined);
+    await this.#release(ids);
   }
 }
 

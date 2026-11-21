@@ -46,6 +46,19 @@ export function parseVersion(text: string): Version | null {
   return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3] ?? 0) };
 }
 
+export function compareVersions(a: Version, b: Version): number {
+  return a.major - b.major || a.minor - b.minor || a.patch - b.patch;
+}
+
+/**
+ * The distribution a bare version number stands for, when the server says no more: OpenSearch
+ * counts from 1.0 and Elasticsearch below 6.0 is refused anyway, so the two never share a major
+ * TableCraft speaks.
+ */
+export function distributionOfVersion(version: Version): Distribution {
+  return version.major < MIN_MAJOR ? BRAND_OPENSEARCH : BRAND_ELASTICSEARCH;
+}
+
 function atLeast(version: Version, major: number, minor: number): boolean {
   return version.major > major || (version.major === major && version.minor >= minor);
 }
