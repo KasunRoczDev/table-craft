@@ -7,18 +7,13 @@ import type { FeatureNotice } from "@table-craft/desktop/renderer/model/notices.
  */
 export const FEATURE_NOTICES: readonly FeatureNotice[] = [
   {
-    id: "manage-shown-topics",
-    title: "Choose which Kafka topics the tree shows",
-    body: "Right-click a Kafka data source or one of its topics and pick Manage Shown Topics… to list only the topics you work with. The data source row then reads how many of them are shown, and ticking All topics brings every topic back.",
-  },
-  {
-    id: "elasticsearch",
-    title: "Elasticsearch and OpenSearch data sources",
-    body: "Add an Elasticsearch or OpenSearch data source to browse indices, aliases and rollover families, search documents with Lucene or Query DSL over a time range, read a mapping, see how an analyzer splits your words and run Dev Tools requests, SQL and PPL in a console. TableCraft downloads the plugin the first time you pick Elasticsearch.",
-  },
-  {
     id: "elasticsearch-large-clusters",
     title: "Filter large Elasticsearch index trees",
     body: "A cluster with more than 200 indices gets a filter above its index tree that matches across families, with * as a wildcard. Monthly indices such as logs-2026-10-0001 group into one family, and the first page of hits keeps nothing open on the server.",
+  },
+  {
+    id: "agent-open-index",
+    title: "Agents can open an index search for you",
+    body: "An AI agent connected to TableCraft can now open an Elasticsearch or OpenSearch index in your window with its query, sort and time range filled in, and change them when you ask. On a data source where agents ask before reading, it fills in the search and you run it.",
   },
 ];

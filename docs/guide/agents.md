@@ -58,7 +58,11 @@ TableCraft, and every agent statement is kept in the query history, tagged with 
   typed in the meantime and its text no longer matches. Each edit is one undo step, and nothing in
   the console ever runs. Agents can also open a table's data, filtered and sorted, and select a
   table or column in the Database pane; on a data source set to ask before reads, the filter is
-  only typed into the bars for you to apply. Turn **Let agents bring TableCraft forward** off in
+  only typed into the bars for you to apply. On Elasticsearch and OpenSearch, agents open an index
+  in the [index view](elasticsearch.md) with a query, a sort and a time range, and change them by
+  asking again; a range with both ends shows as a custom range in the time menu. The hits stay on
+  your screen, and on a data source set to ask before reads the query bar is only filled in for you
+  to run. Turn **Let agents bring TableCraft forward** off in
   Settings → MCP Server (`mcp.allowFocus`) to keep the window where it is.
 
   ![OpenCode in a terminal drafts a console, edits it and opens orders filtered](../media/agents-consoles.gif)

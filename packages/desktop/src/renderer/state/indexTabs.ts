@@ -95,10 +95,19 @@ const SEARCH_LABEL = "Search index";
 
 type ResultWindows = ReturnType<typeof createResultWindows>;
 
+/** Query bar fields a tab opens with over its default draft; `run: false` fills them in without searching. */
+export interface DraftChange {
+  readonly change: Partial<SearchDraft>;
+  readonly run: boolean;
+}
+
 export interface IndexTabsState {
   readonly tabs: Readonly<Record<string, IndexTab>>;
-  /** Opens the tab, describes the target, then searches it with the draft its time field suggests. */
-  readonly open: (id: string, target: IndexTarget) => Promise<void>;
+  /**
+   * Opens the tab, describes the target, then searches it with the draft its time field suggests,
+   * changed by `initial` when given.
+   */
+  readonly open: (id: string, target: IndexTarget, initial?: DraftChange) => Promise<void>;
   /** Stops the running search through the session's `cancel`. */
   readonly cancel: (id: string) => Promise<void>;
   readonly close: (id: string) => void;
@@ -107,6 +116,11 @@ export interface IndexTabsState {
   readonly setView: (id: string, view: IndexView) => void;
   /** Searches with the query bar's fields; false when it could not. */
   readonly run: (id: string) => Promise<boolean>;
+  /**
+   * Changes the query bar and, with `run`, searches with it. A search already running is cancelled
+   * and the new one follows it; a tab still opening takes the change once its target is described.
+   */
+  readonly apply: (id: string, change: DraftChange) => Promise<void>;
   /** Describes the target again, then searches. */
   readonly refresh: (id: string) => Promise<void>;
   readonly describe: (id: string) => Promise<void>;
@@ -178,6 +192,11 @@ function newTab(target: IndexTarget): IndexTab {
 export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
   const clients = new Map<string, EngineClient>();
   const lifetimes = new Map<string, symbol>();
+  const opening = new Set<string>();
+  /** Changes that arrived while their tab was being opened, merged in order. */
+  const pending = new Map<string, DraftChange>();
+  /** Tabs to search again with their draft once the search they run settles. */
+  const rerun = new Set<string>();
   const clock = dependencies.clock ?? (() => Date.now());
   const executions = dependencies.executions ?? NO_EXECUTION_REPORTER;
   let resultIds = 0;
@@ -281,10 +300,16 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
     async function execute(id: string, draft: SearchDraft): Promise<boolean> {
       const before = get().tabs[id];
       if (before === undefined || !canSearchIndex(before.status)) return false;
-      if (before.status !== "ready" && !(await openSession(id))) return false;
+      if (before.status !== "ready" && !(await openSession(id))) {
+        rerun.delete(id);
+        return false;
+      }
       const current = get().tabs[id];
       const client = clients.get(id);
-      if (current?.sessionId == null || client === undefined) return false;
+      if (current?.sessionId == null || client === undefined) {
+        rerun.delete(id);
+        return false;
+      }
       const lifetime = lifetimes.get(id);
       const live = () => lifetimes.get(id) === lifetime && get().tabs[id]?.sessionId === current.sessionId;
       const paging = currentPaging();
@@ -362,24 +387,64 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
           const status = get().tabs[id]?.status;
           patch(id, { status: status === "disconnected" || status === "failed" ? status : "ready" });
         }
+        const next = get().tabs[id];
+        if (rerun.delete(id) && live() && next !== undefined) void execute(id, next.draft);
       }
+    }
+
+    async function applyNow(id: string, { change, run }: DraftChange): Promise<void> {
+      const current = get().tabs[id];
+      if (current === undefined) return;
+      const draft = { ...current.draft, ...change };
+      patch(id, { draft });
+      if (!run) return;
+      if (canSearchIndex(current.status)) {
+        await execute(id, draft);
+        return;
+      }
+      rerun.add(id);
+      await cancelSearch(id);
+    }
+
+    async function cancelSearch(id: string): Promise<void> {
+      const current = get().tabs[id];
+      const client = clients.get(id);
+      if (current?.sessionId == null || client === undefined || current.status !== "loading") return;
+      await client.call("statement.cancel", { sessionId: current.sessionId }).catch(() => undefined);
     }
 
     return {
       tabs: {},
 
-      async open(id, target) {
+      async open(id, target, initial) {
         lifetimes.set(id, Symbol());
         set({ tabs: { ...get().tabs, [id]: newTab(target) } });
+        opening.add(id);
         await describe(id);
+        opening.delete(id);
+        const late = pending.get(id);
+        pending.delete(id);
         const described = get().tabs[id];
+        if (described === undefined) return;
         // A search the user ran while the target was described keeps its query and result.
-        if (described === undefined || described.applied !== null || described.status === "loading") return;
-        await execute(id, defaultDraft(described.description));
+        if (described.applied !== null || described.status === "loading") {
+          if (late !== undefined) await applyNow(id, late);
+          return;
+        }
+        const draft = { ...defaultDraft(described.description), ...initial?.change, ...late?.change };
+        if ((late?.run ?? initial?.run) !== false) {
+          await execute(id, draft);
+          return;
+        }
+        patch(id, { draft });
+        await openSession(id);
       },
 
       close(id) {
         lifetimes.delete(id);
+        opening.delete(id);
+        pending.delete(id);
+        rerun.delete(id);
         const closing = get().tabs[id];
         if (closing === undefined) return;
         const { [id]: _closed, ...rest } = get().tabs;
@@ -456,11 +521,16 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
         }
       },
 
-      async cancel(id) {
-        const current = get().tabs[id];
-        const client = clients.get(id);
-        if (current?.sessionId == null || client === undefined || current.status !== "loading") return;
-        await client.call("statement.cancel", { sessionId: current.sessionId }).catch(() => undefined);
+      cancel(id) {
+        rerun.delete(id);
+        return cancelSearch(id);
+      },
+
+      apply(id, change) {
+        if (!opening.has(id)) return applyNow(id, change);
+        const earlier = pending.get(id);
+        pending.set(id, { change: { ...earlier?.change, ...change.change }, run: change.run });
+        return Promise.resolve();
       },
 
       ensureWindow: windows.ensureWindow,

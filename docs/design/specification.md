@@ -3097,7 +3097,11 @@ refuses `notFound`, `ambiguous`, `stale` or `selectNotFound` without a change. `
 and `list_consoles` answer the session's own consoles. `open_table` opens the table editor with
 `where` and `orderBy` checked to form one read through `script.split`; on an `askReads`
 datasource they are only typed into the bars. `reveal_in_explorer` selects a schema, table or
-column in the Database pane. A window that does not answer within 5 seconds reads as silent, one
+column in the Database pane. `open_index` (`searchIndices`) opens an index, alias or data stream
+in the index view, or the tab already open on it, with an optional query (Lucene or a Query DSL
+object), sort on an aggregatable field, and a preset range or `from`/`to` ends that show as a
+custom range; it searches, and calling it again changes the request. The hits stay with the user;
+on an `askReads` datasource the query bar is only filled in. A window that does not answer within 5 seconds reads as silent, one
 that closed as gone. On a `commands` datasource `run_query`
 takes one command. **Resources** `tablecraft://<datasource>[/<schema>[/<table>]]` (list, two
 templates, read; an unexposed one answers -32002) and **prompts** `explore_datasource` and

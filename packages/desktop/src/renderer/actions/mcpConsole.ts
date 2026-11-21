@@ -4,9 +4,11 @@ import {
   openConsole,
 } from "@table-craft/desktop/renderer/actions/consoleCommands.js";
 import { revealNode } from "@table-craft/desktop/renderer/actions/explorerActions.js";
+import { openIndex } from "@table-craft/desktop/renderer/actions/indexActions.js";
 import { openTable } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 import { bridge } from "@table-craft/desktop/renderer/bridge.js";
 import { namespaceNamed } from "@table-craft/desktop/renderer/model/consoleNamespace.js";
+import { CUSTOM_RANGE, type SearchDraft } from "@table-craft/desktop/renderer/model/indexSearch.js";
 import { focusRegion } from "@table-craft/desktop/renderer/shell/focus.js";
 import { useConsoles, type ConsoleSession } from "@table-craft/desktop/renderer/state/consoles.js";
 import { activeTab, useTabs } from "@table-craft/desktop/renderer/state/tabs.js";
@@ -116,6 +118,24 @@ function tableOpened(request: RequestOf<"openTable">): McpUiAnswer {
   return { kind: "done" };
 }
 
+function indexOpened(request: RequestOf<"openIndex">): McpUiAnswer {
+  const { search } = request;
+  const change: Partial<SearchDraft> = {
+    ...(search.language === undefined ? {} : { language: search.language }),
+    ...(search.query === undefined ? {} : { query: search.query }),
+    ...(search.sort === undefined
+      ? {}
+      : search.sort === null
+        ? { sortField: null }
+        : { sortField: search.sort.field, sortOrder: search.sort.order }),
+    ...(search.range === undefined ? {} : { range: search.range }),
+    ...(search.window === undefined ? {} : { range: CUSTOM_RANGE, window: search.window }),
+  };
+  openIndex({ datasourceId: request.datasourceId, target: request.target }, { change, run: !request.draftOnly });
+  if (request.focus) focusRegion("editor");
+  return { kind: "done" };
+}
+
 async function answer(request: McpUiRequest): Promise<McpUiAnswer | null> {
   switch (request.kind) {
     case "open":
@@ -134,6 +154,8 @@ async function answer(request: McpUiRequest): Promise<McpUiAnswer | null> {
     case "reveal":
       revealNode(request, request.focus);
       return { kind: "done" };
+    case "openIndex":
+      return indexOpened(request);
   }
 }
 

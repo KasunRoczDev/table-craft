@@ -21,9 +21,17 @@ export const SEARCH_RANGES = [
   { key: "30d", label: "Last 30 days", ms: 30 * DAY_MS },
   { key: "all", label: "All time", ms: null },
 ] as const;
-export type SearchRangeKey = (typeof SEARCH_RANGES)[number]["key"];
+/** A range between fixed times, which only an agent sets for now (`open_index`). */
+export const CUSTOM_RANGE = "custom";
+export type SearchRangeKey = (typeof SEARCH_RANGES)[number]["key"] | typeof CUSTOM_RANGE;
 /** A time-based target opens on its last quarter hour, as Discover does. */
 export const DEFAULT_RANGE: SearchRangeKey = "15m";
+
+/** The ends of a custom range, ISO 8601; a null end is open. */
+export interface SearchWindow {
+  readonly from: string | null;
+  readonly to: string | null;
+}
 /** The histogram strip's bars per search. */
 export const HISTOGRAM_BUCKETS = 60;
 
@@ -37,6 +45,8 @@ export interface SearchDraft {
   readonly sortField: string | null;
   readonly sortOrder: SortOrder;
   readonly range: SearchRangeKey;
+  /** What a custom range covers; read only while `range` is custom. */
+  readonly window: SearchWindow | null;
 }
 
 export const EMPTY_SEARCH_DRAFT: SearchDraft = {
@@ -45,6 +55,7 @@ export const EMPTY_SEARCH_DRAFT: SearchDraft = {
   sortField: null,
   sortOrder: "desc",
   range: "all",
+  window: null,
 };
 
 /** The draft a target opens with: newest first over the last quarter hour when it has a time field. */
@@ -59,9 +70,37 @@ export function rangeLabel(key: SearchRangeKey): string {
   return SEARCH_RANGES.find((range) => range.key === key)?.label ?? key;
 }
 
+const OPEN_END = "…";
+
+function minuteOf(at: string | null): string {
+  if (at === null) return OPEN_END;
+  const parsed = Date.parse(at);
+  return Number.isNaN(parsed) ? at : new Date(parsed).toISOString().slice(0, 16).replace("T", " ");
+}
+
+/** `2026-11-21 15:00 – 15:10 UTC`, the day once when both ends share it. */
+export function windowLabel(window: SearchWindow): string {
+  const from = minuteOf(window.from);
+  const to = minuteOf(window.to);
+  const sameDay = from.length > 10 && to.slice(0, 10) === from.slice(0, 10);
+  return `${from} – ${sameDay ? to.slice(11) : to} UTC`;
+}
+
+function timeOf(draft: SearchDraft, timeField: string, now: number): SearchRequest["time"] {
+  if (draft.range === CUSTOM_RANGE) {
+    const window = draft.window;
+    return window === null || (window.from === null && window.to === null)
+      ? null
+      : { field: timeField, from: window.from, to: window.to };
+  }
+  const range = SEARCH_RANGES.find((candidate) => candidate.key === draft.range);
+  return range?.ms == null ? null : { field: timeField, from: new Date(now - range.ms).toISOString(), to: null };
+}
+
 /**
- * The request `draft` asks of `target`; the range counts back from `now` and applies only on a
- * target with a time field. `pageSize` is the grid's page, capped at what one search returns.
+ * The request `draft` asks of `target`; a preset range counts back from `now`, and any range
+ * applies only on a target with a time field. `pageSize` is the grid's page, capped at what one
+ * search returns.
  */
 export function searchRequestOf(
   target: string,
@@ -70,14 +109,12 @@ export function searchRequestOf(
   pageSize: number,
   now: number,
 ): SearchRequest {
-  const range = SEARCH_RANGES.find((candidate) => candidate.key === draft.range);
-  const from = timeField === null || range?.ms == null ? null : new Date(now - range.ms).toISOString();
   return {
     target,
     language: draft.language,
     query: draft.query.trim(),
     sort: draft.sortField === null ? [] : [{ field: draft.sortField, order: draft.sortOrder }],
-    time: from === null || timeField === null ? null : { field: timeField, from, to: null },
+    time: timeField === null ? null : timeOf(draft, timeField, now),
     fields: null,
     pageSize: Math.min(Math.max(1, Math.trunc(pageSize)), SEARCH_PAGE_LIMIT),
   };
