@@ -1,0 +1,163 @@
+{
+  "id": "kafka",
+  "name": "Apache Kafka",
+  "version": "0.0.0",
+  "apiVersion": "2.3.0",
+  "entry": "index.js",
+  "capabilities": [
+    "commands",
+    "topics",
+    "consumerGroups",
+    "schemaRegistry",
+    "nodes",
+    "serverInfo",
+    "cancel",
+    "keepAlive"
+  ],
+  "highlight": "kafka",
+  "brands": [{ "id": "apachekafka", "name": "Apache Kafka" }],
+  "connection": {
+    "fields": [
+      {
+        "key": "bootstrapServers",
+        "label": "Bootstrap servers",
+        "kind": "text",
+        "default": "localhost:9092",
+        "required": true,
+        "placeholder": "broker-1:9092, broker-2:9092",
+        "hint": "host:port of one or more brokers, separated by commas. Every broker's advertised listener must be reachable from this machine too."
+      },
+      {
+        "key": "security",
+        "label": "Security",
+        "kind": "select",
+        "default": "PLAINTEXT",
+        "options": [
+          { "value": "PLAINTEXT", "label": "PLAINTEXT" },
+          { "value": "SSL", "label": "SSL" },
+          { "value": "SASL_PLAINTEXT", "label": "SASL_PLAINTEXT" },
+          { "value": "SASL_SSL", "label": "SASL_SSL" }
+        ]
+      },
+      {
+        "key": "saslMechanism",
+        "label": "SASL mechanism",
+        "kind": "select",
+        "default": "SCRAM-SHA-512",
+        "options": [
+          { "value": "PLAIN", "label": "PLAIN" },
+          { "value": "SCRAM-SHA-256", "label": "SCRAM-SHA-256" },
+          { "value": "SCRAM-SHA-512", "label": "SCRAM-SHA-512" }
+        ],
+        "visibleWhen": { "key": "security", "equals": ["SASL_PLAINTEXT", "SASL_SSL"] }
+      },
+      {
+        "key": "user",
+        "label": "Username",
+        "kind": "text",
+        "visibleWhen": { "key": "security", "equals": ["SASL_PLAINTEXT", "SASL_SSL"] }
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "kind": "password",
+        "secret": true,
+        "visibleWhen": { "key": "security", "equals": ["SASL_PLAINTEXT", "SASL_SSL"] }
+      },
+      {
+        "key": "registryUrl",
+        "label": "Schema Registry URL",
+        "kind": "text",
+        "placeholder": "http://localhost:8081",
+        "hint": "A Confluent-compatible Schema Registry, for Avro, Protobuf and JSON Schema values. Blank: none."
+      },
+      {
+        "key": "registryAuth",
+        "label": "Schema Registry auth",
+        "kind": "select",
+        "default": "none",
+        "options": [
+          { "value": "none", "label": "None" },
+          { "value": "basic", "label": "Basic" }
+        ]
+      },
+      {
+        "key": "registryUser",
+        "label": "Schema Registry username",
+        "kind": "text",
+        "visibleWhen": { "key": "registryAuth", "equals": "basic" }
+      },
+      {
+        "key": "registryPassword",
+        "label": "Schema Registry password",
+        "kind": "password",
+        "secret": true,
+        "visibleWhen": { "key": "registryAuth", "equals": "basic" }
+      },
+      {
+        "key": "tlsMode",
+        "label": "TLS mode",
+        "kind": "select",
+        "default": "verify-full",
+        "group": "advanced",
+        "options": [
+          { "value": "verify-full", "label": "Verify full" },
+          { "value": "verify-ca", "label": "Verify CA" },
+          { "value": "require", "label": "Require (no verification)" }
+        ],
+        "hint": "How brokers' certificates are checked with SSL or SASL_SSL, and the registry's with an https URL."
+      },
+      { "key": "tlsCa", "label": "CA certificate", "kind": "file", "group": "advanced" },
+      { "key": "tlsCert", "label": "Client certificate", "kind": "file", "group": "advanced" },
+      { "key": "tlsKey", "label": "Client key", "kind": "file", "group": "advanced" },
+      {
+        "key": "tlsKeyPassphrase",
+        "label": "Client key passphrase",
+        "kind": "password",
+        "secret": true,
+        "group": "advanced"
+      },
+      { "key": "clientId", "label": "Client id", "kind": "text", "default": "TableCraft", "group": "advanced" },
+      {
+        "key": "requestTimeout",
+        "label": "Request timeout (s)",
+        "kind": "number",
+        "default": 30,
+        "group": "advanced"
+      },
+      {
+        "key": "maxScan",
+        "label": "Max messages scanned per read",
+        "kind": "number",
+        "default": 100000,
+        "group": "advanced",
+        "hint": "A filtered read stops after fetching this many messages; Scan further continues it."
+      },
+      {
+        "key": "lagWarning",
+        "label": "Lag warning",
+        "kind": "number",
+        "default": 10000,
+        "group": "advanced",
+        "hint": "A consumer group's total lag above this is shown as a warning."
+      },
+      {
+        "key": "nameFilter",
+        "label": "Name filter",
+        "kind": "text",
+        "default": "",
+        "group": "advanced",
+        "placeholder": "orders.*, payments.*",
+        "hint": "Only topics, consumer groups and subjects whose names match one of these globs are listed. Empty lists everything."
+      }
+    ],
+    "tls": {
+      "mode": "tlsMode",
+      "verifyModes": ["verify-ca", "verify-full"],
+      "caFile": "tlsCa",
+      "certFile": "tlsCert",
+      "keyFile": "tlsKey",
+      "keyPassphrase": "tlsKeyPassphrase"
+    }
+  }
+}

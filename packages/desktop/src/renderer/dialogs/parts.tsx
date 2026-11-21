@@ -33,7 +33,7 @@ export function Button({
   className,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { readonly variant?: ButtonVariant }) {
-  return <button type="button" className={cn(buttonClass(variant), className)} {...props} />;
+  return <button type="button" data-variant={variant} className={cn(buttonClass(variant), className)} {...props} />;
 }
 
 /** How every disabled control dims; fields, buttons and icon buttons alike. */

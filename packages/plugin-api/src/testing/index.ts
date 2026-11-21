@@ -60,6 +60,9 @@ import {
   type Transactions,
   type WireValue,
 } from "@table-craft/plugin-api";
+import { runStreamsContract, type StreamsFixture } from "./streams.js";
+
+export type { StreamsContract, StreamsFixture } from "./streams.js";
 
 export interface ContractFixture {
   /** The plugin's parsed `table-craft-plugin.json`, whose connection form the suite checks. */
@@ -141,6 +144,8 @@ export interface ContractFixture {
   readonly commands?: CommandsFixture;
   /** Required when the plugin declares `keyValue` (decision 113). */
   readonly keyspace?: KeyspaceFixture;
+  /** Required when the plugin declares `topics` (plan 164); its hooks gate the cases that need them. */
+  readonly streams?: StreamsFixture;
   /**
    * Required when the plugin declares `sessions`, which also needs `statements.sleep`, and
    * `statements.write` where it declares `transactions`.
@@ -781,6 +786,9 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         routineCall: ["sql", "schemaTree"],
         savepoints: ["sql", "transactions"],
         rowLimit: ["sql"],
+        topics: ["commands"],
+        consumerGroups: ["commands"],
+        schemaRegistry: ["commands"],
       };
       for (const [capability, needed] of Object.entries(needs)) {
         if (declared.has(capability as Capability))
@@ -2452,6 +2460,8 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         });
       });
     });
+
+    runStreamsContract({ plugin, config: fixture.config, streams: fixture.streams });
 
     describe.runIf(plugin.capabilities.includes("keyValue"))("keyValue", () => {
       function keyspaceFixture(): KeyspaceFixture {

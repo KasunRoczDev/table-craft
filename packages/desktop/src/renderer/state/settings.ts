@@ -201,6 +201,11 @@ export function currentPaging(): ResultPaging {
   return pagingOf(useSettings.getState().settings);
 }
 
+/** Whether the next topic read or tail keeps large messages in a temporary file (decision 172). */
+export function currentSpill(): boolean {
+  return useSettings.getState().settings.data.spillMessages;
+}
+
 /** What Reformat Code sends with the text (plan 019 decision 3). */
 export function currentFormatOptions(): FormatOptions {
   return useSettings.getState().settings.editor.format;

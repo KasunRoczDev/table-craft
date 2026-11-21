@@ -1,6 +1,7 @@
 import {
   CatalogCache,
   ResultStore,
+  SpillBudget,
   completionCatalog,
   loadedPlugin,
   tableCount,
@@ -47,6 +48,7 @@ import {
   messageOf,
   statementFailed,
 } from "@table-craft/desktop/engine/failures.js";
+import { MessageSpills } from "@table-craft/desktop/engine/messageSpills.js";
 import { objectContext } from "@table-craft/desktop/engine/objectChanges.js";
 import type {
   ClassifiedStatement,
@@ -208,6 +210,9 @@ function baseContext(options: EngineOptions, connector: Connector, now: () => nu
   }
 
   const results = new ResultStore();
+  /** The disk every spill of this engine shares: reads' large messages and live tails' (decision 172). */
+  const spillBudget = options.spillBudget ?? new SpillBudget();
+  const spills = new MessageSpills(spillBudget, results);
   let nextSession = 1;
   /** One session for every connection's catalog calls, opened on first use (decision 022). */
   let introspection: Promise<Introspection> | null = null;
@@ -537,6 +542,8 @@ function baseContext(options: EngineOptions, connector: Connector, now: () => nu
     splitScript,
     formatText,
     results,
+    spillBudget,
+    spills,
     openIntrospection,
     catalog,
     introspect,

@@ -11,6 +11,9 @@ import { useConsoleDatasource } from "@table-craft/desktop/renderer/console/useC
 import { DdlView } from "@table-craft/desktop/renderer/ddl/DdlView.js";
 import { DiagramView } from "@table-craft/desktop/renderer/diagram/DiagramView.js";
 import { KeyTab } from "@table-craft/desktop/renderer/keys/KeyTab.js";
+import { TopicTab } from "@table-craft/desktop/renderer/topics/TopicTab.js";
+import { GroupTab } from "@table-craft/desktop/renderer/groups/GroupTab.js";
+import { SubjectTab } from "@table-craft/desktop/renderer/schemas/SubjectTab.js";
 import { AdminView } from "@table-craft/desktop/renderer/keyAdmin/AdminView.js";
 import { ServerTab } from "@table-craft/desktop/renderer/server/ServerTab.js";
 import { deferTabDrag } from "@table-craft/desktop/renderer/model/tabDrag.js";
@@ -339,6 +342,12 @@ function EditorContent({ active }: { readonly active: Tab | null }) {
     <ServerTab key={active.id} tabId={active.id} />
   ) : active.kind === "keyAdmin" ? (
     <AdminView key={active.id} tabId={active.id} />
+  ) : active.kind === "topic" ? (
+    <TopicTab key={active.id} tabId={active.id} />
+  ) : active.kind === "group" ? (
+    <GroupTab key={active.id} tabId={active.id} />
+  ) : active.kind === "subject" ? (
+    <SubjectTab key={active.id} tabId={active.id} />
   ) : (
     <Console key={active.id} consoleId={active.id} />
   );

@@ -362,6 +362,26 @@ export const pluginManifestSchema = z
   .refine((manifest) => !manifest.capabilities.includes("rowLimit") || manifest.capabilities.includes("sql"), {
     message: "the rowLimit capability requires sql",
     path: ["capabilities"],
-  });
+  })
+  // A stream's admin is confirmed as console commands, and agents reach it through them (plan 164).
+  .refine(
+    (manifest) =>
+      !includesAny(manifest.capabilities, "topics", "consumerGroups", "schemaRegistry") ||
+      manifest.capabilities.includes("commands"),
+    { message: "the topics, consumerGroups and schemaRegistry capabilities require commands", path: ["capabilities"] },
+  )
+  // Groups and subjects open from the stream tree, which only a topics plugin draws (decision 169).
+  .refine(
+    (manifest) =>
+      !includesAny(manifest.capabilities, "consumerGroups", "schemaRegistry") ||
+      manifest.capabilities.includes("topics"),
+    { message: "the consumerGroups and schemaRegistry capabilities require topics", path: ["capabilities"] },
+  )
+  // A datasource draws one tree: the catalog, the key tree or the stream tree (decision 169).
+  .refine(
+    (manifest) =>
+      !manifest.capabilities.includes("topics") || !includesAny(manifest.capabilities, "schemaTree", "keyValue"),
+    { message: "the topics capability excludes schemaTree and keyValue", path: ["capabilities"] },
+  );
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

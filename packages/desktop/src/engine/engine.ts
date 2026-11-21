@@ -5,6 +5,7 @@ import {
   type Connector,
   type HostKeyVerifier,
   type PluginLoadResult,
+  type SpillBudget,
 } from "@table-craft/core";
 import { MS_PER_SECOND, connectDatasource } from "@table-craft/desktop/engine/connect.js";
 import { createConnectionContext } from "@table-craft/desktop/engine/connection.js";
@@ -37,6 +38,8 @@ export interface EngineOptions {
   /** Asks main whether to trust an SSH host key (decision 071); absent, every key is refused unknown. */
   readonly verifyHostKey?: HostKeyVerifier;
   readonly operationFiles?: EngineOperationFiles;
+  /** The disk the engine's spills share (decision 172); tests pass a small one. */
+  readonly spillBudget?: SpillBudget;
 }
 
 /** One renderer port's view of the engine. Its sessions and results die with it. */

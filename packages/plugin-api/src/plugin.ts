@@ -53,6 +53,9 @@ export const CAPABILITIES = [
   "bulkTransfer",
   "savepoints",
   "rowLimit",
+  "topics",
+  "consumerGroups",
+  "schemaRegistry",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];

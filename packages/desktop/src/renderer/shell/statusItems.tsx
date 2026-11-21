@@ -3,6 +3,8 @@ import { useConsoleDatasource } from "@table-craft/desktop/renderer/console/useC
 import { pathKey } from "@table-craft/desktop/renderer/model/explorerTree.js";
 import { datasourceText, syncFailedText, syncText } from "@table-craft/desktop/renderer/model/format.js";
 import { keyspaceStatusText } from "@table-craft/desktop/renderer/model/keyTree.js";
+import { streamStatusText } from "@table-craft/desktop/renderer/model/streamTree.js";
+import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { useKeys } from "@table-craft/desktop/renderer/state/keys.js";
 import { useServer } from "@table-craft/desktop/renderer/state/server.js";
@@ -74,8 +76,14 @@ function DatasourceStatus() {
   const pluginName = useDatasources((state) => pluginOf(state.plugins, datasource?.pluginId ?? "")?.name ?? null);
   const keyspace = useKeys((state) => (datasourceId === undefined ? undefined : state.keyspaces[datasourceId]));
   const nodes = useServer((state) => (datasourceId === undefined ? undefined : state.nodes[datasourceId]));
+  const streams = useStreams((state) => (datasourceId === undefined ? undefined : state.streams[datasourceId]));
   if (datasource === undefined) return <span data-testid="status-datasource" />;
-  const keys = connection.status === "connected" ? keyspaceStatusText(keyspace, nodes ?? []) : null;
+  const keys =
+    connection.status !== "connected"
+      ? null
+      : streams !== undefined
+        ? streamStatusText(streams)
+        : keyspaceStatusText(keyspace, nodes ?? []);
   return (
     <span
       data-testid="status-datasource"

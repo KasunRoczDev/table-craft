@@ -300,7 +300,8 @@ The flush rule: a control that fills the height of the strip it sits in (an `h-r
 header line, a chip in a bar, a tag inside a trigger) is square, with no radius, so its edges meet
 the strip's lines. A control standing free in a form or a dialog keeps `rounded`. The extractor,
 Transaction mode, the value panel's format picker, the result search field and its filter chips,
-and the Theme trigger's scheme tag follow it. A segmented group stands free inside its strip (`h-segment`, a row less 2 px), so it
+the Theme trigger's scheme tag, and the `inline` action buttons of a topic tab's Partitions and
+Configs toolbars follow it. A segmented group stands free inside its strip (`h-segment`, a row less 2 px), so it
 keeps `rounded`.
 
 ## Hints
@@ -320,16 +321,16 @@ asks for, one short muted line beside the (i). Form labels wrap rather than run 
 
 Each control has one build, and a component takes it rather than writing its own classes.
 
-| Control         | Build                                                            | Look                                                                                                                        |
-| --------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Action button   | `ui/ActionButton.tsx`                                            | Runs a registry action; title and chord come from the registry, the chord only in the tooltip                               |
-| Dialog button   | `Button` / `buttonClass(variant)` (`dialogs/parts.tsx`)          | `h-row rounded px-gap`; `primary` filled accent, `secondary` bordered, `warning`, `danger`, `dangerOutline`                 |
-| Icon button     | `ICON_BUTTON` (`ui/iconButtonClasses.ts`)                        | `size-row`, `rounded`, `text-ink-muted`, `hover:bg-hover hover:text-ink`; toolbars, list headers, close X                   |
-| Link            | `INLINE_LINK` / `LINK_BUTTON` (`ui/linkClasses.ts`)              | Accent text: underlined on hover inside a sentence, `bg-hover` as a free-standing button                                    |
-| Text field      | `FIELD_CLASS` (`ui/fieldClasses.ts`)                             | `h-row rounded border-line bg-canvas`, `focus:border-accent`, `aria-invalid:border-danger`                                  |
-| Segmented group | `Segmented`, or `SEGMENT_GROUP` + `SEGMENT` (`ui/Segmented.tsx`) | One `rounded border-line` frame of `h-segment` buttons; the chosen one `bg-selection text-accent` with an accent inset ring |
-| Checkbox, radio | Native, inside a label                                           | `accent-color: var(--tc-accent)` on `:root` draws them in the theme's accent                                                |
-| Switch          | `ui/Switch.tsx`                                                  | An on/off setting that takes effect at once, in a table row                                                                 |
+| Control         | Build                                                            | Look                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Action button   | `ui/ActionButton.tsx`                                            | Runs a registry action; title and chord come from the registry, the chord only in the tooltip. Text: `h-row rounded border-line`; `inline` text: fills its `h-row` strip, square, no border, `px-gap`, `bg-hover` on hover; `compact`: the icon alone; `primary`: filled accent. `args` name what it acts on, as a tab's own topic or group |
+| Dialog button   | `Button` / `buttonClass(variant)` (`dialogs/parts.tsx`)          | `h-row rounded px-gap`; `primary` filled accent, `secondary` bordered, `warning`, `danger`, `dangerOutline`                                                                                                                                                                                                                                 |
+| Icon button     | `ICON_BUTTON` (`ui/iconButtonClasses.ts`)                        | `size-row`, `rounded`, `text-ink-muted`, `hover:bg-hover hover:text-ink`; toolbars, list headers, close X                                                                                                                                                                                                                                   |
+| Link            | `INLINE_LINK` / `LINK_BUTTON` (`ui/linkClasses.ts`)              | Accent text: underlined on hover inside a sentence, `bg-hover` as a free-standing button                                                                                                                                                                                                                                                    |
+| Text field      | `FIELD_CLASS` (`ui/fieldClasses.ts`)                             | `h-row rounded border-line bg-canvas`, `focus:border-accent`, `aria-invalid:border-danger`                                                                                                                                                                                                                                                  |
+| Segmented group | `Segmented`, or `SEGMENT_GROUP` + `SEGMENT` (`ui/Segmented.tsx`) | One `rounded border-line` frame of `h-segment` buttons; the chosen one `bg-selection text-accent` with an accent inset ring                                                                                                                                                                                                                 |
+| Checkbox, radio | Native, inside a label                                           | `accent-color: var(--tc-accent)` on `:root` draws them in the theme's accent                                                                                                                                                                                                                                                                |
+| Switch          | `ui/Switch.tsx`                                                  | An on/off setting that takes effect at once, in a table row                                                                                                                                                                                                                                                                                 |
 
 - A segmented group is for two to five mutually exclusive views or values that stay visible: a
   radiogroup (`aria-checked`), a toggle (`aria-pressed`) or a tablist (`aria-selected`) all wear
@@ -361,7 +362,10 @@ width a token (`w-dialog`, `w-generator`, …), never a literal.
   inline with no X; Escape closes both.
 - The footer is `DialogFooter`: secondary actions that do something else (Test Connection, a
   destructive Clear…) start it on the left, then a spacer, then Cancel or Close, Apply where it
-  applies, and the primary button last, rightmost and filled. Enter submits a `Modal` form.
+  applies, and the primary button last, rightmost and filled. Enter submits a `Modal` form, except
+  in a dialog that previews what it will change before it applies it (Reset Offsets, Delete Records,
+  Produce Message): there Enter refreshes the preview, and only a click on the button that applies
+  it runs it.
 
 ## Settings dialog
 

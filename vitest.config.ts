@@ -131,6 +131,12 @@ export default defineConfig({
       // The etcd plugin's parts, which its unit tests drive without a server (plan 110).
       { find: /^@table-craft\/plugin-etcd\/(\w+)$/, replacement: resolve(WORKSPACE_ROOT, "plugins/etcd/src/$1.ts") },
       { find: "@table-craft/plugin-etcd", replacement: resolve(WORKSPACE_ROOT, "plugins/etcd/src/index.ts") },
+      // The Kafka plugin's parts, which its unit tests drive without a broker (plan 164).
+      {
+        find: /^@table-craft\/plugin-kafka\/([\w/]+)$/,
+        replacement: resolve(WORKSPACE_ROOT, "plugins/kafka/src/$1.ts"),
+      },
+      { find: "@table-craft/plugin-kafka", replacement: resolve(WORKSPACE_ROOT, "plugins/kafka/src/index.ts") },
       // The DuckDB plugin's parts, which its unit tests drive on an in-memory database (plan 152).
       {
         find: /^@table-craft\/plugin-duckdb\/(\w+)$/,

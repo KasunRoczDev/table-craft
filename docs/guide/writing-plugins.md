@@ -42,6 +42,9 @@ service.
 | `bulkTransfer`     | Exports a range and imports chunk-atomically, resuming only confirmed boundaries.                                                                                                                                       | `session.services.bulkTransfer`                                           |
 | `savepoints`       | Writes the savepoint statements that let console edits inside an open transaction undo only themselves when one is refused; requires `sql` and `transactions`.                                                          | `language.services.savepoints`                                            |
 | `rowLimit`         | Writes a row limit into a plain `SELECT`, so the server stops after one page; Fetch Next Page and Fetch All run it again with a larger limit; requires `sql`.                                                           | `language.services.rowLimit`                                              |
+| `topics`           | Lists, describes and reads topics without joining a consumer group, produces, administers topics and tails them live, for the stream tree and topic tabs; requires `commands`, excludes `schemaTree` and `keyValue`.    | `session.services.topics`                                                 |
+| `consumerGroups`   | Lists and describes consumer groups with their lag, and previews and applies an offset reset by token; requires `commands`.                                                                                             | `session.services.consumerGroups`                                         |
+| `schemaRegistry`   | Lists subjects and versions of a schema registry, checks and registers schemas; answers `available: false` on a data source without a registry; requires `commands`.                                                    | `session.services.schemaRegistry`                                         |
 
 Write the default export with `definePlugin` and its capabilities `as const`: the types then
 require exactly the declared keys on the session and the language, and type `connect`'s
@@ -76,7 +79,7 @@ export default definePlugin({
   "id": "postgres",
   "name": "PostgreSQL",
   "version": "0.0.0",
-  "apiVersion": "2.2.0",
+  "apiVersion": "2.3.0",
   "entry": "index.js",
   "capabilities": [
     "sql",
@@ -181,7 +184,7 @@ registry, instead of npm:
     "version": "1.0.0",
     "type": "module",
     "main": "index.js",
-    "tableCraft": { "id": "example", "apiVersion": "2.2.0" }
+    "tableCraft": { "id": "example", "apiVersion": "2.3.0" }
   }
   ```
 

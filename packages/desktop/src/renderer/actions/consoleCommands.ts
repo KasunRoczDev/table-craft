@@ -36,6 +36,9 @@ import { useSessions } from "@table-craft/desktop/renderer/state/sessions.js";
 import { activeTab, groupOf, useTabs, type Tab } from "@table-craft/desktop/renderer/state/tabs.js";
 import { pendingTables, tablesOf, useTables } from "@table-craft/desktop/renderer/state/tables.js";
 import { useKeyTabs } from "@table-craft/desktop/renderer/state/keyTabs.js";
+import { useTopicTabs } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { useGroupTabs } from "@table-craft/desktop/renderer/state/groupTabs.js";
+import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
 import { settlePendingEdits } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 
 const CONSOLE_ID_PREFIX = "console-";
@@ -426,6 +429,9 @@ export async function closeTabs(ids: readonly string[], close: () => readonly Ta
     else if (tab.kind === "server") useServer.getState().close(tab.id);
     else if (tab.kind === "keyAdmin") useKeyAdmin.getState().close(tab.id);
     else if (tab.kind === "diagram") closeDiagram(tab.id);
+    else if (tab.kind === "topic") useTopicTabs.getState().close(tab.id);
+    else if (tab.kind === "group") useGroupTabs.getState().close(tab.id);
+    else if (tab.kind === "subject") useSubjectTabs.getState().close(tab.id);
     else useDdl.getState().close(tab.id);
   }
 }

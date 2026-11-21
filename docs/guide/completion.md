@@ -57,5 +57,5 @@ from settings. Their bodies are plain text; do not put passwords or other secret
 Older SQL-only snippets keep their SQL/dialect restrictions when loaded; reading does not rewrite
 the file. The next successful create, update or delete saves the migrated version-2 document.
 
-Future plugins that provide the existing SQL or command-console hooks can use snippets too. This
-does not add etcd, Kafka or MongoDB plugins or promise execution support for those systems.
+Command consoles, such as those of Redis, etcd and [Apache Kafka](kafka.md), use snippets too, and
+so can any plugin that provides the SQL or command-console hooks.

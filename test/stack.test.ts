@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { describeSelection, SEED_ENV, seedEnv, seedHashes, stackFor } from "./db/stack.js";
 import type { TidbTarget } from "./db/tidbTarget.js";
-import { databaseEnabled, DATABASES_ENV, selectedDatabases, WITHOUT_POSTGRES } from "./support/databases.js";
+import {
+  databaseEnabled,
+  DATABASES_ENV,
+  KAFKA_REMOTE_ENV,
+  selectedDatabases,
+  WITHOUT_POSTGRES,
+} from "./support/databases.js";
 
 const DB_DIRECTORY = join(import.meta.dirname, "db");
 
@@ -130,7 +136,7 @@ describe("database selector (decision 099)", () => {
       services: ["mysql", "mysql-tls", "mariadb"],
     });
     expect(describeSelection(databases, {})).toBe(
-      `Databases: mysql, tidb, mariadb (from ${DATABASES_ENV} unset, the normal flow); not started: postgres, oracle, mssql, redis, etcd`,
+      `Databases: mysql, tidb, mariadb (from ${DATABASES_ENV} unset, the normal flow); not started: postgres, oracle, mssql, redis, etcd, kafka`,
     );
   });
 
@@ -151,11 +157,10 @@ describe("database selector (decision 099)", () => {
   it("givenSelectorAll_whenUp_thenEveryServiceStarted", () => {
     const databases = selectedDatabases({ [DATABASES_ENV]: "all" });
 
-    expect(stackFor(databases, LOCAL_TIDB)).toEqual({
-      profiles: ["mysql", "tidb", "mariadb", "postgres", "oracle", "mssql", "redis", "etcd"].flatMap((profile) => [
-        "--profile",
-        profile,
-      ]),
+    expect(stackFor(databases, LOCAL_TIDB, {})).toEqual({
+      profiles: ["mysql", "tidb", "mariadb", "postgres", "oracle", "mssql", "redis", "etcd", "kafka"].flatMap(
+        (profile) => ["--profile", profile],
+      ),
       services: [
         "mysql",
         "mysql-tls",
@@ -180,13 +185,20 @@ describe("database selector (decision 099)", () => {
     expect(stackFor(databases, REMOTE_TIDB).profiles).not.toContain("tidb");
   });
 
+  it("givenRemoteKafkaInEnv_whenUp_thenNoKafkaContainer", () => {
+    const remote = { [KAFKA_REMOTE_ENV]: "broker-1:9092" };
+
+    expect(stackFor(["kafka"], LOCAL_TIDB, remote).profiles).toEqual([]);
+    expect(stackFor(["kafka"], LOCAL_TIDB, {}).profiles).toEqual(["--profile", "kafka"]);
+  });
+
   it("givenSelectorInAnyCaseAndOrder_whenRead_thenKnownOrderWithoutDuplicates", () => {
     expect(selectedDatabases({ [DATABASES_ENV]: " MSSQL, mysql ,tidb,mysql" })).toEqual(["mysql", "tidb", "mssql"]);
   });
 
   it("givenUnknownDatabaseInSelector_whenUp_thenErrorNamesKnownIds", () => {
     expect(() => selectedDatabases({ [DATABASES_ENV]: "mysql,sybase" })).toThrow(
-      `${DATABASES_ENV} names sybase, which is not a test database; list any of mysql, tidb, mariadb, postgres, oracle, mssql, redis, etcd, all, separated by commas.`,
+      `${DATABASES_ENV} names sybase, which is not a test database; list any of mysql, tidb, mariadb, postgres, oracle, mssql, redis, etcd, kafka, all, separated by commas.`,
     );
   });
 });

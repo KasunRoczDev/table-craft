@@ -21,6 +21,9 @@ import { Handle } from "@table-craft/desktop/renderer/ui/Handle.js";
 import { WatchPane } from "@table-craft/desktop/renderer/watch/WatchPane.js";
 import { WATCH_ACTION_IDS } from "@table-craft/desktop/renderer/watch/actions.js";
 import { AdminSecretPrompt } from "@table-craft/desktop/renderer/keyAdmin/SecretPrompt.js";
+import { StreamDialogs } from "@table-craft/desktop/renderer/streams/StreamDialogs.js";
+import { TailPane } from "@table-craft/desktop/renderer/tail/TailPane.js";
+import { TAIL_ACTION_IDS } from "@table-craft/desktop/renderer/tail/actions.js";
 
 const LEFT_STRIPE_TOP = [
   { toolWindow: "database", actionId: ACTION_IDS.toggleDatabase },
@@ -28,6 +31,7 @@ const LEFT_STRIPE_TOP = [
 ] as const;
 const LEFT_STRIPE_BOTTOM = [
   { toolWindow: "watch", actionId: WATCH_ACTION_IDS.toggle },
+  { toolWindow: "tail", actionId: TAIL_ACTION_IDS.toggle },
   { toolWindow: "services", actionId: ACTION_IDS.toggleServices },
 ] as const;
 const RIGHT_STRIPE_TOP = [
@@ -55,7 +59,7 @@ function persistSize(...ids: readonly ToolWindowId[]) {
 }
 
 const persistSides = persistSize("database", "log");
-const persistServices = persistSize("services", "watch");
+const persistServices = persistSize("services", "watch", "tail");
 
 /** Always the same element whatever the style, so switching it never remounts the editor beneath. */
 function Island({ children }: { readonly children: ReactNode }) {
@@ -130,6 +134,18 @@ export function Shell() {
                 </Panel>
               </>
             ) : null}
+            {visible.tail ? (
+              <>
+                <Handle axis="horizontal" gutter />
+                <Panel id="tail" defaultSize={String(sizes.tail)} minSize={MIN_WATCH_PERCENT} style={PANEL_STYLE}>
+                  <Island>
+                    <ToolWindow id="tail" title="Live Tail" toggleActionId={TAIL_ACTION_IDS.toggle}>
+                      <TailPane />
+                    </ToolWindow>
+                  </Island>
+                </Panel>
+              </>
+            ) : null}
             {visible.services ? (
               <>
                 <Handle axis="horizontal" gutter />
@@ -158,6 +174,7 @@ export function Shell() {
       </div>
       <StatusBar />
       <AdminSecretPrompt />
+      <StreamDialogs />
     </main>
   );
 }

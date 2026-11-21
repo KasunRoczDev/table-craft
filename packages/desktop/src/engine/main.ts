@@ -1,5 +1,12 @@
 import type { MessagePortMain, ParentPort } from "electron";
-import { loadPluginById, TunnelError, type HostKeyVerifier, type PluginLoadResult } from "@table-craft/core";
+import {
+  loadPluginById,
+  removeSpillDirectory,
+  sweepSpills,
+  TunnelError,
+  type HostKeyVerifier,
+  type PluginLoadResult,
+} from "@table-craft/core";
 import {
   createEngine,
   probeDatasource,
@@ -52,6 +59,8 @@ const log = createLogger({
 
 /** Node's own exit code for an uncaught exception; the engine still dies of one, it is only logged first. */
 const UNCAUGHT_EXIT_CODE = 1;
+/** 128 plus the signal's number, as a shell reports a process SIGTERM ended. */
+const SIGTERM_EXIT_CODE = 143;
 
 function crash(msg: string, cause: unknown): void {
   log.error(msg, { err: cause });
@@ -61,6 +70,17 @@ function crash(msg: string, cause: unknown): void {
 
 process.on("uncaughtException", (cause) => crash("uncaught exception", cause));
 process.on("unhandledRejection", (cause) => crash("unhandled rejection", cause));
+// Large messages spill under the temporary folder (decision 172): an engine that crashed left its folder behind.
+void sweepSpills().catch((cause: unknown) => log.warn("could not sweep old spill folders", { err: cause }));
+process.on("exit", () => {
+  try {
+    removeSpillDirectory();
+  } catch {
+    // The OS temporary folder's own cleanup and the next engine's sweep remove what is left.
+  }
+});
+// Node ends on SIGTERM without running `exit` handlers; exiting by hand runs the one above.
+process.once("SIGTERM", () => process.exit(SIGTERM_EXIT_CODE));
 let booted: Promise<EngineConnectionFactory> | null = null;
 let engine: Engine | null = null;
 const connections = new Set<Promise<EngineConnection>>();

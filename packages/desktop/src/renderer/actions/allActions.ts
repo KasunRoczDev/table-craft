@@ -1,6 +1,10 @@
 import { APP_ACTIONS } from "@table-craft/desktop/renderer/actions/appActions.js";
 import { ADMIN_ACTIONS } from "@table-craft/desktop/renderer/keyAdmin/actions.js";
 import { WATCH_ACTIONS } from "@table-craft/desktop/renderer/watch/actions.js";
+import { TAIL_ACTIONS } from "@table-craft/desktop/renderer/tail/actions.js";
+import { TOPIC_ACTIONS } from "@table-craft/desktop/renderer/actions/topicActions.js";
+import { GROUP_ACTIONS } from "@table-craft/desktop/renderer/actions/groupActions.js";
+import { SUBJECT_ACTIONS } from "@table-craft/desktop/renderer/actions/subjectActions.js";
 import { CONSOLE_INTENT_ACTIONS } from "@table-craft/desktop/renderer/keyAdmin/consoleIntents.js";
 import { COMMAND_TXN_ACTIONS } from "@table-craft/desktop/renderer/actions/commandTxnActions.js";
 import { DATASOURCE_FILE_ACTIONS } from "@table-craft/desktop/renderer/actions/datasourceFileActions.js";
@@ -76,6 +80,10 @@ export const ALL_ACTIONS: readonly AnyAction[] = [
   ...KEY_ACTIONS,
   ...KEY_EDIT_ACTIONS,
   ...KEY_LEASE_EDITOR_ACTIONS,
+  ...TOPIC_ACTIONS,
+  ...GROUP_ACTIONS,
+  ...SUBJECT_ACTIONS,
+  ...TAIL_ACTIONS,
   ...SETTINGS_ACTIONS,
   ...SNIPPET_ACTIONS,
   ...LOG_ACTIONS,

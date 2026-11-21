@@ -5,6 +5,12 @@ import { useWatch } from "@table-craft/desktop/renderer/watch/store.js";
 import { useAdminSecret } from "@table-craft/desktop/renderer/keyAdmin/SecretPrompt.js";
 import { useCommandTxn } from "@table-craft/desktop/renderer/console/transaction/store.js";
 import { useKeyTabs } from "@table-craft/desktop/renderer/state/keyTabs.js";
+import { useTopicTabs } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { useGroupTabs } from "@table-craft/desktop/renderer/state/groupTabs.js";
+import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
+import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
+import { useStreamDialog } from "@table-craft/desktop/renderer/streams/dialogStore.js";
+import { useTail } from "@table-craft/desktop/renderer/tail/store.js";
 import { currentContext } from "@table-craft/desktop/renderer/actions/context.js";
 import {
   createActionRegistry,
@@ -53,6 +59,12 @@ const STORES = [
   useAdminSecret,
   useCommandTxn,
   useKeyTabs,
+  useTopicTabs,
+  useGroupTabs,
+  useSubjectTabs,
+  useStreams,
+  useStreamDialog,
+  useTail,
   useTabs,
   useConsoles,
   useDatasources,
@@ -80,10 +92,10 @@ export function subscribeToActions(listener: () => void): () => void {
   return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
 }
 
-/** Whether `id` can run now, re-read whenever a store it might depend on changes. */
-export function useActionEnabled(id: string): boolean {
+/** Whether `id` can run now with `args`, re-read whenever a store it might depend on changes. */
+export function useActionEnabled(id: string, args?: unknown): boolean {
   const tabId = useContext(ActionTabContext);
-  return useSyncExternalStore(subscribeToActions, () => registry.isEnabled(id, currentContext(tabId)));
+  return useSyncExternalStore(subscribeToActions, () => registry.isEnabled(id, currentContext(tabId), args));
 }
 
 /** `firstEnabledAction` over `ids`, re-read like `useActionEnabled`. */

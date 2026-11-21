@@ -642,6 +642,7 @@ function DataEditorPage() {
   const groupId = useId();
   const jsonId = useId();
   const limitInSqlId = useId();
+  const spillId = useId();
   const setData = (patch: Partial<Settings["data"]>) =>
     update((current) => ({ ...current, data: { ...current.data, ...patch } }));
   return (
@@ -740,6 +741,22 @@ function DataEditorPage() {
       />
       <p className="col-start-2 text-ink-muted">
         Applies to new watches. Older display events are dropped at this cap; server gaps are reported separately.
+      </p>
+      <SectionTitle>Streams</SectionTitle>
+      <FieldRow label="Large messages" htmlFor={spillId}>
+        <label className="flex items-center gap-cell">
+          <input
+            id={spillId}
+            type="checkbox"
+            checked={data.spillMessages}
+            onChange={(event) => setData({ spillMessages: event.target.checked })}
+          />
+          Keep large messages on disk
+        </label>
+      </FieldRow>
+      <p className="col-start-2 text-ink-muted">
+        A message over 1,024 characters keeps its first 1,024 characters in memory and the rest in a temporary file,
+        deleted when its tab or tail closes. Applies to the next read or tail.
       </p>
     </>
   );

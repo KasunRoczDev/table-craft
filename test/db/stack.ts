@@ -10,7 +10,13 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DATABASE_IDS, type DatabaseId, DATABASES_ENV, selectedDatabases } from "../support/databases.js";
+import {
+  DATABASE_IDS,
+  type DatabaseId,
+  DATABASES_ENV,
+  kafkaRemoteBootstrap,
+  selectedDatabases,
+} from "../support/databases.js";
 import { sentinelsFor, servicesMissingSentinels, servicesOf } from "../support/smokeFixtures.js";
 import { TIDB_PROFILE, type TidbTarget } from "./tidbTarget.js";
 
@@ -167,10 +173,16 @@ export interface Stack {
 
 /**
  * What a run over `databases` starts: one profile per selected database, and the local TiDB
- * container only when TiDB is selected and the remote one did not answer.
+ * container only when TiDB is selected and the remote one did not answer; the Kafka container
+ * only when `.env` names no remote Kafka.
  */
-export function stackFor(databases: readonly DatabaseId[], target: TidbTarget): Stack {
+export function stackFor(
+  databases: readonly DatabaseId[],
+  target: TidbTarget,
+  env: NodeJS.ProcessEnv = process.env,
+): Stack {
   const profiles = databases.flatMap((id) => {
+    if (id === "kafka") return kafkaRemoteBootstrap(env) === null ? [id] : [];
     if (id !== "tidb") return [id];
     return target.remote ? [] : [TIDB_PROFILE];
   });
