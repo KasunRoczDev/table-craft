@@ -11,6 +11,8 @@ export type TlsMode = (typeof TLS_MODES)[number];
 const DEFAULT_BOOTSTRAP = "localhost:9092";
 const DEFAULT_CLIENT_ID = "TableCraft";
 const DEFAULT_REQUEST_TIMEOUT_SECONDS = 30;
+/** Ten minutes: past it a hung broker would hold a read, a produce or a tail open for good. */
+export const MAX_REQUEST_TIMEOUT_SECONDS = 600;
 const DEFAULT_MAX_SCAN = 100_000;
 const DEFAULT_LAG_WARNING = 10_000;
 const MAX_PORT = 65_535;
@@ -78,7 +80,7 @@ export const connectionSchema = z
     registryUser: z.string().default(""),
     registryPassword: z.string().default(""),
     clientId: z.string().min(1).default(DEFAULT_CLIENT_ID),
-    requestTimeout: z.number().positive().default(DEFAULT_REQUEST_TIMEOUT_SECONDS),
+    requestTimeout: z.number().positive().max(MAX_REQUEST_TIMEOUT_SECONDS).default(DEFAULT_REQUEST_TIMEOUT_SECONDS),
     maxScan: z.number().int().positive().default(DEFAULT_MAX_SCAN),
     lagWarning: z.number().int().nonnegative().default(DEFAULT_LAG_WARNING),
     nameFilter: z.string().default(""),
@@ -94,10 +96,27 @@ export const connectionSchema = z
         message: "Write the Schema Registry URL with http:// or https://, such as http://localhost:8081.",
       });
     }
+    if (hasUserInfo(value.registryUrl.trim())) {
+      context.addIssue({
+        code: "custom",
+        path: ["registryUrl"],
+        message: "Leave the user and password out of the Schema Registry URL; enter them as basic authentication.",
+      });
+    }
     if (value.registryAuth === "basic" && value.registryUser.trim() === "") {
       context.addIssue({ code: "custom", path: ["registryUser"], message: "Enter the Schema Registry username." });
     }
   });
+
+/** Whether a URL carries `user:password@`, which would show in every error that names the URL. */
+export function hasUserInfo(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.username !== "" || parsed.password !== "";
+  } catch {
+    return false;
+  }
+}
 
 export type KafkaConfig = z.infer<typeof connectionSchema>;
 

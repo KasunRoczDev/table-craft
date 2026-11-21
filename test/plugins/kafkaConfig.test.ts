@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { pluginManifestSchema, serviceProblems } from "@table-craft/plugin-api";
 import plugin from "@table-craft/plugin-kafka";
 import { connectionSchema, parseBootstrap } from "@table-craft/plugin-kafka/config";
-import { nameFilter } from "@table-craft/plugin-kafka/glob";
+import { globMatcher, nameFilter } from "@table-craft/plugin-kafka/glob";
 import { clusterModeOf, missingApis, serverVersionOf, type BrokerApi } from "@table-craft/plugin-kafka/version";
 
 const MANIFEST = resolve(import.meta.dirname, "../../plugins/kafka/table-craft-plugin.json");
@@ -13,6 +13,7 @@ function apis(versions: Readonly<Record<string, number>>): BrokerApi[] {
   return Object.entries(versions).map(([name, maxVersion], apiKey) => ({ apiKey, name, minVersion: 0, maxVersion }));
 }
 
+const GLOB_BUDGET_MS = 200;
 const BASE = { Metadata: 12, ApiVersions: 3, ListOffsets: 8, Produce: 9 };
 
 describe("kafka config", () => {
@@ -76,5 +77,15 @@ describe("kafka name filter", () => {
   it("givenEmptyFilter_whenNameFilter_thenEveryNameListed", () => {
     expect(nameFilter(" ")("anything")).toBe(true);
     expect(connectionSchema.parse({}).nameFilter).toBe("");
+  });
+
+  it("givenManyStarsThatCannotMatch_whenGlobbed_thenAnswersAtOnce", () => {
+    const glob = `${"a*".repeat(30)}b`;
+    const started = performance.now();
+    expect(globMatcher(glob)("a".repeat(5_000))).toBe(false);
+    expect(performance.now() - started).toBeLessThan(GLOB_BUDGET_MS);
+    expect(globMatcher("a*b*c")("axxbyyc")).toBe(true);
+    expect(globMatcher("*.v?")("orders.v1")).toBe(true);
+    expect(globMatcher("orders")("orders.v1")).toBe(false);
   });
 });

@@ -9,26 +9,13 @@ import {
 } from "@table-craft/plugin-api";
 import { guardWrite } from "./readOnly.js";
 import { globMatcher } from "./glob.js";
+import { mapLimited } from "./limited.js";
 import { SchemaCache } from "./schemaCache.js";
 import { type RegistryClient } from "./registryClient.js";
 
 export const NO_REGISTRY_REASON = "No Schema Registry URL is set for this data source";
 /** Subjects described at once when listing, so a registry with thousands is not flooded. */
 const DESCRIBE_CONCURRENCY = 8;
-
-async function mapLimited<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await work(items[index] as T);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 /** The service of a session without a registry URL: present, and saying why it cannot be used. */
 export class UnavailableRegistry implements SchemaRegistry {

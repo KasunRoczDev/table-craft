@@ -2,15 +2,36 @@ import { request as httpRequest, type IncomingMessage, type RequestOptions } fro
 import { request as httpsRequest } from "node:https";
 import type { ConnectionOptions as TlsOptions } from "node:tls";
 import { PluginError, SCHEMA_TYPES, type SchemaType } from "@table-craft/plugin-api";
+import { UncertainWrite } from "./failures.js";
 
 const CONTENT_TYPE = "application/vnd.schemaregistry.v1+json";
 const HTTP_OK_FIRST = 200;
 const HTTP_OK_LAST = 299;
 const HTTP_NOT_FOUND = 404;
+/** Confluent's SUBJECT_SOFT_DELETED and VERSION_SOFT_DELETED: the soft delete already happened. */
+const SOFT_DELETED_CODES: ReadonlySet<number> = new Set([40404, 40406]);
+const MESSAGE_CHARS = 200;
+const HTTP_SERVER_ERROR = 500;
+const READ_METHOD = "GET";
+/** A POST that only asks, as a compatibility check does. */
+const CHECK_PATH = "compatibility/";
+/** Socket errors raised before a request could be sent, so a write failing with one changed nothing. */
+const UNSENT_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+]);
+const MEBIBYTE = 1024 * 1024;
 /** Confluent's error codes for a subject or version that does not exist. */
 const SUBJECT_NOT_FOUND = 40401;
 const VERSION_NOT_FOUND = 40402;
 const LATEST = "latest";
+/** Far beyond any schema or subject list; a larger answer is not a registry's. */
+export const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+/** Path segments a URL resolves away, so a subject named so would reach another endpoint. */
+const DOT_SEGMENTS: ReadonlySet<string> = new Set([".", ".."]);
 
 export interface RegistryClientOptions {
   readonly url: string;
@@ -76,7 +97,20 @@ function schemaOf(raw: RawSchema): RegistrySchema {
 }
 
 function segment(text: string): string {
+  if (DOT_SEGMENTS.has(text)) throw new PluginError("statementFailed", `A subject cannot be named ${text}.`);
   return encodeURIComponent(text);
+}
+
+/** The URL without any `user:password@`, for messages (decision 020). */
+function shownUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString().replace(/\/$/, url.endsWith("/") ? "/" : "");
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -93,8 +127,9 @@ export class RegistryClient {
     this.#base = new URL(options.url.endsWith("/") ? options.url : `${options.url}/`);
   }
 
+  /** The registry's URL as messages show it, without credentials. */
   get url(): string {
-    return this.#options.url;
+    return shownUrl(this.#options.url);
   }
 
   async subjects(): Promise<string[]> {
@@ -185,12 +220,17 @@ export class RegistryClient {
 
   /** Deletes a version, or the whole subject for null; answers the versions deleted. */
   async remove(subject: string, version: number | null, permanent: boolean): Promise<number[]> {
-    const query = permanent ? "?permanent=true" : "";
     const path =
-      version === null
-        ? `subjects/${segment(subject)}${query}`
-        : `subjects/${segment(subject)}/versions/${String(version)}${query}`;
-    const answer = await this.#call("DELETE", path);
+      version === null ? `subjects/${segment(subject)}` : `subjects/${segment(subject)}/versions/${String(version)}`;
+    // The registry refuses a permanent delete of what was not soft-deleted first (40405, 40407).
+    let answer: unknown = null;
+    try {
+      answer = await this.#call("DELETE", path);
+    } catch (error) {
+      const softDeleted = error instanceof RegistryError && SOFT_DELETED_CODES.has(error.registryCode ?? 0);
+      if (!permanent || !softDeleted) throw error;
+    }
+    if (permanent) answer = await this.#call("DELETE", `${path}?permanent=true`);
     if (Array.isArray(answer)) return answer.filter((item): item is number => typeof item === "number");
     return typeof answer === "number" ? [answer] : [];
   }
@@ -199,6 +239,7 @@ export class RegistryClient {
     const url = new URL(path, this.#base);
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), "utf8");
     const secure = url.protocol === "https:";
+    const writes = method !== READ_METHOD && !path.startsWith(CHECK_PATH);
     const auth = this.#options.basicAuth;
     const options: RequestOptions = {
       method,
@@ -213,11 +254,29 @@ export class RegistryClient {
       ...(secure && this.#options.tls !== null ? this.#options.tls : {}),
     };
     return new Promise<unknown>((resolve, reject) => {
+      const timedOut = (): void => {
+        request.destroy(new Error(`no answer within ${String(this.#options.timeoutMs)} ms`));
+      };
+      // `timeout` only notices a silent socket; a registry that trickles bytes needs a deadline too.
+      const deadline = setTimeout(timedOut, this.#options.timeoutMs);
+      const settle = (): void => clearTimeout(deadline);
       const onResponse = (response: IncomingMessage): void => {
         const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => chunks.push(chunk));
-        response.on("error", reject);
+        let received = 0;
+        response.on("data", (chunk: Buffer) => {
+          received += chunk.length;
+          if (received > MAX_RESPONSE_BYTES) {
+            request.destroy(new Error(`the answer is larger than ${String(MAX_RESPONSE_BYTES / MEBIBYTE)} MB`));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on("error", (cause) => {
+          settle();
+          reject(cause);
+        });
         response.on("end", () => {
+          settle();
           const text = Buffer.concat(chunks).toString("utf8");
           const status = response.statusCode ?? 0;
           let parsed: unknown;
@@ -235,27 +294,27 @@ export class RegistryClient {
             message?: unknown;
           };
           const code = typeof fields.error_code === "number" ? fields.error_code : null;
-          const message = typeof fields.message === "string" ? fields.message : text.slice(0, 200);
+          const message = typeof fields.message === "string" ? fields.message : text.slice(0, MESSAGE_CHARS);
+          const said = `The Schema Registry answered ${String(status)}${code === null ? "" : ` (error ${String(code)})`} to ${method} /${path.split("?")[0] ?? path}: ${message}`;
+          // A registry forwards a write to its leader; a 5xx may come after the leader applied it.
           reject(
-            new RegistryError(
-              status,
-              code,
-              `The Schema Registry answered ${String(status)}${code === null ? "" : ` (error ${String(code)})`} to ${method} /${path.split("?")[0] ?? path}: ${message}`,
-            ),
+            writes && status >= HTTP_SERVER_ERROR
+              ? new UncertainWrite(`${said}.`)
+              : new RegistryError(status, code, said),
           );
         });
       };
       const request = secure ? httpsRequest(url, options, onResponse) : httpRequest(url, options, onResponse);
-      request.on("timeout", () => {
-        request.destroy(new Error(`no answer within ${String(this.#options.timeoutMs)} ms`));
-      });
-      request.on("error", (cause) => {
+      request.on("timeout", timedOut);
+      request.on("error", (cause: NodeJS.ErrnoException) => {
+        settle();
+        const reach = `Cannot reach the Schema Registry at ${this.url}: ${cause.message}.`;
         reject(
-          new PluginError(
-            "statementFailed",
-            `Cannot reach the Schema Registry at ${this.#options.url}: ${cause.message}. Check the Schema Registry URL of the datasource.`,
-            { cause },
-          ),
+          writes && !UNSENT_CODES.has(cause.code ?? "")
+            ? new UncertainWrite(reach, { cause })
+            : new PluginError("statementFailed", `${reach} Check the Schema Registry URL of the datasource.`, {
+                cause,
+              }),
         );
       });
       if (payload !== null) request.write(payload);

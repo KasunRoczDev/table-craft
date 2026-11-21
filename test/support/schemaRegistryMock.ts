@@ -23,6 +23,8 @@ interface StoredVersion {
   deleted: boolean;
 }
 
+export type MockFault = "unauthorized" | "serverError" | "hang";
+
 export interface SchemaRegistryMock {
   readonly url: string;
   /** Registers directly, skipping compatibility; answers the id and version. */
@@ -34,6 +36,8 @@ export interface SchemaRegistryMock {
   ): { id: number; version: number };
   /** Every request as `METHOD /path`, in order. */
   readonly requests: readonly string[];
+  /** Answers the next `count` requests with the fault instead of routing them; `hang` never answers. */
+  failNext(fault: MockFault, count?: number): void;
   close(): Promise<void>;
 }
 
@@ -43,6 +47,14 @@ const UNPROCESSABLE = 422;
 const SUBJECT_NOT_FOUND = 40401;
 const VERSION_NOT_FOUND = 40402;
 const SCHEMA_NOT_FOUND = 40403;
+const SUBJECT_SOFT_DELETED = 40404;
+const SUBJECT_NOT_SOFT_DELETED = 40405;
+const VERSION_SOFT_DELETED = 40406;
+const VERSION_NOT_SOFT_DELETED = 40407;
+const SUBJECT_LEVEL_NOT_FOUND = 40408;
+const UNAUTHORIZED = 401;
+const SERVER_ERROR = 500;
+const SERVER_ERROR_CODE = 50001;
 const INVALID_SCHEMA = 42201;
 const DEFAULT_LEVEL = "BACKWARD";
 const FIRST_ID = 1;
@@ -177,10 +189,19 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
         return { subject: second, id: found.id, version: found.version, schema };
       }
       if (third === undefined && method === "DELETE") {
-        const versions = live(second);
-        for (const version of versions) version.deleted = true;
-        if (permanent) subjects.delete(second);
-        return versions.map((version) => version.version);
+        const all = subjects.get(second) ?? [];
+        if (all.length === 0) throw new HttpError(NOT_FOUND, SUBJECT_NOT_FOUND, `Subject '${second}' not found.`);
+        const softDeleted = all.every((version) => version.deleted);
+        if (permanent) {
+          if (!softDeleted) {
+            throw new HttpError(NOT_FOUND, SUBJECT_NOT_SOFT_DELETED, `Subject '${second}' was not deleted first.`);
+          }
+          subjects.delete(second);
+          return all.map((version) => version.version);
+        }
+        if (softDeleted) throw new HttpError(NOT_FOUND, SUBJECT_SOFT_DELETED, `Subject '${second}' was soft deleted.`);
+        for (const version of all) version.deleted = true;
+        return all.map((version) => version.version);
       }
       if (third === "versions" && fourth === undefined && method === "GET") return live(second).map((v) => v.version);
       if (third === "versions" && fourth === undefined && method === "POST") {
@@ -206,13 +227,21 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
         return { subject: second, version: version.version, id: version.id, ...schemaJson(stored) };
       }
       if (third === "versions" && fourth !== undefined && method === "DELETE") {
-        const version = versionOf(second, fourth);
-        version.deleted = true;
-        if (permanent)
+        const version = (subjects.get(second) ?? []).find((entry) => String(entry.version) === fourth);
+        if (version === undefined) throw new HttpError(NOT_FOUND, VERSION_NOT_FOUND, `Version ${fourth} not found.`);
+        if (permanent) {
+          if (!version.deleted) {
+            throw new HttpError(NOT_FOUND, VERSION_NOT_SOFT_DELETED, `Version ${fourth} was not deleted first.`);
+          }
           subjects.set(
             second,
             (subjects.get(second) ?? []).filter((entry) => entry !== version),
           );
+          return version.version;
+        }
+        if (version.deleted)
+          throw new HttpError(NOT_FOUND, VERSION_SOFT_DELETED, `Version ${fourth} was soft deleted.`);
+        version.deleted = true;
         return version.version;
       }
     }
@@ -237,7 +266,13 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
       };
     }
     if (head === "config") {
-      if (method === "GET") return { compatibilityLevel: levelOf(second ?? null) };
+      if (method === "GET") {
+        const toGlobal = url.searchParams.get("defaultToGlobal") === "true";
+        if (second !== undefined && !levels.has(second) && !toGlobal) {
+          throw new HttpError(NOT_FOUND, SUBJECT_LEVEL_NOT_FOUND, `Subject '${second}' has no compatibility level.`);
+        }
+        return { compatibilityLevel: levelOf(second ?? null) };
+      }
       if (method === "PUT") {
         const body = await bodyOf(request);
         const level = String(body.compatibility);
@@ -255,7 +290,18 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
     response.end(text);
   }
 
+  const faults: MockFault[] = [];
   const server = createServer((request, response) => {
+    const fault = faults.shift();
+    if (fault !== undefined) {
+      requests.push(`${request.method ?? "GET"} ${request.url ?? "/"}`);
+      if (fault === "unauthorized")
+        respond(response, UNAUTHORIZED, { error_code: UNAUTHORIZED, message: "Unauthorized" });
+      if (fault === "serverError") {
+        respond(response, SERVER_ERROR, { error_code: SERVER_ERROR_CODE, message: "Internal Server Error" });
+      }
+      return;
+    }
     route(request).then(
       (body) => {
         respond(response, 200, body);
@@ -263,7 +309,7 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
       (error: unknown) => {
         if (error instanceof HttpError)
           respond(response, error.status, { error_code: error.code, message: error.message });
-        else respond(response, 500, { error_code: 50001, message: String(error) });
+        else respond(response, SERVER_ERROR, { error_code: SERVER_ERROR_CODE, message: String(error) });
       },
     );
   });
@@ -276,6 +322,9 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
       return { id, version: addVersion(subject, id) };
     },
     requests,
+    failNext: (fault, count = 1) => {
+      for (let index = 0; index < count; index += 1) faults.push(fault);
+    },
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error === undefined ? resolve() : reject(error)));
