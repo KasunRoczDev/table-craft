@@ -8,7 +8,7 @@ import type {
   TopicCreate,
 } from "@table-craft/plugin-api";
 import type { ConfigResource, KafkaAdmin } from "./admin.js";
-import { failures, refused } from "./failures.js";
+import { refused, unreportedOffsets, writeFailures } from "./failures.js";
 import type { PreparedStore } from "./prepared.js";
 import { timestampMillis } from "./readPlan.js";
 import { guardInternal, guardWrite } from "./readOnly.js";
@@ -70,7 +70,7 @@ export class TopicAdmin {
         configs: request.configs.map((config) => ({ name: config.name, value: config.value })),
       },
     ];
-    await failures(
+    await writeFailures(
       () => this.#admin.controllerCall("CreateTopics", topics, this.#timeoutMs, options.validateOnly),
       `Kafka refused to create ${request.name}: `,
     );
@@ -95,7 +95,7 @@ export class TopicAdmin {
         ? { name: change.name, configOperation: IncrementalAlterConfigOperationTypes.DELETE }
         : { name: change.name, configOperation: IncrementalAlterConfigOperationTypes.SET, value: change.value },
     );
-    await failures(
+    await writeFailures(
       () =>
         this.#admin.writer.incrementalAlterConfigs({
           resources: [{ resourceType, resourceName: name, configs }],
@@ -114,7 +114,7 @@ export class TopicAdmin {
         `${topic} has ${String(current)} partitions; the new total must be more, since Kafka never removes partitions.`,
       );
     }
-    await failures(
+    await writeFailures(
       () =>
         this.#admin.controllerCall(
           "CreatePartitions",
@@ -151,7 +151,7 @@ export class TopicAdmin {
     let removed = 0n;
     for (const partition of chosen) {
       const mark = marks.get(partition);
-      if (mark === undefined) continue;
+      if (mark === undefined) throw refused(unreportedOffsets(topic, partition));
       let target: bigint;
       if (before.kind === "latest") target = mark.high;
       else if (before.kind === "offset") target = BigInt(before.offset);
@@ -178,7 +178,7 @@ export class TopicAdmin {
     guardWrite(this.#readOnly, "deleting records");
     const prepared = this.#prepared.take<PreparedDelete>(DELETE_RECORDS, token);
     if (prepared.partitions.length === 0) return;
-    await failures(
+    await writeFailures(
       () =>
         this.#admin.writer.deleteRecords({
           topics: [{ name: prepared.topic, partitions: prepared.partitions.map((entry) => ({ ...entry })) }],
@@ -191,7 +191,7 @@ export class TopicAdmin {
     guardWrite(this.#readOnly, `deleting topic ${topic}`);
     guardInternal(topic, "deleting it");
     await this.#admin.topic(topic);
-    await failures(
+    await writeFailures(
       () => this.#admin.controllerCall("DeleteTopics", [{ name: topic }], this.#timeoutMs),
       `Kafka refused to delete ${topic}: `,
     );

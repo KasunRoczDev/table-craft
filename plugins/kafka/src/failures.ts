@@ -83,6 +83,59 @@ export function statementFailure(cause: unknown, prefix = ""): PluginError {
   return new PluginError("statementFailed", `${prefix}${errorText(cause)}`, { cause });
 }
 
+const TIMEOUT_ERROR_CODE = "PLT_KFK_TIMEOUT";
+/** Broker answers that come after the write may already be in the log. */
+const UNCERTAIN_IDS: ReadonlySet<string> = new Set(["REQUEST_TIMED_OUT", "NOT_ENOUGH_REPLICAS_AFTER_APPEND"]);
+
+function hasCode(cause: unknown, code: string, depth = 0): boolean {
+  if (depth > MAX_DEPTH || typeof cause !== "object" || cause === null) return false;
+  const driver = cause as DriverError;
+  if (driver.code === code) return true;
+  if (Array.isArray(driver.errors) && (driver.errors as unknown[]).some((nested) => hasCode(nested, code, depth + 1)))
+    return true;
+  return hasCode(driver.cause, code, depth + 1);
+}
+
+/**
+ * A write whose request may have reached the broker or registry before the failure: the host
+ * reports it as possibly applied and never as "Nothing changed" (structural `outcome`, as etcd's).
+ */
+export class UncertainWrite extends PluginError {
+  readonly outcome = "unknown";
+
+  constructor(message: string, options?: ErrorOptions) {
+    super("statementFailed", `${message} It may have been applied; check before you try again.`, options);
+  }
+}
+
+/** Whether `cause` leaves a sent write's outcome open: a lost connection, a timeout, or an answer after appending. */
+export function isUncertain(cause: unknown): boolean {
+  if (cause instanceof UncertainWrite) return true;
+  const id = kafkaErrorId(cause);
+  return isNetworkError(cause) || hasCode(cause, TIMEOUT_ERROR_CODE) || (id !== null && UNCERTAIN_IDS.has(id));
+}
+
+/** `cause` of a write that was sent: `UncertainWrite` when its outcome is open, else a refusal. */
+export function writeFailure(cause: unknown, prefix = ""): PluginError {
+  if (isPluginError(cause)) return cause;
+  if (isUncertain(cause)) return new UncertainWrite(`${prefix}${errorText(cause)}.`, { cause });
+  return statementFailure(cause, prefix);
+}
+
+/** Runs a write, turning a driver failure into `writeFailure`. */
+export async function writeFailures<T>(work: () => Promise<T>, prefix = ""): Promise<T> {
+  try {
+    return await work();
+  } catch (cause) {
+    throw writeFailure(cause, prefix);
+  }
+}
+
+/** A preview cannot leave out a partition whose watermarks Kafka did not report, as when it has no leader. */
+export function unreportedOffsets(topic: string, partition: number): string {
+  return `Kafka did not report the offsets of partition ${String(partition)} of ${topic}; it may have no leader. Try again in a moment.`;
+}
+
 export function refused(message: string): PluginError {
   return new PluginError("statementFailed", message);
 }

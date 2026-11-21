@@ -57,6 +57,14 @@ describe("kafka console classify", () => {
     expect(apply.destructive).toContain("billing");
   });
 
+  it("givenAlterConfigOrAddPartitions_whenClassify_thenDestructiveUnlessValidateOnly", () => {
+    expect(classify("alter-config topic orders retention.ms=1").destructive).toContain("deletes messages for good");
+    expect(classify("add-partitions orders 6").destructive).toContain("for good");
+    expect(classify("alter-config topic orders retention.ms=1 --validate-only").destructive).toBeNull();
+    expect(classify("add-partitions orders 6 --validate-only").destructive).toBeNull();
+    expect(classify("add-partitions orders 6").confirmByName).toBeUndefined();
+  });
+
   it("givenCompatibilityWithLevel_whenClassify_thenWrite", () => {
     expect(classify("compatibility orders-value").kind).toBe("read");
     expect(classify("compatibility orders-value FULL").kind).toBe("write");

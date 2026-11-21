@@ -12,6 +12,7 @@ export const DEFAULT_CONSUME_LIMIT = 500;
 
 const OPENERS: Readonly<Record<string, string>> = { "{": "}", "[": "]" };
 const LATEST_N = /^-\d+$/;
+const VALIDATE_ONLY_FLAG = "validate-only";
 
 /**
  * Where the command that starts at `from` ends: at a line break outside a quote and outside a
@@ -109,6 +110,18 @@ function destructiveOf(doc: CommandDoc, tokens: readonly Token[]): { reason: str
     case "delete-offsets":
       return {
         reason: `delete-offsets deletes what ${first} committed on ${positional[1]?.text ?? "?"}`,
+        byName: false,
+      };
+    case "alter-config":
+      if (hasFlag(doc, tokens, VALIDATE_ONLY_FLAG)) return null;
+      return {
+        reason: `alter-config changes the configs of ${first} ${positional[1]?.text ?? "?"}; a setting such as retention.ms=1 deletes messages for good`,
+        byName: false,
+      };
+    case "add-partitions":
+      if (hasFlag(doc, tokens, VALIDATE_ONLY_FLAG)) return null;
+      return {
+        reason: `add-partitions adds partitions to ${first} for good, which moves where keyed messages land`,
         byName: false,
       };
     case "reset-offsets":

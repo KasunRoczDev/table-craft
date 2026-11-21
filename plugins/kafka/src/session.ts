@@ -85,9 +85,13 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
   readonly #readOnly: boolean;
   readonly #tails = new Set<TopicTail>();
   readonly #running = new Set<AbortController>();
-  #fetcher: Consumer | null = null;
+  /**
+   * Fetchers no read is using. Each running read holds its own, because two reads sharing one
+   * clash on its fetch session epoch; one is kept idle so a read does not open a connection.
+   */
+  #idleFetchers: Consumer[] = [];
+  readonly #busyFetchers = new Set<Consumer>();
   #busy = false;
-  #fullBytes = false;
   #closed = false;
 
   private constructor(connection: Connection, config: KafkaConfig, options: ConnectOptions, registry: SchemaRegistry) {
@@ -98,7 +102,12 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     this.#admin = new KafkaAdmin(connection);
     this.#registry = registry;
     this.#cache = registry instanceof KafkaSchemaRegistry ? registry.cache : null;
-    this.#produce = new KafkaProduce(connection.options, this.#cache, options.readOnly);
+    this.#produce = new KafkaProduce(
+      connection.options,
+      this.#cache,
+      options.readOnly,
+      async (topic) => (await this.#admin.topic(topic)).partitionsCount,
+    );
     this.#topicAdmin = new TopicAdmin(
       this.#admin,
       this.#prepared,
@@ -167,7 +176,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     this.#checked();
     if (this.#busy) throw new PluginError("sessionBusy", BUSY_MESSAGE);
     this.#busy = true;
-    this.#fullBytes = options?.fullBytes === true;
+    const fullBytes = options?.fullBytes === true;
     try {
       return await runCommand(
         {
@@ -177,28 +186,33 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
           topicAdmin: this.#topicAdmin,
           groups: this.#groups,
           registry: this.#registry,
-          follow: (request, followMs) => this.#read(request, followMs),
+          follow: (request, followMs) => this.#read(request, followMs, undefined, fullBytes),
         },
         sql.trim(),
       );
     } finally {
       this.#busy = false;
-      this.#fullBytes = false;
     }
   }
 
-  async #read(request: TopicReadRequest, followMs: number | null = null, spill?: MessageSpill): Promise<TopicRead> {
+  async #read(
+    request: TopicReadRequest,
+    followMs: number | null = null,
+    spill?: MessageSpill,
+    fullBytes = false,
+  ): Promise<TopicRead> {
     const admin = this.#checked();
     const controller = new AbortController();
     this.#running.add(controller);
+    const fetcher = this.#takeFetcher();
     try {
       return await readTopic(
         {
           admin,
-          fetcher: () => this.#fetcherClient(),
+          fetcher: () => fetcher,
           registry: this.#cache,
           maxScan: this.#config.maxScan,
-          fullBytes: this.#fullBytes,
+          fullBytes,
           signal: controller.signal,
           committed: (group, topic, partitions) => admin.committed(group, topic, partitions),
         },
@@ -208,12 +222,17 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
       );
     } finally {
       this.#running.delete(controller);
+      await this.#returnFetcher(fetcher);
     }
   }
 
   async #tail(request: TopicTailRequest): Promise<TopicTail> {
     const admin = this.#checked();
     const tail = await openTail(this.#connection.options, admin, this.#cache, request);
+    if (this.#closed) {
+      await tail.close();
+      throw new PluginError("connectionLost", CLOSED_MESSAGE);
+    }
     this.#tails.add(tail);
     return {
       next: (batch) => tail.next(batch),
@@ -224,9 +243,22 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     };
   }
 
-  #fetcherClient(): Consumer {
-    this.#fetcher ??= new Consumer({ ...this.#connection.options, groupId: UNJOINED_GROUP_ID });
-    return this.#fetcher;
+  #takeFetcher(): Consumer {
+    const fetcher =
+      this.#idleFetchers.pop() ?? new Consumer({ ...this.#connection.options, groupId: UNJOINED_GROUP_ID });
+    this.#busyFetchers.add(fetcher);
+    return fetcher;
+  }
+
+  async #returnFetcher(fetcher: Consumer): Promise<void> {
+    this.#busyFetchers.delete(fetcher);
+    if (this.#closed || this.#idleFetchers.length > 0) await fetcher.close().catch(() => undefined);
+    else this.#idleFetchers.push(fetcher);
+  }
+
+  /** Fetchers open now, idle or reading; a test sees reads that overlap use their own. */
+  get fetcherCount(): number {
+    return this.#idleFetchers.length + this.#busyFetchers.size;
   }
 
   #cancel(): Promise<void> {
@@ -263,7 +295,13 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     this.#prepared.clear();
     await Promise.all([...this.#tails].map((tail) => tail.close().catch(() => undefined)));
     this.#tails.clear();
-    await Promise.all([this.#admin.close(), this.#produce.close(), this.#fetcher?.close().catch(() => undefined)]);
+    const fetchers = [...this.#idleFetchers, ...this.#busyFetchers];
+    this.#idleFetchers = [];
+    await Promise.all([
+      this.#admin.close(),
+      this.#produce.close(),
+      ...fetchers.map((fetcher) => fetcher.close().catch(() => undefined)),
+    ]);
   }
 
   #checked(): KafkaAdmin {

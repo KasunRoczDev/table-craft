@@ -1,7 +1,7 @@
-import { Producer, ProduceAcks, type BaseOptions } from "@platformatic/kafka";
+import { compatibilityPartitioner, Producer, ProduceAcks, type BaseOptions } from "@platformatic/kafka";
 import type { MessageFormat, ProduceRecord, ProduceResult, SchemaReference } from "@table-craft/plugin-api";
 import { CONFLUENT_HEADER_BYTES, CONFLUENT_MAGIC, encodePlain, schemaTypeOfFormat } from "./formats.js";
-import { errorText, refused, statementFailure } from "./failures.js";
+import { errorText, refused, writeFailure } from "./failures.js";
 import { guardInternal, guardWrite } from "./readOnly.js";
 import type { SchemaCache } from "./schemaCache.js";
 
@@ -45,23 +45,35 @@ export async function encodeWithSchema(
     throw refused(`The value does not fit ${subject} (${codec.label}): ${problems.join("; ")}. Nothing was sent.`);
   }
   try {
-    return Buffer.concat([confluentHeader(codec.id), codec.encode(value)]);
+    const payload = codec.encodeText?.(text, value) ?? codec.encode(value);
+    return Buffer.concat([confluentHeader(codec.id), payload]);
   } catch (error) {
     throw refused(`The value does not encode with ${subject} (${codec.label}): ${errorText(error)}. Nothing was sent.`);
   }
 }
 
-/** Sends single records (Phase 4 of plan 164) through one producer per session, never retried. */
+/**
+ * Sends single records (Phase 4 of plan 164) through one producer per session, never retried. A
+ * keyed record goes where Java's default partitioner sends it (`murmur2(key) & 0x7fffffff`), so
+ * TableCraft and the topic's other producers agree.
+ */
 export class KafkaProduce {
   readonly #options: BaseOptions;
   readonly #registry: SchemaCache | null;
   readonly #readOnly: boolean;
+  readonly #partitionCount: (topic: string) => Promise<number>;
   #producer: Producer | null = null;
 
-  constructor(options: BaseOptions, registry: SchemaCache | null, readOnly: boolean) {
+  constructor(
+    options: BaseOptions,
+    registry: SchemaCache | null,
+    readOnly: boolean,
+    partitionCount: (topic: string) => Promise<number>,
+  ) {
     this.#options = options;
     this.#registry = registry;
     this.#readOnly = readOnly;
+    this.#partitionCount = partitionCount;
   }
 
   async #encode(
@@ -97,6 +109,15 @@ export class KafkaProduce {
     if (record.partition !== null && (!Number.isInteger(record.partition) || record.partition < 0)) {
       throw refused(`Partition ${String(record.partition)} is not a partition number.`);
     }
+    if (record.partition !== null) {
+      // The driver takes the partition modulo the count, so one past the end would land on another.
+      const count = await this.#partitionCount(record.topic);
+      if (record.partition >= count) {
+        throw refused(
+          `${record.topic} has partitions 0-${String(count - 1)}; there is no partition ${String(record.partition)}.`,
+        );
+      }
+    }
     const key = await this.#encode(record.key, record.keyFormat, record.keySchema, record.topic, "key");
     const value = await this.#encode(record.value, record.valueFormat, record.valueSchema, record.topic, "value");
     const headers = new Map<Buffer, Buffer>(
@@ -119,9 +140,10 @@ export class KafkaProduce {
             headers,
           },
         ],
+        ...(key === undefined ? {} : { partitioner: compatibilityPartitioner }),
       });
     } catch (cause) {
-      throw statementFailure(cause, `Kafka refused the record for ${record.topic}: `);
+      throw writeFailure(cause, `Kafka refused the record for ${record.topic}: `);
     }
     const written = result.offsets?.[0];
     return {

@@ -11,10 +11,10 @@ import type {
   ResetTarget,
 } from "@table-craft/plugin-api";
 import type { KafkaAdmin, Watermarks } from "./admin.js";
-import { failures, refused } from "./failures.js";
+import { failures, refused, unreportedOffsets, writeFailures } from "./failures.js";
 import type { PreparedStore } from "./prepared.js";
 import { timestampMillis } from "./readPlan.js";
-import { guardWrite } from "./readOnly.js";
+import { guardWrite, readOnlyRefusal } from "./readOnly.js";
 
 const RESET = "groupReset";
 const NO_OFFSET = -1n;
@@ -231,11 +231,16 @@ export class KafkaGroups implements GroupManager {
     }));
   }
 
+  /**
+   * The preview of a reset. On a read-only datasource it is still shown, as `--dry-run` asks, but
+   * carries the read-only refusal and no token.
+   */
   async prepareReset(group: string, scope: ResetScope, target: ResetTarget): Promise<ResetPreview> {
-    guardWrite(this.#readOnly, `resetting the offsets of ${group}`);
     const [described, committed] = await Promise.all([this.#describeGroup(group), this.#committed([group])]);
     const state = stateWord(described.state);
-    const refusal = activeRefusal(state, described.members.size);
+    const refusal = this.#readOnly
+      ? readOnlyRefusal(`resetting the offsets of ${group}`).message
+      : activeRefusal(state, described.members.size);
     const targets = await this.#targets(scope, committed.get(group) ?? []);
     if (targets.length === 0) {
       throw refused(
@@ -259,7 +264,7 @@ export class KafkaGroups implements GroupManager {
     const offsets: PreparedReset["offsets"][number][] = [];
     for (const entry of targets) {
       const mark = marks.get(entry.topic)?.get(entry.partition);
-      if (mark === undefined) continue;
+      if (mark === undefined) throw refused(unreportedOffsets(entry.topic, entry.partition));
       let next: bigint;
       switch (target.kind) {
         case "earliest":
@@ -311,7 +316,7 @@ export class KafkaGroups implements GroupManager {
         .filter((entry) => entry.topic === name)
         .map((entry) => ({ partition: entry.partition, offset: entry.offset })),
     }));
-    await failures(
+    await writeFailures(
       () => this.#admin.writer.alterConsumerGroupOffsets({ groupId: prepared.group, topics }),
       `Kafka refused the new offsets of ${prepared.group}: `,
     );
@@ -321,7 +326,7 @@ export class KafkaGroups implements GroupManager {
     guardWrite(this.#readOnly, `deleting the offsets of ${group} on ${topic}`);
     const entries = (await this.#committed([group], topic)).get(group) ?? [];
     if (entries.length === 0) throw refused(`${group} has no committed offsets on ${topic}.`);
-    await failures(
+    await writeFailures(
       () =>
         this.#admin.writer.deleteConsumerGroupOffsets({
           groupId: group,
@@ -339,6 +344,9 @@ export class KafkaGroups implements GroupManager {
         `${activeRefusal(stateWord(described.state), described.members.size) ?? ""}; a group with members cannot be deleted.`,
       );
     }
-    await failures(() => this.#admin.writer.deleteGroups({ groups: [group] }), `Kafka refused to delete ${group}: `);
+    await writeFailures(
+      () => this.#admin.writer.deleteGroups({ groups: [group] }),
+      `Kafka refused to delete ${group}: `,
+    );
   }
 }
