@@ -1,12 +1,44 @@
 import { compatibilityPartitioner, Producer, ProduceAcks, type BaseOptions } from "@platformatic/kafka";
 import type { MessageFormat, ProduceRecord, ProduceResult, SchemaReference } from "@table-craft/plugin-api";
 import { CONFLUENT_HEADER_BYTES, CONFLUENT_MAGIC, encodePlain, schemaTypeOfFormat } from "./formats.js";
-import { errorText, refused, writeFailure } from "./failures.js";
+import { errorText, kafkaErrorId, refused, writeFailure } from "./failures.js";
 import { guardInternal, guardWrite } from "./readOnly.js";
 import type { SchemaCache } from "./schemaCache.js";
 
 const SCHEMA_ID_OFFSET = 1;
 const EMPTY = Buffer.alloc(0);
+/**
+ * Refusals the leader returns before it appends anything, so sending again cannot duplicate the
+ * record: a topic created a moment ago, or a partition whose leader just moved.
+ */
+const LEADER_NOT_READY: ReadonlySet<string> = new Set([
+  "NOT_LEADER_OR_FOLLOWER",
+  "LEADER_NOT_AVAILABLE",
+  "UNKNOWN_TOPIC_OR_PARTITION",
+]);
+const LEADER_ATTEMPTS = 5;
+const LEADER_RETRY_MS = 200;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Sends again, after refreshing the leaders, while the broker refuses only because none is ready yet. */
+export async function untilLeaderReady<T>(
+  send: () => Promise<T>,
+  refresh: () => Promise<unknown>,
+  pause: (ms: number) => Promise<void> = delay,
+): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await send();
+    } catch (cause) {
+      if (attempt >= LEADER_ATTEMPTS || !LEADER_NOT_READY.has(kafkaErrorId(cause) ?? "")) throw cause;
+      await pause(LEADER_RETRY_MS * attempt);
+      await refresh().catch(() => undefined);
+    }
+  }
+}
 
 /** Confluent's 5-byte header: the magic byte and the schema id. */
 export function confluentHeader(id: number): Buffer {
@@ -128,9 +160,8 @@ export class KafkaProduce {
     );
     this.#producer ??= new Producer({ ...this.#options, retries: 0, acks: ProduceAcks.ALL, idempotent: false });
     const producer = this.#producer;
-    let result;
-    try {
-      result = await producer.send({
+    const send = () =>
+      producer.send({
         messages: [
           {
             topic: record.topic,
@@ -142,6 +173,9 @@ export class KafkaProduce {
         ],
         ...(key === undefined ? {} : { partitioner: compatibilityPartitioner }),
       });
+    let result;
+    try {
+      result = await untilLeaderReady(send, () => producer.metadata({ topics: [record.topic], forceUpdate: true }));
     } catch (cause) {
       throw writeFailure(cause, `Kafka refused the record for ${record.topic}: `);
     }
