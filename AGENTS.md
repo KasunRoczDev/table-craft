@@ -226,7 +226,9 @@ plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql 
                            `topicTails.ts` holds live tails. `elasticsearch` speaks
                            `commands` and `searchIndices` (decisions 173, 174) over its own
                            REST client (`client.ts`); `dialect.ts` adapts to 6.x-8.x and
-                           OpenSearch, `search.ts` pages hits through a scroll it clears,
+                           OpenSearch, `search.ts` reads page one as a plain search and
+                           `paging.ts` the rest from a point in time, or a scroll on older
+                           servers, released when the result goes (decision 175);
                            `language.ts` reads Dev Tools requests, SQL and PPL
 scripts/agent-cost/        `report.ts`: steps, context and cost of an agent session, read
                            from the OpenCode session store

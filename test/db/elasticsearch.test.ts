@@ -85,8 +85,36 @@ describe.runIf(ENABLED).each(elasticTargets())("elasticsearch plugin on $label",
         for await (const row of outcome.result.rows) all.push(row);
         expect(all).toHaveLength(ES_SEARCH.documents);
         expect(all[0]?.[0]).toBe("p-120");
+        const skus = all.map((row) => (typeof row[0] === "string" ? row[0] : ""));
+        expect(new Set(skus).size).toBe(ES_SEARCH.documents);
+        expect(skus).toEqual([...skus].sort().reverse());
         expect(outcome.result.columns.map((column) => column.name)).toEqual(["sku", "category", "_id", "_source"]);
-        expect((browser as unknown as { openScrolls: number }).openScrolls).toBe(0);
+        expect((browser as unknown as { openCursors: number }).openCursors).toBe(0);
+      });
+    });
+
+    it("givenUnsortedSearch_whenPagedPastPageOne_thenEveryDocumentOnceAndNothingLeftOpen", async () => {
+      await withSession(target, async (session) => {
+        const browser = session.services.searchIndices;
+        if (browser === undefined) throw new Error("no searchIndices service");
+        const outcome = await browser.search({
+          target: ES_FIXTURE_INDEX,
+          language: "lucene",
+          query: "",
+          sort: [],
+          time: null,
+          fields: ["sku"],
+          pageSize: 9,
+        });
+        const skus = new Set<string>();
+        let read = 0;
+        for await (const row of outcome.result.rows) {
+          skus.add(typeof row[0] === "string" ? row[0] : "");
+          read += 1;
+        }
+        expect(read).toBe(ES_SEARCH.documents);
+        expect(skus.size).toBe(ES_SEARCH.documents);
+        expect((browser as unknown as { openCursors: number }).openCursors).toBe(0);
       });
     });
 

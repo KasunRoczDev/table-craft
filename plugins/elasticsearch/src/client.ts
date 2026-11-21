@@ -28,6 +28,7 @@ const NETWORK_CODES = new Set([
 ]);
 const ERROR_PREVIEW_CHARS = 300;
 const MIB = 1024 * 1024;
+const MS_PER_SECOND = 1000;
 const DOT_SEGMENT = /^\.{1,2}$/;
 
 /** Whether a path holds a `.` or `..` segment, plain or percent-encoded, which a URL would resolve away. */
@@ -69,6 +70,32 @@ export interface Reply {
 }
 
 /**
+ * How the plugin reaches a cluster: `ElasticClient` speaks HTTP to a node, and anything else that
+ * carries a REST request and reports the status it got, such as a gateway or proxy, may stand in.
+ */
+export interface ElasticTransport {
+  /** What a user knows the cluster by, as `host:9200`; the one node listed when nodes cannot be read. */
+  readonly address: string;
+  /**
+   * Sends `method path`. Rejects with `replyError` for an error status not in `accept`,
+   * `connectionLost` when unreachable, `cancelled` when the signal aborts.
+   */
+  request(method: HttpMethod, path: string, options?: RequestOptions): Promise<Reply>;
+  /**
+   * Frees search cursors; without it the plugin sends `DELETE _search/scroll`, `DELETE _pit` or
+   * `DELETE _search/point_in_time` itself.
+   */
+  releaseCursors?(cursors: CursorIds): Promise<void>;
+  close(): void;
+}
+
+/** Search cursors to free: scroll ids, point in time ids, or both. */
+export interface CursorIds {
+  readonly scrollIds?: readonly string[];
+  readonly pitIds?: readonly string[];
+}
+
+/**
  * An HTTP error Elasticsearch answered with, worded from its own `error.reason`. A 403 means the
  * user lacks a privilege for this one request (plan 165), never that the connection failed.
  */
@@ -104,9 +131,34 @@ export function isReplyTooLarge(error: unknown): boolean {
   return error instanceof Error && (error as { tooLarge?: unknown }).tooLarge === true;
 }
 
+/** A request the cluster did not answer within the data source's request timeout. */
+export class RequestTimeoutError extends PluginError {
+  readonly timedOut = true;
+
+  constructor(timeoutMs: number) {
+    super(
+      "statementFailed",
+      `Elasticsearch did not answer within ${String(Math.round(timeoutMs / MS_PER_SECOND))} s; raise the request timeout of the data source or narrow the request.`,
+    );
+  }
+}
+
 /** Structural, since an error may cross plugin bundles. */
 export function isForbidden(error: unknown): boolean {
-  return error instanceof Error && (error as { status?: unknown }).status === HTTP_FORBIDDEN;
+  return statusOf(error) === HTTP_FORBIDDEN;
+}
+
+/** Structural: our own timer ran out, or a gateway answered that its own did. */
+export function isTimedOut(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (error as { timedOut?: unknown }).timedOut === true || statusOf(error) === HTTP_GATEWAY_TIMEOUT;
+}
+
+/** The HTTP status an error carries, structurally; null for any other error. */
+export function statusOf(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
 }
 
 interface ErrorBody {
@@ -136,6 +188,25 @@ function detailOf(body: unknown): { type: string | null; reason: string | null }
   return { type, reason };
 }
 
+/**
+ * Elasticsearch security says `action [indices:data/read/search] is unauthorized ... this action
+ * is granted by the index privileges [read,all]`; the OpenSearch security plugin says
+ * `no permissions for [indices:data/read/search] and User [...]`.
+ */
+const DENIED_ACTION = /(?:action|no permissions for) \[([^\]]+)\]/;
+const GRANTING_PRIVILEGES = /granted by the (?:index|cluster) privileges \[([^\]]+)\]/;
+
+/** The privilege a 403 reason names, such as `the privilege for indices:admin/analyze (read or all)`. */
+export function missingPrivilege(reason: string): string | null {
+  const action = DENIED_ACTION.exec(reason)?.[1];
+  if (action === undefined) return null;
+  const granting = GRANTING_PRIVILEGES.exec(reason)?.[1]
+    ?.split(",")
+    .map((name) => name.trim());
+  const by = granting === undefined || granting.length === 0 ? "" : ` (${granting.join(" or ")})`;
+  return `the privilege for ${action}${by}`;
+}
+
 /** What a failed request says, with advice for the statuses that have one. */
 export function httpError(status: number, body: unknown, text: string): ElasticHttpError {
   const { type, reason } = detailOf(body);
@@ -150,17 +221,56 @@ export function httpError(status: number, body: unknown, text: string): ElasticH
     );
   }
   if (status === HTTP_FORBIDDEN) {
+    const missing = reason === null ? null : missingPrivilege(reason);
+    const lacks = missing === null ? "This user is not allowed to do that" : `This user lacks ${missing}`;
     return new ElasticHttpError(
       status,
       type,
-      `This user is not allowed to do that: ${typed}. Ask a cluster admin for the privilege, or use another view.`,
+      `${lacks}: ${typed}. Ask a cluster admin for the privilege, or use another view.`,
       body,
     );
   }
   if (status === HTTP_GATEWAY_TIMEOUT) {
-    return new ElasticHttpError(status, type, `The request timed out at a gateway: ${typed}.`, body);
+    return new ElasticHttpError(
+      status,
+      type,
+      `The request timed out at a gateway: ${typed}. Narrow the time range or the request.`,
+      body,
+    );
   }
   return new ElasticHttpError(status, type, typed, body);
+}
+
+/**
+ * The error a reply with an error status stands for. A transport that is not HTTP calls it with the
+ * status its gateway reported, so a 403 still reads as a missing privilege and a 504 as a timeout.
+ */
+export function replyError(reply: Reply): ElasticHttpError {
+  return httpError(reply.status, reply.body, reply.text);
+}
+
+/** The reply, or `replyError` when its status is an error the request did not `accept`. */
+export function acceptedReply(reply: Reply, options: Pick<RequestOptions, "accept"> = {}): Reply {
+  if (reply.status >= HTTP_ERROR && options.accept?.includes(reply.status) !== true) throw replyError(reply);
+  return reply;
+}
+
+/** A JSON body, or a `statementFailed` saying the reply was something else. */
+export async function requestJson<T>(
+  transport: ElasticTransport,
+  method: HttpMethod,
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const reply = await transport.request(method, path, options);
+  if (typeof reply.body !== "object" || reply.body === null) {
+    if (reply.status === HTTP_NOT_FOUND && options.accept?.includes(HTTP_NOT_FOUND) === true) return null as T;
+    throw new PluginError(
+      "statementFailed",
+      `Expected JSON from ${method} ${path}, got: ${reply.text.slice(0, ERROR_PREVIEW_CHARS) || "an empty reply"}. Is this an Elasticsearch or OpenSearch endpoint?`,
+    );
+  }
+  return reply.body as T;
 }
 
 function codeOf(error: unknown): string | null {
@@ -190,7 +300,7 @@ function encodeBody(body: unknown, ndjson: boolean): string | null {
 }
 
 /** A small Elasticsearch REST client on Node's HTTP stack: no driver, so every version and fork speaks it (decision 173). */
-export class ElasticClient {
+export class ElasticClient implements ElasticTransport {
   readonly #options: ClientOptions;
   readonly #agent: HttpAgent;
   readonly #base: URL;
@@ -211,6 +321,10 @@ export class ElasticClient {
 
   get baseUrl(): string {
     return this.#options.baseUrl;
+  }
+
+  get address(): string {
+    return this.#base.host;
   }
 
   /** Sends `method path`; rejects with an `ElasticHttpError` for an error status, `connectionLost` when unreachable, `cancelled` when aborted. */
@@ -273,9 +387,11 @@ export class ElasticClient {
           const status = response.statusCode ?? 0;
           const body = parseBody(text);
           finish(() => {
-            if (status >= HTTP_ERROR && options.accept?.includes(status) !== true)
-              reject(httpError(status, body, text));
-            else resolve({ status, body, text });
+            try {
+              resolve(acceptedReply({ status, body, text }, options));
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error(String(error)));
+            }
           });
         });
       });
@@ -288,12 +404,7 @@ export class ElasticClient {
       const timer = setTimeout(() => {
         request.destroy();
         finish(() => {
-          reject(
-            new PluginError(
-              "statementFailed",
-              `Elasticsearch did not answer within ${String(Math.round(this.#options.requestTimeoutMs / 1000))} s; raise the request timeout of the data source or narrow the request.`,
-            ),
-          );
+          reject(new RequestTimeoutError(this.#options.requestTimeoutMs));
         });
       }, this.#options.requestTimeoutMs);
       options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -339,16 +450,8 @@ export class ElasticClient {
   }
 
   /** A JSON body, or a `statementFailed` saying the reply was something else. */
-  async json<T>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
-    const reply = await this.request(method, path, options);
-    if (typeof reply.body !== "object" || reply.body === null) {
-      if (reply.status === HTTP_NOT_FOUND && options.accept?.includes(HTTP_NOT_FOUND) === true) return null as T;
-      throw new PluginError(
-        "statementFailed",
-        `Expected JSON from ${method} ${path}, got: ${reply.text.slice(0, ERROR_PREVIEW_CHARS) || "an empty reply"}. Is this an Elasticsearch or OpenSearch endpoint?`,
-      );
-    }
-    return reply.body as T;
+  json<T>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
+    return requestJson<T>(this, method, path, options);
   }
 
   close(): void {

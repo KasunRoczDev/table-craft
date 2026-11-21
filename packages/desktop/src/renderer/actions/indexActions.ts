@@ -10,6 +10,8 @@ import {
   type IndexTarget,
   type IndexView,
 } from "@table-craft/desktop/renderer/state/indexTabs.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
+import { useModal } from "@table-craft/desktop/renderer/state/modal.js";
 import { useTabs, type Tab } from "@table-craft/desktop/renderer/state/tabs.js";
 
 export const INDEX_ACTION_IDS = {
@@ -24,6 +26,7 @@ export const INDEX_ACTION_IDS = {
   analyze: "index.analyze",
   toggleSortOrder: "index.toggleSortOrder",
   searchAllTime: "index.searchAllTime",
+  filter: "index.filter",
 } as const;
 
 const ALL_TIME = "all";
@@ -33,6 +36,35 @@ const INDEX_TAB_PREFIX = "index-";
 let indexTabsOpened = 0;
 
 export type OpenIndexArgs = IndexTarget;
+
+/** A filter typed in a search datasource's tree filter field. */
+export interface IndexFilterArgs {
+  readonly datasourceId: string;
+  readonly filter: string;
+}
+
+function isFilterArgs(args: unknown): args is IndexFilterArgs {
+  return typeof args === "object" && args !== null && "datasourceId" in args && "filter" in args;
+}
+
+/** Sets the tree filter from its field, or, from the palette, asks for it on the selected datasource. */
+async function filterIndices(context: ActionContext, args: IndexFilterArgs | undefined): Promise<void> {
+  if (isFilterArgs(args)) {
+    useIndices.getState().setFilter(args.datasourceId, args.filter);
+    return;
+  }
+  const datasourceId = context.datasource?.view.id;
+  if (datasourceId === undefined) return;
+  const filter = await useModal.getState().ask({
+    kind: "text",
+    title: "Filter Indices",
+    label: "Name contains (* for any characters)",
+    initial: useIndices.getState().indices[datasourceId]?.filter ?? "",
+    confirm: "Filter",
+    placeholder: "logs-*-2026",
+  });
+  if (filter !== null) useIndices.getState().setFilter(datasourceId, filter);
+}
 
 export interface IndexViewArgs {
   readonly view: IndexView;
@@ -203,6 +235,13 @@ export const INDEX_ACTIONS: readonly AnyAction[] = [
       if (tab == null || request === null) return;
       await openConsole(tab.datasourceId, request);
     },
+  }),
+  defineAction<IndexFilterArgs | undefined>({
+    id: INDEX_ACTION_IDS.filter,
+    title: "Filter Indices…",
+    category: "Search",
+    available: (context) => searches(context),
+    run: filterIndices,
   }),
   defineAction<OpenIndexArgs | undefined>({
     id: INDEX_ACTION_IDS.copyName,

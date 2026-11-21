@@ -73,6 +73,7 @@ import { connectionText } from "@table-craft/desktop/renderer/model/format.js";
 import { keyIdentity, undescribedKeys } from "@table-craft/desktop/renderer/model/keyTree.js";
 import type { OpenKeyArgs } from "@table-craft/desktop/renderer/palette/keysProvider.js";
 import { KeyFilterRow } from "@table-craft/desktop/renderer/panes/KeyFilterRow.js";
+import { IndexFilterRow } from "@table-craft/desktop/renderer/panes/IndexFilterRow.js";
 import { useKeys } from "@table-craft/desktop/renderer/state/keys.js";
 import {
   currentMatch,
@@ -545,7 +546,7 @@ function TreeRow({
             "flex h-row cursor-default items-center gap-cell pr-pane-inset whitespace-nowrap outline-none hover:bg-hover",
             // The filter row is as wide as the pane and pinned there: sized by its controls it
             // would widen the whole tree and let the pane scroll sideways off its own fields.
-            node.kind === "keyFilter" ? "sticky left-0 w-[100cqw]" : "w-full",
+            node.kind === "keyFilter" || node.kind === "indexFilter" ? "sticky left-0 w-[100cqw]" : "w-full",
             // Selection blue only while the tree has focus; elsewhere the row stays marked in grey, as
             // DataGrip draws an inactive selection (plan 130 decision 24).
             selected && "bg-raised group-focus-within/tree:bg-selection",
@@ -591,6 +592,8 @@ function TreeRow({
             <DatasourceLabel node={node} positions={positions} shown={shown} />
           ) : node.kind === "keyFilter" ? (
             <KeyFilterRow key={JSON.stringify(node.filter)} node={node} onFocus={() => onSelect(row, true)} />
+          ) : node.kind === "indexFilter" ? (
+            <IndexFilterRow node={node} onFocus={() => onSelect(row, true)} />
           ) : (
             <>
               <NodeIcon node={node} />
@@ -895,7 +898,7 @@ export function DatabasePane() {
       }
       const args: KeyDatabaseArgs = { datasourceId: node.datasourceId, database: node.database };
       invoke(KEY_ACTION_IDS.loadMore, args);
-    } else if (node.kind === "keyFilter") {
+    } else if (node.kind === "keyFilter" || node.kind === "indexFilter") {
       elements.current.get(row.key)?.querySelector("input")?.focus();
     } else if (row.expandable) toggle(row);
   }

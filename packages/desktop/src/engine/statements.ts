@@ -488,7 +488,6 @@ export function statementRunners(live: LiveContext) {
   /** Runs a search on the index tab's session (plan 165); its rows page from the result store. */
   async function openSearch(request: RequestOf<"indices.open">): Promise<OpenedSearch> {
     const open = sessionFor(request.sessionId);
-    const readOnly = options.datasource.readOnly;
     open.running += 1;
     try {
       const { value: opened } = await onLiveSession(
@@ -499,7 +498,8 @@ export function statementRunners(live: LiveContext) {
           const { result, ...search } = await serviceOf(session, "searchIndices").search(request.request);
           return { search, summary: await results.put(result, request) };
         },
-        (cause) => (cause instanceof EngineFailure ? cause : statementFailed(cause, readOnly)),
+        // A search only reads, so a refusal is never the read-only flag's doing.
+        (cause) => (cause instanceof EngineFailure ? cause : statementFailed(cause, false)),
         (late) => void results.release(late.summary.handle),
       );
       const { search, summary } = opened;

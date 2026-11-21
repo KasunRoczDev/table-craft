@@ -77,6 +77,12 @@ const REGIONS: readonly FocusRegion[] = [
 ];
 
 export const REGION_ATTRIBUTE = "data-region";
+/** Marks a pane's own text field whose Escape clears it, as the speed search field does, rather than leaving the pane. */
+export const KEEPS_ESCAPE_ATTRIBUTE = "data-keeps-escape";
+
+function keepsEscape(): boolean {
+  return document.activeElement?.closest(`[${KEEPS_ESCAPE_ATTRIBUTE}]`) != null;
+}
 
 /** A datasource with what the window knows of it now. */
 export interface DatasourceTarget {
@@ -133,7 +139,10 @@ export interface ActionContext {
   readonly toolWindows: Readonly<Record<ToolWindowId, boolean>>;
   /** The palette or any dialog is open; it owns the keyboard. */
   readonly paletteOpen: boolean;
-  /** The Database pane's speed search field is open; Escape closes it rather than leaving the pane. */
+  /**
+   * The Database pane's speed search field is open, or focus is in a field marked
+   * `KEEPS_ESCAPE_ATTRIBUTE` such as the index filter; Escape closes it rather than leaving the pane.
+   */
   readonly speedSearching: boolean;
   /** The main toolbar is the window's title bar (decision 034), rather than the system's. */
   readonly customTitleBar: boolean;
@@ -267,7 +276,7 @@ export function currentContext(tabId?: string): ActionContext {
     inDatabasePane: inTree,
     toolWindows: useLayout.getState().layout.visible,
     paletteOpen: modalOpen(),
-    speedSearching: useCatalog.getState().speedSearch !== null,
+    speedSearching: useCatalog.getState().speedSearch !== null || keepsEscape(),
     customTitleBar: useWindowState.getState().customTitleBar,
   };
 }

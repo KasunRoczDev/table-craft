@@ -31,7 +31,8 @@ export function activateIndexRow(node: ExplorerNode): boolean {
 
 /**
  * Stable handles on index rows for the end-to-end suites: `index-index`, `index-alias` and
- * `index-dataStream` with the target's name, `index-section`, `index-folder`, `index-family`, `index-older`.
+ * `index-dataStream` with the target's name, `index-section`, `index-folder`, `index-family`, `index-older`,
+ * `index-filter-row`.
  */
 export function indexRowAttributes(node: ExplorerNode): Readonly<Record<string, string>> {
   switch (node.kind) {
@@ -45,6 +46,8 @@ export function indexRowAttributes(node: ExplorerNode): Readonly<Record<string, 
       return { "data-testid": "index-family", "data-name": node.base };
     case "indexOlder":
       return { "data-testid": "index-older", "data-name": node.base };
+    case "indexFilter":
+      return { "data-testid": "index-filter-row" };
     default:
       return {};
   }

@@ -352,10 +352,12 @@ function push(
   key: string,
   label: string,
   expandable: boolean,
+  open = false,
 ): boolean {
   const expanded =
     expandable &&
-    (node.kind === "folder" ? !builder.input.collapsedFolders.has(node.path) : builder.input.expanded.has(key));
+    (open ||
+      (node.kind === "folder" ? !builder.input.collapsedFolders.has(node.path) : builder.input.expanded.has(key)));
   builder.rows.push({ node, depth, key, label, expandable, expanded });
   return expanded;
 }
@@ -557,8 +559,8 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
   }
   if (builder.input.browsesIndices?.(datasource) === true) {
     const sink = {
-      push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean) =>
-        push(builder, child, at, key, label, opens),
+      push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean, open?: boolean) =>
+        push(builder, child, at, key, label, opens, open),
       keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
     };
     indexRows(sink, datasource.id, builder.input.indices?.[datasource.id] ?? EMPTY_INDICES, depth + 1);

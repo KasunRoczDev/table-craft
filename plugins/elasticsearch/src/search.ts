@@ -15,16 +15,18 @@ import {
   type SearchTargetDescription,
   type SearchTotal,
 } from "@table-craft/plugin-api";
-import { isForbidden, isReplyTooLarge, type ElasticClient } from "./client.js";
+import { isForbidden, requestJson, type ElasticTransport } from "./client.js";
 import { SEARCH_KEPT_BYTES, rowBytes } from "./limits.js";
-import { SCROLL_KEEP_ALIVE, type Dialect } from "./dialect.js";
+import type { Dialect } from "./dialect.js";
 import { defaultFields, hitColumns, hitRow, type Hit, type HitColumns } from "./hits.js";
 import { listTargets } from "./indices.js";
 import { parseMapping, timeFieldOf } from "./mapping.js";
+import { Cursors, hitKey, laterPages, shrinking, type Continuation, type TrackRequest } from "./paging.js";
 import { histogramInterval, queryOf, sortOf } from "./query.js";
 
+export type { TrackRequest } from "./paging.js";
+
 interface SearchReply {
-  readonly _scroll_id?: unknown;
   readonly took?: unknown;
   readonly timed_out?: unknown;
   readonly _shards?: {
@@ -43,10 +45,24 @@ const HISTOGRAM_AGG = "over_time";
 const WILDCARD = /[*?,]/;
 /** Indices of a large target whose mappings stand for all of them. */
 const MAPPING_SAMPLE = 4;
-/** How much smaller the first page gets each time its reply is too large to read. */
-const PAGE_SHRINK = 10;
 /** The span a histogram covers when its range has no start. */
 const OPEN_RANGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Page one reads one hit past the page, so the host's look-ahead row (it reads one past what it
+ * shows, to know whether more follow) never opens a cursor for a user who stays on page one.
+ */
+const LOOKAHEAD_HITS = 1;
+/** Hits page one counts exactly; past it the footer reads `≥ 10,000`, and Count still counts them all. */
+export const TRACK_TOTAL_HITS_UP_TO = 10_000;
+/** What a scored search sorts by, said outright so its hits carry the score `search_after` goes on from. */
+const BY_SCORE = { _score: { order: "desc" } };
+
+/**
+ * Sent in the body of every search, count and histogram, so a search the user abandoned, or whose
+ * reply a gateway dropped, stops on the shards instead of running on. A search past it answers
+ * with what it found and `timed_out: true`.
+ */
+export const SEARCH_TIMEOUT = "30s";
 
 function int(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -90,6 +106,10 @@ export function shardWarnings(reply: SearchReply): string[] {
   return warnings;
 }
 
+function sortValuesOf(hit: Hit | undefined): readonly unknown[] | null {
+  return Array.isArray(hit?.sort) ? (hit.sort as unknown[]) : null;
+}
+
 function pretty(value: unknown): string {
   return JSON.stringify(value, null, JSON_INDENT);
 }
@@ -106,12 +126,6 @@ function encoded(target: string): string {
     .join(",");
 }
 
-/**
- * Runs one request of the service with a signal the session's cancel aborts; the default runs it
- * with a signal nothing aborts.
- */
-export type TrackRequest = <T>(work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
-
 const UNTRACKED: TrackRequest = (work) => work(new AbortController().signal);
 
 interface MappingOf {
@@ -125,40 +139,43 @@ interface MappingOf {
 }
 
 /**
- * The `searchIndices` service over the REST client (plan 165). Pages past the first ride a scroll,
- * which every version and fork keeps alike; it is cleared as soon as the rows run out or the host
- * lets the result go.
+ * The `searchIndices` service over the REST client (plan 165). Page one is a plain search that
+ * leaves nothing open on the server; only a reader past it opens a point in time, or a scroll on a
+ * server without one (`laterPages`), released as soon as the rows run out or the host lets the
+ * result go.
  */
 export class ElasticIndices implements IndexBrowser {
-  readonly #client: ElasticClient;
+  readonly #transport: ElasticTransport;
   readonly #dialect: Dialect;
   readonly #filter: string;
   readonly #track: TrackRequest;
   readonly #keptBytes: number;
-  readonly #scrolls = new Set<string>();
+  readonly #cursors: Cursors;
 
   constructor(
-    client: ElasticClient,
+    transport: ElasticTransport,
     dialect: Dialect,
     filter: string,
     track: TrackRequest = UNTRACKED,
     keptBytes: number = SEARCH_KEPT_BYTES,
   ) {
-    this.#client = client;
+    this.#transport = transport;
     this.#dialect = dialect;
     this.#filter = filter;
     this.#track = track;
     this.#keptBytes = keptBytes;
+    this.#cursors = new Cursors(transport, dialect);
   }
 
   list(): Promise<readonly SearchTarget[]> {
-    return this.#track((signal) => listTargets(this.#client, this.#dialect, this.#filter, signal));
+    return this.#track((signal) => listTargets(this.#transport, this.#dialect, this.#filter, signal));
   }
 
   /** The indices behind a target, sorted, or null when `_cat` is not allowed. */
   async #indexNames(target: string, signal: AbortSignal): Promise<string[] | null> {
     try {
-      const rows = await this.#client.json<readonly { index?: unknown }[]>(
+      const rows = await requestJson<readonly { index?: unknown }[]>(
+        this.#transport,
         "GET",
         `/_cat/indices/${encoded(target)}?format=json&h=index`,
         { signal },
@@ -182,7 +199,7 @@ export class ElasticIndices implements IndexBrowser {
     const names = await this.#indexNames(target, signal);
     const sampled = names !== null && names.length > MAPPING_SAMPLE ? names.slice(-MAPPING_SAMPLE) : null;
     const read = sampled === null ? encoded(target) : sampled.map((name) => encodeURIComponent(name)).join(",");
-    const reply = await this.#client.json<Record<string, unknown>>("GET", `/${read}/_mapping`, { signal });
+    const reply = await requestJson<Record<string, unknown>>(this.#transport, "GET", `/${read}/_mapping`, { signal });
     const { fields, mappingType } = parseMapping(reply, this.#dialect.mappingTypes);
     const indices = names !== null && names.length > 0 ? names : Object.keys(reply).sort();
     return { reply, fields, mappingType, indices, read, sampled: sampled !== null };
@@ -197,13 +214,13 @@ export class ElasticIndices implements IndexBrowser {
           `The mapping and settings shown are those of the last ${String(MAPPING_SAMPLE)} of ${indices.length.toLocaleString("en-US")} indices by name, the newest of a rollover family.`,
         );
       }
-      const settingsReply = await this.#client
-        .json<Record<string, unknown>>("GET", `/${read}/_settings`, { signal })
-        .catch((error: unknown) => {
-          if (!isForbidden(error)) throw error;
-          warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
-          return null;
-        });
+      const settingsReply = await requestJson<Record<string, unknown>>(this.#transport, "GET", `/${read}/_settings`, {
+        signal,
+      }).catch((error: unknown) => {
+        if (!isForbidden(error)) throw error;
+        warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      });
       const kind = indices.length === 1 && indices[0] === target ? "index" : "alias";
       return {
         name: target,
@@ -233,44 +250,51 @@ export class ElasticIndices implements IndexBrowser {
     const scored = sort.length === 0 && request.query.trim() !== "";
     const shape = hitColumns(fields, mapping.fields, withIndex, scored, timeField === null ? "first" : "last");
     const query = queryOf(request);
-    let size = pageSize;
-    let body: Record<string, unknown> = {};
-    let first: SearchReply | null = null;
-    while (first === null) {
-      body = { query, size, ...(sort.length === 0 ? {} : { sort }) };
-      try {
-        first = await this.#client.json<SearchReply>(
-          "POST",
-          `/${encoded(request.target)}/_search?scroll=${SCROLL_KEEP_ALIVE}`,
-          { body, signal },
-        );
-      } catch (error) {
-        if (!isReplyTooLarge(error) || size === 1) throw error;
-        size = Math.max(1, Math.floor(size / PAGE_SHRINK));
-      }
-    }
-    const scrollId = typeof first._scroll_id === "string" ? first._scroll_id : null;
+    const order = scored ? [BY_SCORE] : sort;
+    const target = encoded(request.target);
+    const bodyOf = (size: number): Record<string, unknown> => ({
+      query,
+      size,
+      timeout: SEARCH_TIMEOUT,
+      ...(this.#dialect.trackTotalHitsUpTo ? { track_total_hits: TRACK_TOTAL_HITS_UP_TO } : {}),
+      ...(order.length === 0 ? {} : { sort: order }),
+    });
+    const { reply: first, size } = await shrinking(
+      (work) => work(signal),
+      (at, signal) =>
+        requestJson<SearchReply>(this.#transport, "POST", `/${target}/_search`, { body: bodyOf(at), signal }),
+      Math.min(pageSize + LOOKAHEAD_HITS, SEARCH_PAGE_LIMIT),
+    );
     const hits = first.hits?.hits ?? [];
     const total = totalOf(first.hits?.total);
     const done = hits.length < size || (total?.relation === "eq" && Number(total.value) <= hits.length);
-    if (scrollId !== null && done) await this.#clearScroll(scrollId);
-    else if (scrollId !== null) this.#scrolls.add(scrollId);
+    const continuation: Continuation | null = done
+      ? null
+      : {
+          target,
+          query,
+          sort: order,
+          size,
+          timeout: SEARCH_TIMEOUT,
+          after: order.length === 0 ? null : sortValuesOf(hits[hits.length - 1]),
+          seen: new Set(hits.map(hitKey)),
+        };
+    const warning = this.#cursors.takeWarning();
     return {
       result: {
         columns: shape.columns,
-        rows: this.#pages(hits, done ? null : scrollId, shape),
+        rows: this.#pages(hits, continuation, shape),
         rowsAffected: null,
       } satisfies ExecuteResult,
       total,
       tookMs: int(first.took),
       shards: shardsOf(first),
-      request: requestText(request.target, body),
-      warnings: shardWarnings(first),
+      request: requestText(request.target, bodyOf(size)),
+      warnings: warning === null ? shardWarnings(first) : [...shardWarnings(first), warning],
     };
   }
 
-  async *#pages(first: readonly Hit[], scrollId: string | null, shape: HitColumns): AsyncIterable<Row> {
-    let current = scrollId;
+  async *#pages(first: readonly Hit[], continuation: Continuation | null, shape: HitColumns): AsyncIterable<Row> {
     let kept = 0;
     const keep = (hit: Hit): Row | null => {
       if (kept >= this.#keptBytes) return null;
@@ -278,58 +302,40 @@ export class ElasticIndices implements IndexBrowser {
       kept += rowBytes(row);
       return row;
     };
-    try {
-      for (const hit of first) {
+    for (const hit of first) {
+      const row = keep(hit);
+      if (row === null) return;
+      yield row;
+    }
+    if (continuation === null) return;
+    for await (const page of laterPages(this.#transport, this.#dialect, this.#cursors, this.#track, continuation)) {
+      for (const hit of page) {
         const row = keep(hit);
         if (row === null) return;
         yield row;
       }
-      while (current !== null && kept < this.#keptBytes) {
-        const scrollId = current;
-        const reply: SearchReply = await this.#track((signal) =>
-          this.#client.json<SearchReply>("POST", "/_search/scroll", {
-            body: { scroll: SCROLL_KEEP_ALIVE, scroll_id: scrollId },
-            signal,
-          }),
-        );
-        const next = typeof reply._scroll_id === "string" ? reply._scroll_id : current;
-        if (next !== current) {
-          this.#scrolls.delete(current);
-          this.#scrolls.add(next);
-          current = next;
-        }
-        const page = reply.hits?.hits ?? [];
-        for (const hit of page) {
-          const row = keep(hit);
-          if (row === null) return;
-          yield row;
-        }
-        if (page.length === 0) break;
-      }
-    } finally {
-      if (current !== null) await this.#clearScroll(current);
+      if (kept >= this.#keptBytes) return;
     }
   }
 
-  async #clearScroll(id: string): Promise<void> {
-    this.#scrolls.delete(id);
-    await this.#client
-      .request("DELETE", "/_search/scroll", { body: { scroll_id: [id] }, accept: [404] })
-      .catch(() => undefined);
-  }
-
-  /** Scrolls the session still holds, for a test that checks every one was cleared. */
-  get openScrolls(): number {
-    return this.#scrolls.size;
+  /** Cursors the session still holds, for a test that checks every one was released. */
+  get openCursors(): number {
+    return this.#cursors.open;
   }
 
   count(request: SearchRequest): Promise<string> {
     return this.#track(async (signal) => {
-      const reply = await this.#client.json<{ count?: unknown }>("POST", `/${encoded(request.target)}/_count`, {
-        body: { query: queryOf(request) },
+      const reply = await requestJson<SearchReply>(this.#transport, "POST", `/${encoded(request.target)}/_search`, {
+        body: { size: 0, track_total_hits: true, timeout: SEARCH_TIMEOUT, query: queryOf(request) },
         signal,
       });
-      return String(int(reply.count));
+      if (reply.timed_out === true) {
+        throw new PluginError(
+          "statementFailed",
+          `The count timed out on the server after ${SEARCH_TIMEOUT}; narrow the query or the time range.`,
+        );
+      }
+      return totalOf(reply.hits?.total)?.value ?? "0";
     });
   }
 
@@ -346,6 +352,7 @@ export class ElasticIndices implements IndexBrowser {
     const intervalKey = this.#dialect.fixedInterval ? "fixed_interval" : "interval";
     const body = {
       size: 0,
+      timeout: SEARCH_TIMEOUT,
       query: queryOf(request),
       aggs: {
         [HISTOGRAM_AGG]: {
@@ -358,7 +365,10 @@ export class ElasticIndices implements IndexBrowser {
         },
       },
     };
-    const reply = await this.#client.json<SearchReply>("POST", `/${encoded(request.target)}/_search`, { body, signal });
+    const reply = await requestJson<SearchReply>(this.#transport, "POST", `/${encoded(request.target)}/_search`, {
+      body,
+      signal,
+    });
     const agg = reply.aggregations?.[HISTOGRAM_AGG] as
       { buckets?: readonly { key?: unknown; doc_count?: unknown }[] } | undefined;
     return {
@@ -376,7 +386,8 @@ export class ElasticIndices implements IndexBrowser {
     if (request.field !== null) body.field = request.field;
     else if (request.analyzer !== null) body.analyzer = request.analyzer;
     return this.#track(async (signal) => {
-      const reply = await this.#client.json<{ detail?: AnalyzeDetail }>(
+      const reply = await requestJson<{ detail?: AnalyzeDetail }>(
+        this.#transport,
         "POST",
         `/${encoded(request.target)}/_analyze`,
         { body, signal },
@@ -386,12 +397,7 @@ export class ElasticIndices implements IndexBrowser {
   }
 
   async close(): Promise<void> {
-    const ids = [...this.#scrolls];
-    this.#scrolls.clear();
-    if (ids.length === 0) return;
-    await this.#client
-      .request("DELETE", "/_search/scroll", { body: { scroll_id: ids }, accept: [404] })
-      .catch(() => undefined);
+    await this.#cursors.releaseAll();
   }
 }
 

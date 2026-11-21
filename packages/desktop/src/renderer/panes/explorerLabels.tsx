@@ -13,6 +13,7 @@ import {
   healthTone,
   INDEX_SECTION_LABELS,
   middleTruncate,
+  indexFilterCount,
   searchTargetDetail,
 } from "@table-craft/desktop/renderer/model/indexTree.js";
 import { KeyTreeContent, KeyTreeMetadata } from "@table-craft/desktop/renderer/panes/KeyTreeMetadata.js";
@@ -167,6 +168,7 @@ export function NodeIcon({ node }: { readonly node: ExplorerNode }) {
     case "keyEntry":
       return node.serverChildren === true ? <KeyTreeContent node={node} /> : <KeyTypeBadge info={node.info} />;
     case "keyFilter":
+    case "indexFilter":
       return <KeyFilterIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
     case "clusterNode":
       return <ServerNodeIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
@@ -410,6 +412,8 @@ export function nodeAriaLabel(row: ExplorerRow): string {
     case "indexFolder":
     case "indexOlder":
       return `${text} ${String(node.count)}`;
+    case "indexFilter":
+      return `Filter indices, ${indexFilterCount(node)}`;
     case "indexFamily":
       return `${text}, index family, ${familyDetail(node.members)}`;
     case "searchTarget": {

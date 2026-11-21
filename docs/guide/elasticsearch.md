@@ -13,7 +13,10 @@ client certificate and key. A cluster behind a proxy that serves it under a path
 never discovers the others.
 
 On connect TableCraft reads the cluster's version and adapts to it: mapping types on 6.x, the shape
-of hit totals, the date histogram's interval and the SQL endpoint. When the user you sign in with may not read `GET /`, it asks the node it reached instead. On a
+of hit totals, the date histogram's interval and the SQL endpoint. When `GET /` is refused or
+times out, as it can behind a gateway or proxy, it asks the node it reached
+(`_nodes/_local/version`) and then `_cat/nodes`, taking the oldest version there; that last answer
+names no distribution, so a version below 6 reads as OpenSearch. On a
 cluster shared by many teams, the advanced **Index filter** (globs separated by commas, such as
 `logs-*, products`) lists only the indices, aliases and data streams whose names match; a console
 request or a tab opened by name still reaches any of them.
@@ -21,10 +24,15 @@ request or a tab opened by name still reaches any of them.
 - **Database tree.** **Indices** with their document count and size, such as
   `2,431 docs · 1.2 MB`, as the server counts them, so an index with `nested` fields counts each
   nested object too; a yellow or red index shows its health beside the name. Indices that roll
-  over (`logs-checkout-000411`, `logs-checkout-000412`) or carry a date (`audit-2026.11.20`) fold
-  into one family row, newest first. Other names fold on the part before the first `.` when two or
-  more share it. **Data streams** with their backing indices, **Aliases** with the index they point
-  at, and **Hidden** for system indices whose names start with `.`, folded away with their count.
+  over (`logs-checkout-000411`, `logs-checkout-000412`) or carry a date (`audit-2026.11.20`,
+  `logs-billing-2026-09-0001`) fold into one family row, newest first. Other names fold on the part
+  before the first `.` when two or more share it. **Data streams** with their backing indices,
+  **Aliases** with the index they point at, and **Hidden** for system indices whose names start
+  with `.`, folded away with their count.
+- **Filtering the tree.** Past 200 indices, a filter row sits at the top of the data source's
+  indices: type part of a name, or `*` for any characters (`logs-*-2026`), and only the matches
+  stay, inside their families and folders, opened, with `12 of 8,760` beside the box. Escape clears
+  it. **Filter Indices…** in the command palette sets it on a smaller cluster too.
 - **Index tab.** Opening an index, an alias or a data stream shows its **Documents**, **Mapping**,
   **Settings** and **Analyze** views. Documents is a result grid with one row per hit: `_id`, the
   index when the target spans several, the score when the hits are not sorted, a column per
@@ -39,8 +47,12 @@ request or a tab opened by name still reaches any of them.
   _Last 15 minutes_ by default, sorts newest first and draws a histogram of the hits over the
   range above the grid, with the hits per bar its height stands for and the time, in UTC, under
   every quarter; a bar the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
-- **Paging.** The grid fetches pages as you scroll, through a scroll context that is cleared when
-  the result is released, the tab closes or the last page arrives.
+- **Paging.** The first page is a plain search that leaves nothing open on the cluster. Scrolling
+  the grid past it opens a point in time (Elasticsearch 7.10+, OpenSearch 2.4+) and reads on from
+  the last row shown, so no row repeats or goes missing; older servers use a scroll. Either is
+  released when the last page arrives, the result is released, the tab closes or the connection
+  ends. A cluster that refuses the release gets one warning, and the cursor expires after 5
+  minutes. On OpenSearch, paging past the first page sorts by `_id` as a tiebreaker.
   The footer reads `1–100 of 2,431 hits · took 6 ms · 5 shards`; past 10,000 the count reads
   `≥ 10,000`. Shard failures show as a warning with the reason.
 - **Memory.** A search keeps at most 128 MB of rows; past that the footer says it stopped, and a
@@ -58,7 +70,12 @@ request or a tab opened by name still reaches any of them.
   query that finds nothing because a filter dropped a short word shows why here.
 - **Missing permissions.** A view the signed-in user may not read, such as an index's settings,
   says so inside that view with the cluster's reason, which names the missing privilege; the rest of the tab and the tree keep
-  working.
+  working. On a cluster with per-index permissions, a refused search shows under the bar, a refused
+  histogram above the grid with the hits still shown, and a refused `_analyze` in Analyze, each
+  naming the action, such as `indices:data/read/search`, and the privileges that grant it.
+- **Server timeout.** Every search, count and histogram asks the cluster to stop after 30 seconds.
+  A search that ran out shows the hits it found with a warning; a count that ran out fails rather
+  than give a wrong number.
 
 ## The console
 

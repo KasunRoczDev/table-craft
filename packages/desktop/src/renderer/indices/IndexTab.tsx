@@ -38,6 +38,7 @@ const STATUS_TEXT = {
 const ANALYZE_VIEW: IndexView = "analyze";
 const STALE_TEXT = "The connection closed; Run searches again.";
 const STOPPED_TEXT = "Stopped here to keep memory free; narrow the search to reach the rest.";
+const HISTOGRAM_ERROR_PREFIX = "No histogram:";
 const ERROR_CLASS = "shrink-0 border-b border-line bg-panel px-gap py-1 break-words text-danger";
 const HEALTH_CLASS = { warning: "text-warning", danger: "text-danger" } as const;
 const VIEWS: readonly { readonly value: IndexView; readonly label: string }[] = [
@@ -169,6 +170,11 @@ function Documents({ tabId, tab }: { readonly tabId: string; readonly tab: Index
       {tab.queryError === null ? null : (
         <div role="alert" data-testid="query-error" className={ERROR_CLASS}>
           {tab.queryError.message} <span className="text-ink-muted">{tab.queryError.hint}</span>
+        </div>
+      )}
+      {tab.histogramError === null ? null : (
+        <div role="alert" data-testid="histogram-error" className={ERROR_CLASS}>
+          {HISTOGRAM_ERROR_PREFIX} {tab.histogramError.message}
         </div>
       )}
       {tab.histogram === null ? null : <HistogramStrip histogram={tab.histogram} time={tab.applied?.time ?? null} />}

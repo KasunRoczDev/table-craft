@@ -1,5 +1,5 @@
 import { PluginError, type Column, type ExecuteResult, type Row, type WireValue } from "@table-craft/plugin-api";
-import type { ElasticClient, Reply } from "./client.js";
+import { requestJson, type ElasticTransport, type Reply } from "./client.js";
 import type { Dialect } from "./dialect.js";
 import { cellOf, typeClassOf, type Hit } from "./hits.js";
 import { classify, parseRequest, pathSegments } from "./language.js";
@@ -207,7 +207,7 @@ function withJsonFormat(path: string): string {
 }
 
 export interface ConsoleContext {
-  readonly client: ElasticClient;
+  readonly transport: ElasticTransport;
   readonly dialect: Dialect;
   readonly readOnly: boolean;
   readonly signal: AbortSignal;
@@ -257,10 +257,10 @@ export async function runRequest(context: ConsoleContext, command: string): Prom
     const named = request.kind === "rest" ? `${request.method} ${request.path}` : "This request";
     throw new PluginError("statementFailed", `${named} was not sent: ${READ_ONLY_ADVICE}`);
   }
-  const { client, dialect, signal } = context;
+  const { transport, dialect, signal } = context;
   if (request.kind === "sql") {
     if (dialect.sqlPath === null) throw new PluginError("statementFailed", "This server has no SQL endpoint.");
-    const reply = await client.json<unknown>("POST", dialect.sqlPath, {
+    const reply = await requestJson<unknown>(transport, "POST", dialect.sqlPath, {
       body: { query: request.query },
       signal,
     });
@@ -273,13 +273,16 @@ export async function runRequest(context: ConsoleContext, command: string): Prom
         "PPL is an OpenSearch language; this server does not speak it. Write SQL or a REST request.",
       );
     }
-    const reply = await client.json<unknown>("POST", dialect.pplPath, { body: { query: request.query }, signal });
+    const reply = await requestJson<unknown>(transport, "POST", dialect.pplPath, {
+      body: { query: request.query },
+      signal,
+    });
     return { ...sqlResult(reply), sent: `POST ${dialect.pplPath}\n${pretty({ query: request.query })}` };
   }
   const segments = pathSegments(request.path);
   const path = segments[0] === "_cat" && request.method === "GET" ? withJsonFormat(request.path) : request.path;
   const { body, ndjson } = bodyOf(request.path, request.body);
-  const reply = await client.request(request.method, path, {
+  const reply = await transport.request(request.method, path, {
     body,
     ndjson,
     signal,

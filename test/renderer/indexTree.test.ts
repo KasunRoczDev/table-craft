@@ -9,8 +9,12 @@ import {
   groupedCount,
   healthTone,
   humanBytes,
+  indexFilterCount,
+  indexFilterMatcher,
   indexGroups,
   indexStatusText,
+  INDEX_FILTER_THRESHOLD,
+  showsIndexFilter,
   middleTruncate,
   searchTargetDetail,
   searchTargetFacts,
@@ -96,6 +100,7 @@ describe("index tree", () => {
     expect(familyBaseOf("logs-2026.11")).toBe("logs");
     expect(familyBaseOf("logs-2026-11-21")).toBe("logs");
     expect(familyBaseOf("logs-2026.11.21-000001")).toBe("logs");
+    expect(familyBaseOf("logs-2026-11")).toBe("logs");
     expect(familyBaseOf("orders")).toBeNull();
     expect(familyBaseOf("orders-v2")).toBeNull();
   });
@@ -204,5 +209,72 @@ describe("index tree", () => {
     expect(indexStatusText({ ...EMPTY_INDICES, targets: [index("orders")] })).toBe("1 index");
     expect(indexStatusText(EMPTY_INDICES)).toBeNull();
     expect(indexStatusText(undefined)).toBeNull();
+  });
+
+  it("givenMonthlySuffixWithAGeneration_whenBased_thenOneFamilyNewestFirst", () => {
+    expect(familyBaseOf("logs-billing-2026-10-0001")).toBe("logs-billing");
+    const monthly = ["2026-09-0001", "2026-10-0001", "2026-10-0002"].map((suffix) => index(`logs-billing-${suffix}`));
+    const { families } = indexGroups(monthly);
+    expect(families.map((family) => family.base)).toEqual(["logs-billing"]);
+    expect(families[0]?.members.map((member) => member.name)).toEqual([
+      "logs-billing-2026-10-0002",
+      "logs-billing-2026-10-0001",
+      "logs-billing-2026-09-0001",
+    ]);
+  });
+
+  it("givenFilterText_whenMatched_thenCaseBlindSubstringWithWildcards", () => {
+    const matches = indexFilterMatcher("Logs-*-2026");
+    expect(matches("logs-checkout-2026.11.21")).toBe(true);
+    expect(matches("logs-checkout-000412")).toBe(false);
+    expect(indexFilterMatcher("audit.")("audit.http")).toBe(true);
+    expect(indexFilterMatcher("audit.")("audit-http")).toBe(false);
+    expect(indexFilterMatcher("  ")("anything")).toBe(true);
+  });
+
+  it("givenSmallListing_whenRows_thenNoFilterRow", () => {
+    expect(showsIndexFilter(INDICES)).toBe(false);
+    expect(rows(INDICES, OPEN_SECTIONS).some((row) => row.node.kind === "indexFilter")).toBe(false);
+  });
+
+  it("givenListingPastTheThreshold_whenRows_thenFilterRowLeadsWithItsCount", () => {
+    const many = Array.from({ length: INDEX_FILTER_THRESHOLD + 1 }, (_, at) =>
+      index(`app-${String(at).padStart(4, "0")}`),
+    );
+    const shown = rows({ ...EMPTY_INDICES, targets: many }, []);
+    expect(outline(shown).slice(0, 2)).toEqual(["indexFilter:", "indexSection:Indices"]);
+    expect(shown[1]?.node).toMatchObject({ matched: 201, total: 201 });
+    expect(indexFilterCount({ matched: 12, total: 8760 })).toBe("12 of 8,760");
+  });
+
+  it("givenFilter_whenRows_thenMatchesKeptInTheirFamiliesAndFoldersAndOpened", () => {
+    const shown = rows({ ...INDICES, filter: "o" }, []);
+    expect(outline(shown)).toEqual([
+      "indexFilter:",
+      "indexSection:Indices",
+      "  searchTarget:audit.login",
+      "  indexFamily:logs-checkout",
+      "    searchTarget:logs-checkout-000412",
+      "    searchTarget:logs-checkout-000411",
+      "    indexOlder:1 older",
+      "      searchTarget:logs-checkout-000410",
+      "  searchTarget:orders",
+      "  searchTarget:products",
+      "indexSection:Aliases",
+      "  searchTarget:catalog",
+      "  searchTarget:logs-checkout",
+    ]);
+    expect(shown[1]?.node).toMatchObject({ kind: "indexFilter", matched: 8, total: 11 });
+    expect(shown.filter((row) => row.expandable).every((row) => row.expanded)).toBe(true);
+  });
+
+  it("givenFilterMatchingASystemIndex_whenRows_thenHiddenSectionOpensOnIt", () => {
+    const shown = rows({ ...INDICES, filter: "kibana" }, []);
+    expect(outline(shown)).toEqual([
+      "indexFilter:",
+      "indexSection:Indices",
+      "indexSection:Hidden",
+      "  searchTarget:.kibana_1",
+    ]);
   });
 });

@@ -73,6 +73,8 @@ export interface IndexTab extends IndexTarget {
   readonly result: ResultTab | null;
   /** Hits over time for the applied request; null without a time field. */
   readonly histogram: SearchHistogram | null;
+  /** Why the cluster refused the histogram, such as a missing privilege; the hits stand without it. */
+  readonly histogramError: EngineError | null;
   readonly analyzeDraft: AnalyzeDraft;
   readonly analysis: readonly AnalyzeStep[] | null;
   readonly analyzing: boolean;
@@ -80,6 +82,13 @@ export interface IndexTab extends IndexTarget {
   /** What the last search's end said, such as a cancel; null when it just ran. */
   readonly notice: string | null;
 }
+
+interface HistogramOutcome {
+  readonly histogram: SearchHistogram | null;
+  readonly error: EngineError | null;
+}
+
+const NO_HISTOGRAM: HistogramOutcome = { histogram: null, error: null };
 
 const CANCELLED_NOTICE = "Search cancelled; the hits of the previous search stay.";
 const SEARCH_LABEL = "Search index";
@@ -157,6 +166,7 @@ function newTab(target: IndexTarget): IndexTab {
     search: null,
     result: null,
     histogram: null,
+    histogramError: null,
     analyzeDraft: { field: null, text: "" },
     analysis: null,
     analyzing: false,
@@ -256,12 +266,15 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
       }
     }
 
-    async function histogramOf(client: EngineClient, request: SearchRequest): Promise<SearchHistogram | null> {
+    async function histogramOf(client: EngineClient, request: SearchRequest): Promise<HistogramOutcome> {
       try {
-        return await client.call("indices.histogram", { request, buckets: HISTOGRAM_BUCKETS });
-      } catch {
-        // The strip is a summary; the hits stand without it.
-        return null;
+        return {
+          histogram: await client.call("indices.histogram", { request, buckets: HISTOGRAM_BUCKETS }),
+          error: null,
+        };
+      } catch (cause) {
+        const error = toError(cause);
+        return { histogram: null, error: error.code === "cancelled" ? null : error };
       }
     }
 
@@ -284,7 +297,7 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
       try {
         const timeoutSeconds = dependencies.statementTimeout?.(current.datasourceId) ?? 0;
         // The strip runs beside the hits and lands after them, so a slow histogram never holds the grid.
-        const histogram = timeField === null ? Promise.resolve(null) : histogramOf(client, request);
+        const histogram = timeField === null ? Promise.resolve(NO_HISTOGRAM) : histogramOf(client, request);
         const answer = await client.call("indices.open", {
           sessionId: current.sessionId,
           request,
@@ -292,7 +305,9 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
           ...(timeoutSeconds > 0 ? { timeoutSeconds } : {}),
         });
         void histogram.then((plot) => {
-          if (live() && get().tabs[id]?.applied === request) patch(id, { histogram: plot });
+          if (live() && get().tabs[id]?.applied === request) {
+            patch(id, { histogram: plot.histogram, histogramError: plot.error });
+          }
         });
         executions.finish(id, executionId, {
           outcome: "success",
@@ -322,6 +337,7 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
           result: { ...fresh, layout },
           search: answer.search,
           histogram: timeField === null ? null : (get().tabs[id]?.histogram ?? null),
+          histogramError: timeField === null ? null : (get().tabs[id]?.histogramError ?? null),
           applied: request,
           queryError: null,
         });
