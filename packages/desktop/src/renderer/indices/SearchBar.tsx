@@ -2,8 +2,10 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@table-craft/desktop/renderer/actions/index.js";
 import { INDEX_ACTION_IDS } from "@table-craft/desktop/renderer/actions/indexActions.js";
 import {
+  CUSTOM_RANGE,
   SEARCH_RANGES,
   sortableFields,
+  windowLabel,
   type SearchDraft,
   type SearchRangeKey,
 } from "@table-craft/desktop/renderer/model/indexSearch.js";
@@ -32,7 +34,16 @@ const PLACEHOLDERS = {
 /** The sort dropdown's value for relevance order; no field has an empty path. */
 const SCORE_SORT = "";
 const SCORE_LABEL = "Score";
-const RANGE_OPTIONS = SEARCH_RANGES.map((range) => ({ value: range.key, label: range.label }));
+const RANGE_OPTIONS: readonly { readonly value: SearchRangeKey; readonly label: string }[] = SEARCH_RANGES.map(
+  (range) => ({ value: range.key, label: range.label }),
+);
+
+/** The presets, and the custom range an agent set while it is the one in use. */
+function rangeOptions(draft: SearchDraft) {
+  return draft.range === CUSTOM_RANGE && draft.window !== null
+    ? [...RANGE_OPTIONS, { value: CUSTOM_RANGE, label: windowLabel(draft.window) }]
+    : RANGE_OPTIONS;
+}
 const SORT_ORDER_TEXT = { asc: "Ascending", desc: "Descending" } as const;
 const INPUT_CLASS =
   "h-row min-w-0 flex-1 bg-transparent px-1 font-grid text-ink outline-none placeholder:text-grid-null";
@@ -219,7 +230,7 @@ export function SearchBar({ tabId, tab }: { readonly tabId: string; readonly tab
               title={`Time range on ${timeField}`}
               testId="index-range"
               value={draft.range}
-              options={RANGE_OPTIONS}
+              options={rangeOptions(draft)}
               onChange={(value) => set({ range: value as SearchRangeKey })}
             />
           </Segment>

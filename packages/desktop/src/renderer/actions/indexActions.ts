@@ -7,6 +7,7 @@ import {
   canSearchIndex,
   INDEX_VIEWS,
   useIndexTabs,
+  type DraftChange,
   type IndexTarget,
   type IndexView,
 } from "@table-craft/desktop/renderer/state/indexTabs.js";
@@ -102,18 +103,23 @@ export function indexTarget(context: ActionContext, args?: unknown): IndexTarget
   return tab == null ? selectedIndex(context) : { datasourceId: tab.datasourceId, target: tab.target };
 }
 
-/** Opens the target in an index tab, or brings its open tab forward. */
-export function openIndex(target: IndexTarget): void {
-  const existing = Object.entries(useIndexTabs.getState().tabs).find(
+/**
+ * Opens the target in an index tab, or brings its open tab forward; `initial` changes the query
+ * bar, and searches with it unless it only fills it in.
+ */
+export function openIndex(target: IndexTarget, initial?: DraftChange): void {
+  const tabs = useIndexTabs.getState();
+  const existing = Object.entries(tabs.tabs).find(
     ([, tab]) => tab.datasourceId === target.datasourceId && tab.target === target.target,
   )?.[0];
   if (existing !== undefined) {
     useTabs.getState().activate(existing);
+    if (initial !== undefined) void tabs.apply(existing, initial);
     return;
   }
   const tab: Tab = { id: `${INDEX_TAB_PREFIX}${String(indexTabsOpened++)}`, kind: "index", title: target.target };
   useTabs.getState().open(tab);
-  void useIndexTabs.getState().open(tab.id, target);
+  void tabs.open(tab.id, target, initial);
 }
 
 const searchRequestOf = (context: ActionContext) => context.indexTab?.search?.request ?? null;

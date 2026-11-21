@@ -9,6 +9,7 @@ import type {
 import { EngineRequestError, type EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
 import {
   analyzedFields,
+  CUSTOM_RANGE,
   DEFAULT_RANGE,
   defaultDraft,
   droppedTokens,
@@ -20,6 +21,8 @@ import {
   searchRequestOf,
   sortableFields,
   stoppedEarly,
+  windowLabel,
+  type SearchDraft,
 } from "@table-craft/desktop/renderer/model/indexSearch.js";
 import { createIndexTabsStore, searchCommandText } from "@table-craft/desktop/renderer/state/indexTabs.js";
 
@@ -262,6 +265,82 @@ describe("index tabs", () => {
     expect(tabs.getState().tabs["index-0"]?.result?.stale).toBe(true);
   });
 
+  it("givenInitialChange_whenOpened_thenFirstSearchCarriesIt", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    const window = { from: "2026-11-21T08:00:00Z", to: "2026-11-21T08:10:00Z" };
+    await tabs.getState().open("index-0", TARGET, {
+      change: { query: "status:failed", sortOrder: "asc", range: CUSTOM_RANGE, window },
+      run: true,
+    });
+    expect(callsOf(engine, "indices.open")).toHaveLength(1);
+    expect(callsOf(engine, "indices.open")[0]).toMatchObject({
+      request: {
+        query: "status:failed",
+        sort: [{ field: "@timestamp", order: "asc" }],
+        time: { field: "@timestamp", ...window },
+      },
+    });
+  });
+
+  it("givenInitialChangeNotRun_whenOpened_thenDraftFilledInAndNothingSearched", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET, { change: { query: "status:failed" }, run: false });
+    expect(callsOf(engine, "indices.open")).toHaveLength(0);
+    expect(tabs.getState().tabs["index-0"]).toMatchObject({ status: "ready", result: null });
+    expect(tabs.getState().tabs["index-0"]?.draft).toMatchObject({ query: "status:failed", sortField: "@timestamp" });
+  });
+
+  it("givenSearchRunning_whenApplied_thenItIsCancelledAndTheNewRequestFollows", async () => {
+    const engine = searchEngine();
+    const base = engine.call.getMockImplementation();
+    let stop: (() => void) | null = null;
+    engine.call.mockImplementation((type: string, params?: unknown) => {
+      if (type === "indices.open" && stop === null && callsOf(engine, "indices.open").length === 1) {
+        return new Promise((_resolve, reject) => {
+          stop = () =>
+            reject(new EngineRequestError({ code: "cancelled", message: "Cancelled", hint: "Run it again." }));
+        });
+      }
+      if (type === "statement.cancel") stop?.();
+      return base?.(type, params) ?? Promise.resolve(null);
+    });
+    const tabs = store(engine);
+    const opened = tabs.getState().open("index-0", TARGET);
+    await vi.waitFor(() => expect(tabs.getState().tabs["index-0"]?.status).toBe("loading"));
+    await tabs.getState().apply("index-0", { change: { query: "status:failed" }, run: true });
+    await opened;
+    await vi.waitFor(() => expect(callsOf(engine, "indices.open")).toHaveLength(2));
+    expect(callsOf(engine, "statement.cancel")).toHaveLength(1);
+    expect(callsOf(engine, "indices.open")[1]).toMatchObject({ request: { query: "status:failed" } });
+    await vi.waitFor(() => expect(tabs.getState().tabs["index-0"]?.applied?.query).toBe("status:failed"));
+  });
+
+  it("givenTabStillOpening_whenApplied_thenTheFirstSearchCarriesTheChange", async () => {
+    const engine = searchEngine();
+    const base = engine.call.getMockImplementation();
+    const gate: { describeNow?: () => void } = {};
+    engine.call.mockImplementation((type: string, params?: unknown) => {
+      if (type === "indices.describe") {
+        return new Promise((resolve) => {
+          gate.describeNow = () => resolve(description("@timestamp"));
+        });
+      }
+      return base?.(type, params) ?? Promise.resolve(null);
+    });
+    const tabs = store(engine);
+    const opened = tabs.getState().open("index-0", TARGET, { change: { query: "status:paid" }, run: true });
+    await vi.waitFor(() => expect(gate.describeNow).toBeDefined());
+    await tabs.getState().apply("index-0", { change: { range: "24h" }, run: true });
+    gate.describeNow?.();
+    await opened;
+    expect(callsOf(engine, "indices.open")).toHaveLength(1);
+    expect(callsOf(engine, "indices.open")[0]).toMatchObject({
+      request: { query: "status:paid", time: { field: "@timestamp", from: "2026-11-20T09:15:00.000Z" } },
+    });
+  });
+
   it("givenClose_whenClosed_thenSessionClosed", async () => {
     const engine = searchEngine();
     const tabs = store(engine);
@@ -285,6 +364,20 @@ describe("index search bar", () => {
       time: { field: "created", from: "2026-11-14T09:15:00.000Z", to: null },
       pageSize: 1,
     });
+  });
+
+  it("givenCustomWindow_whenRequestedAndLabelled_thenItsEnds", () => {
+    const window = { from: "2026-11-21T15:00:00Z", to: "2026-11-21T15:10:00Z" };
+    const draft: SearchDraft = { ...EMPTY_SEARCH_DRAFT, range: CUSTOM_RANGE, window };
+    expect(searchRequestOf("orders", draft, "created", 100, NOW)).toMatchObject({
+      time: { field: "created", ...window },
+    });
+    expect(searchRequestOf("orders", { ...draft, window: null }, "created", 100, NOW)).toMatchObject({ time: null });
+    expect(windowLabel(window)).toBe("2026-11-21 15:00 – 15:10 UTC");
+    expect(windowLabel({ from: window.from, to: null })).toBe("2026-11-21 15:00 – … UTC");
+    expect(windowLabel({ from: window.from, to: "2026-11-22T01:00:00Z" })).toBe(
+      "2026-11-21 15:00 – 2026-11-22 01:00 UTC",
+    );
   });
 
   it("givenRequest_whenNamed_thenServicesText", () => {
