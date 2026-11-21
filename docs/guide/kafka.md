@@ -25,7 +25,7 @@ subjects whose names match; a console command or a tab opened by name still reac
   ([decision 170](../decisions/170-browsing-a-topic-never-joins-a-group.md)).
 - **Topic tab.** **Messages** reads the latest N (500 by default), from the earliest offset, from an
   offset, from a time, or from a group's committed offsets, for all partitions or the ones you type
-  (`0, 3, 7`), up to 50,000 rows. **Read** turns into **Cancel** while it runs; a cancelled read
+  (`0, 3, 7`), up to 50,000 rows and 128 MB of messages, whichever comes first. **Read** turns into **Cancel** while it runs; a cancelled read
   keeps the rows of the previous one. **Filter** keeps the messages whose key, value or headers
   contain the text, or match a `/regex/`. The footer says how many messages were scanned and
   matched; under Latest N a filter searches only the newest N of each partition, the footer says

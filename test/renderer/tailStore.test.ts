@@ -61,6 +61,12 @@ describe("tail windows", () => {
     expect(rows.map((row) => row.sequence)).toEqual(["3", "4"]);
   });
 
+  it("givenByteBudget_whenLargeMessagesAppended_thenNewestWithinItKept", () => {
+    const rows = appendTailWindow([], window([1, 2, 3, 4]), 100, 25);
+    expect(rows.map((row) => row.sequence)).toEqual(["3", "4"]);
+    expect(appendTailWindow([], window([5]), 100, 1).map((row) => row.sequence)).toEqual(["5"]);
+  });
+
   it("givenFilter_whenMatched_thenKeyValueOrHeadersAndGapsKept", () => {
     const rows: readonly TailRow[] = appendTailWindow([], window([42, 7], "1"), 100);
     expect(rows.filter((row) => tailRowMatches(row, "cust-42")).map((row) => row.kind)).toEqual(["gap", "message"]);

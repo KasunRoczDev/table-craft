@@ -15,6 +15,8 @@ export const TAIL_WINDOW_COUNT = 500;
 export const TAIL_WINDOW_BYTES = 1_048_576;
 /** The pane keeps the newest this many rows; the engine's ring holds more (`TOPIC_TAIL_MAX_MESSAGES`). */
 export const TAIL_DISPLAY_ROWS = 10_000;
+/** And at most this much message data, so a topic of large messages cannot fill the window's memory. */
+export const TAIL_DISPLAY_BYTES = 33_554_432;
 
 /** A received message, or the gap row that stands where the ring dropped some before they were read. */
 export type TailRow =
@@ -44,6 +46,7 @@ export function appendTailWindow(
   rows: readonly TailRow[],
   window: Pick<TopicTailWindow, "rows" | "skipped" | "through">,
   limit: number,
+  maxBytes: number = TAIL_DISPLAY_BYTES,
 ): readonly TailRow[] {
   const seen = new Set(rows.filter((row) => row.kind === "message").map((row) => row.sequence));
   const added: TailRow[] = [];
@@ -56,7 +59,21 @@ export function appendTailWindow(
     seen.add(row.sequence);
     added.push({ kind: "message", sequence: row.sequence, message: row.message });
   }
-  return added.length === 0 ? rows : [...rows, ...added].slice(-limit);
+  return added.length === 0 ? rows : newest([...rows, ...added], limit, maxBytes);
+}
+
+/** The newest rows within `limit` rows and `maxBytes` of message size; the newest row is always kept. */
+function newest(rows: readonly TailRow[], limit: number, maxBytes: number): readonly TailRow[] {
+  let bytes = 0;
+  let start = rows.length;
+  while (start > 0 && rows.length - start < limit) {
+    const row = rows[start - 1];
+    const size = row?.kind === "message" ? row.message.size : 0;
+    if (start < rows.length && bytes + size > maxBytes) break;
+    bytes += size;
+    start -= 1;
+  }
+  return start === 0 ? rows : rows.slice(start);
 }
 
 /** The messages a tail's rows hold, gaps left out. */

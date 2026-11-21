@@ -28,6 +28,12 @@ const FOLLOW_WAIT_MS = 500;
 const MAX_IDLE_ROUNDS = 3;
 const MAX_LEADER_REFRESHES = 3;
 const CANCELLED = "Cancelled: the read stopped fetching.";
+/**
+ * The record bytes one read may keep. The row limit alone does not bound memory: 50,000 rows of
+ * 1 MB values, or a filter matching every message of a wide Latest N window, would fill the engine.
+ */
+const READ_KEPT_BYTES = 134_217_728;
+const MEBIBYTE = 1_048_576;
 
 /** What a read needs from its session. */
 export interface ReadHost {
@@ -179,6 +185,7 @@ export async function readTopic(
   const warnings = new Set<string>();
   const idle = new Map<number, number>();
   let scanned = 0;
+  let keptBytes = 0;
   let refreshes = 0;
   const active = (): PartitionCursor[] =>
     cursors.filter(
@@ -187,7 +194,7 @@ export async function readTopic(
         cursor.matched < perPartition &&
         (idle.get(cursor.partition) ?? 0) < MAX_IDLE_ROUNDS,
     );
-  while (scanned < maxScan && (deadline === null || Date.now() < deadline)) {
+  while (scanned < maxScan && keptBytes < READ_KEPT_BYTES && (deadline === null || Date.now() < deadline)) {
     checkCancelled(host.signal);
     const targets = active();
     if (targets.length === 0) break;
@@ -232,6 +239,7 @@ export async function readTopic(
           filter === null || filter([message.decodedKey.text, message.decodedValue.text, ...headerTexts(message)]);
         if (!matches || cursor.matched >= perPartition) continue;
         kept.push(message);
+        keptBytes += message.size;
         cursor.matched += 1;
       }
       const last = taken.at(-1);
@@ -248,6 +256,11 @@ export async function readTopic(
       refreshes += 1;
       layout = await layoutOf(consumer, host.admin, request.topic, request.partitions);
     }
+  }
+  if (keptBytes >= READ_KEPT_BYTES) {
+    warnings.add(
+      `The read stopped after keeping ${String(Math.round(keptBytes / MEBIBYTE))} MB of messages; lower the limit or narrow the filter.`,
+    );
   }
   const stuck = cursors.filter(
     (cursor) => cursor.position < cursor.end && (idle.get(cursor.partition) ?? 0) >= MAX_IDLE_ROUNDS,

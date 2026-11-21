@@ -59,7 +59,9 @@ export class TopicTailRing {
       if (oldest !== undefined) this.bytes -= oldest.bytes;
       this.dropped += 1n;
     }
-    if (this.head > this.maxMessages) {
+    // Dropped messages stay referenced until the array is cut, so cut once they are half of it:
+    // past the byte cap a few large messages a second would otherwise pile up unbounded.
+    if (this.head > 0 && this.head * 2 >= this.rows.length) {
       this.rows = this.rows.slice(this.head);
       this.head = 0;
     }
@@ -70,6 +72,11 @@ export class TopicTailRing {
     this.head = 0;
     this.bytes = 0;
     this.clearedThrough = this.next - 1n;
+  }
+
+  /** Messages the ring still references, dropped ones not yet cut included. */
+  referenced(): number {
+    return this.rows.length;
   }
 
   droppedTotal(): string {

@@ -395,4 +395,12 @@ describe("topic tail ring", () => {
     expect(window.rows.map((row) => row.message.offset)).toEqual(["1"]);
     expect(window).toMatchObject({ skipped: "1", through: "2" });
   });
+
+  it("givenLargeMessagesPastTheByteCap_whenManyArrive_thenDroppedOnesAreNotKept", () => {
+    const ring = new TopicTailRing(100_000, 5_000);
+    for (let offset = 0; offset < 10_000; offset += 1) ring.append({ ...message(offset), value: "x".repeat(1_000) });
+
+    expect(ring.referenced()).toBeLessThanOrEqual(10);
+    expect(ring.window(null, 10, 1_000_000).rows.at(-1)?.message.offset).toBe("9999");
+  });
 });
