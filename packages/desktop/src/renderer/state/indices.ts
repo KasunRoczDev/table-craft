@@ -17,6 +17,8 @@ export interface IndicesState {
   readonly expandDatasource: (datasourceId: string) => Promise<void>;
   /** Lists indices, aliases and data streams again. */
   readonly synchronize: (datasourceId: string) => Promise<void>;
+  /** Narrows the tree to the targets whose names match `filter` (plan 166); empty shows them all. */
+  readonly setFilter: (datasourceId: string, filter: string) => void;
   /** Forgets the datasource's list; its engine is gone. */
   readonly clear: (datasourceId: string) => void;
 }
@@ -79,6 +81,10 @@ export function createIndicesStore(dependencies: IndicesDependencies) {
       },
 
       synchronize: list,
+
+      setFilter(id, filter) {
+        update(id, { filter });
+      },
 
       clear(id) {
         bump(id);
