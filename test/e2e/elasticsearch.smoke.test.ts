@@ -172,7 +172,7 @@ describe.runIf(DATABASES_ENABLED && !WITHOUT_ELASTICSEARCH)("Elasticsearch live 
       await captureWindow(page, "04-request");
       await page.keyboard.press("Escape");
 
-      await tab.locator('[data-testid="index-language"] input[value="dsl"]').check({ force: true });
+      await chooseOption(tab.getByTestId("index-language"), "dsl");
       await search(tab, TEA_DSL);
       await expect.poll(async () => (await gridText(page)).cells.includes("coffee"), WAIT).toBe(false);
       expect((await gridText(page)).cells).toContain("tea");
@@ -219,6 +219,8 @@ describe.runIf(DATABASES_ENABLED && !WITHOUT_ELASTICSEARCH)("Elasticsearch live 
       await tab.getByTestId("index-histogram").waitFor(WAIT);
       await hits(tab).toMatch(/of [\d,]+ hits/);
       await expect.poll(async () => (await gridText(page)).headers.join(" "), WAIT).toContain("_index");
+      // The range menu closes over the strip, and a hovered bar would read as a spike.
+      await tab.getByTestId("index-header").hover();
       await captureWindow(page, "08-time-range");
 
       await search(tab, "log.level:error");

@@ -33,17 +33,18 @@ request or a tab opened by name still reaches any of them.
   log index with a hundred fields, starts with the time, the level, the message and a few keyword
   fields. A field missing from a document reads `<null>`.
 - **Query bar.** Type a Lucene query (`category:coffee AND price:[* TO 20]`, every term required
-  unless you write `OR`) or switch to **DSL** and type a Query DSL object
+  unless you write `OR`) or pick **DSL** before the query and type a Query DSL object
   (`{"term": {"sku": "p-1"}}`), then press Enter or **Run**. Pick a field to sort on and its order.
   An error from the cluster shows under the bar and keeps the rows of the last search.
 - **Time first.** When the target has an `@timestamp` date field, the bar offers a time range,
   _Last 15 minutes_ by default, sorts newest first and draws a histogram of the hits over the
-  range above the grid. The footer says how many shards the range let the cluster skip.
+  range above the grid, with the hits of its tallest bar and the time under every quarter; a bar
+  the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
 - **Paging.** The grid fetches pages as you scroll, through a scroll context that is cleared when
   the result is released, the tab closes or the last page arrives.
   The footer reads `1–100 of 2,431 hits · took 6 ms · 5 shards`; past 10,000 the count reads
   `≥ 10,000`. Shard failures show as a warning with the reason.
-- **The request.** **`{ }`** shows the exact request the search sent, with **Copy** and **Open in
+- **The request.** **Request** shows the exact request the search sent, with **Copy** and **Open in
   Console**, so a search built in the bar becomes a console request you can change.
 - **Mapping and Settings.** Mapping lists each field with its type, analyzer and multi-fields
   (`name.raw` under `name`), and the mapping as JSON. Settings shows the index settings as JSON. On

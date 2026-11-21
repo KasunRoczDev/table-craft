@@ -14,7 +14,9 @@ import {
   droppedTokens,
   EMPTY_SEARCH_DRAFT,
   HISTOGRAM_BUCKETS,
+  histogramPlot,
   hitsText,
+  roundScale,
   searchRequestOf,
   sortableFields,
 } from "@table-craft/desktop/renderer/model/indexSearch.js";
@@ -281,5 +283,59 @@ describe("index search bar", () => {
       { kind: "tokenizer", tokens: [token("Tea", 0), token("cup", 1)] },
     ];
     expect(droppedTokens(steps)[1]).toEqual({ kept: ["Tea", "cup"], dropped: [] });
+  });
+});
+
+describe("index histogram plot", () => {
+  const MINUTE_MS = 60_000;
+  const START = Date.parse("2026-03-02T10:00:00.000Z");
+  const minuteBuckets = (counts: readonly number[]) =>
+    counts.map((count, index) => ({ at: new Date(START + index * MINUTE_MS).toISOString(), count }));
+
+  it.each([
+    [0, 1],
+    [1, 1],
+    [3, 5],
+    [10, 10],
+    [11, 20],
+    [325, 500],
+    [5001, 10_000],
+  ])("givenHighestBar%s_whenScaled_thenTopIs%s", (value, top) => {
+    expect(roundScale(value)).toBe(top);
+  });
+
+  it("givenAnOpenLastHour_whenPlotted_thenTheEdgeBucketsArePartial", () => {
+    const counts = Array.from({ length: 61 }, (_, index) => (index === 30 ? 40 : 20));
+    const plot = histogramPlot(minuteBuckets(counts), {
+      from: new Date(START + 30_000).toISOString(),
+      to: null,
+    });
+
+    expect(plot.top).toBe(50);
+    expect(plot.bars.map((bar) => bar.partial).filter(Boolean)).toHaveLength(2);
+    expect(plot.bars[0]?.partial).toBe(true);
+    expect(plot.bars[60]?.partial).toBe(true);
+    expect(plot.bars[30]?.ratio).toBe(0.8);
+  });
+
+  it("givenAClosedRange_whenPlotted_thenNoBucketIsPartial", () => {
+    const buckets = minuteBuckets([1, 2, 3, 4]);
+    const plot = histogramPlot(buckets, {
+      from: new Date(START).toISOString(),
+      to: new Date(START + 4 * MINUTE_MS).toISOString(),
+    });
+
+    expect(plot.bars.some((bar) => bar.partial)).toBe(false);
+  });
+
+  it("givenAnHour_whenPlotted_thenFourClockLabelsFromTheStart", () => {
+    const plot = histogramPlot(minuteBuckets(Array.from({ length: 61 }, () => 1)), null);
+
+    expect(plot.ticks.map((tick) => tick.index)).toEqual([0, 15, 30, 45]);
+    for (const tick of plot.ticks) expect(tick.label).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it("givenFewerBucketsThanLabels_whenPlotted_thenNoLabels", () => {
+    expect(histogramPlot(minuteBuckets([1, 2, 3]), null).ticks).toEqual([]);
   });
 });

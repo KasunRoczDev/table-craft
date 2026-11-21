@@ -11,11 +11,15 @@ import { useIndexTabs, type IndexTab } from "@table-craft/desktop/renderer/state
 import { ActionButton } from "@table-craft/desktop/renderer/ui/ActionButton.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import { Dropdown } from "@table-craft/desktop/renderer/ui/Dropdown.js";
-import { SortAscendingMark, SortDescendingMark } from "@table-craft/desktop/renderer/ui/icons.js";
+import {
+  RequestIcon,
+  SortAscendingMark,
+  SortDescendingMark,
+  TimeRangeIcon,
+} from "@table-craft/desktop/renderer/ui/icons.js";
 import { Popover, type PopoverAnchor } from "@table-craft/desktop/renderer/ui/Popover.js";
 import { POPOVER_BODY, POPOVER_FOOTER, POPOVER_HEADER } from "@table-craft/desktop/renderer/ui/popoverParts.js";
 import { RunGlyph, StopGlyph } from "@table-craft/desktop/renderer/ui/runGlyphs.js";
-import { Segmented } from "@table-craft/desktop/renderer/ui/Segmented.js";
 
 const LANGUAGE_OPTIONS = [
   { value: "lucene", label: "Lucene" },
@@ -30,25 +34,34 @@ const SCORE_SORT = "";
 const SCORE_LABEL = "Score";
 const RANGE_OPTIONS = SEARCH_RANGES.map((range) => ({ value: range.key, label: range.label }));
 const SORT_ORDER_TEXT = { asc: "Ascending", desc: "Descending" } as const;
-/** Flush fields of the strip (design-system.md, Dropdowns: the flush rule), as the topic read bar's. */
 const INPUT_CLASS =
-  "h-row min-w-0 border border-transparent bg-transparent px-1 font-grid text-ink outline-none placeholder:text-grid-null focus:border-accent aria-invalid:border-danger";
+  "h-row min-w-0 flex-1 bg-transparent px-1 font-grid text-ink outline-none placeholder:text-grid-null";
 const SEGMENT_CLASS =
   "flex h-row max-w-full items-center gap-cell overflow-hidden border-r border-b border-line px-cell whitespace-nowrap";
-const BAR_BUTTON = "flex shrink-0 items-center gap-cell border-l border-line px-gap font-semibold hover:bg-hover";
+/**
+ * The query segment carries the focus and refusal ring itself, inset on its own edges, so the
+ * mark lines up with the strip's dividers instead of floating as a box inside the segment.
+ */
+const QUERY_SEGMENT_CLASS = "ring-inset focus-within:ring-1 focus-within:ring-accent";
+const QUERY_REFUSED_CLASS = "ring-1 ring-danger focus-within:ring-danger";
+/** The strip's end buttons; the first one after the form has no rule of its own, the segment's is there. */
+const BAR_BUTTON = "flex shrink-0 items-center gap-cell px-gap font-semibold hover:bg-hover";
 
 function Segment({
   label,
   children,
   grow,
+  className,
 }: {
-  readonly label?: string;
+  readonly label?: ReactNode;
   readonly children: ReactNode;
   readonly grow?: boolean;
+  readonly className?: string;
 }) {
   return (
-    <div className={cn(SEGMENT_CLASS, grow === true ? "min-w-64 grow" : "min-w-0 shrink-0")}>
-      {label === undefined ? null : <span className="shrink-0 text-ink-muted">{label}</span>}
+    // As the topic read bar's segments: a wrapped row fills the width instead of leaving it ragged.
+    <div className={cn(SEGMENT_CLASS, grow === true ? "min-w-64 grow-[4]" : "min-w-0 grow", className)}>
+      {label === undefined ? null : <span className="flex shrink-0 items-center text-ink-muted">{label}</span>}
       {children}
     </div>
   );
@@ -108,11 +121,15 @@ function RequestButton({ request }: { readonly request: string | null }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={request === null}
-        className={cn(BAR_BUTTON, "font-editor font-normal text-ink-muted disabled:opacity-50")}
+        className={cn(
+          BAR_BUTTON,
+          "font-normal text-ink-muted hover:text-ink disabled:opacity-50 aria-expanded:bg-selection aria-expanded:text-accent",
+        )}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => setOpen((shown) => !shown)}
       >
-        {"{ }"}
+        <RequestIcon aria-hidden className="size-icon" />
+        Request
       </button>
       {open && anchor !== null && request !== null ? (
         <RequestPopover anchor={anchor} request={request} onClose={() => setOpen(false)} />
@@ -146,21 +163,23 @@ export function SearchBar({ tabId, tab }: { readonly tabId: string; readonly tab
           if (!searching) void invoke(INDEX_ACTION_IDS.run);
         }}
       >
-        <Segment>
-          <Segmented
-            name={`${formId}-language`}
+        <Segment
+          grow
+          className={cn("gap-0 pl-0", QUERY_SEGMENT_CLASS, tab.queryError === null ? null : QUERY_REFUSED_CLASS)}
+        >
+          <Dropdown
+            variant="inline"
             label="Query language"
             testId="index-language"
-            options={LANGUAGE_OPTIONS}
+            className="shrink-0 text-ink-muted"
             value={draft.language}
-            onChange={(language) => set({ language })}
+            options={LANGUAGE_OPTIONS}
+            onChange={(language) => set({ language: language as SearchDraft["language"] })}
           />
-        </Segment>
-        <Segment grow>
           <input
             aria-label="Query"
             data-testid="index-query"
-            className={cn(INPUT_CLASS, "flex-1")}
+            className={INPUT_CLASS}
             placeholder={PLACEHOLDERS[draft.language]}
             spellCheck={false}
             aria-invalid={tab.queryError !== null}
@@ -168,15 +187,7 @@ export function SearchBar({ tabId, tab }: { readonly tabId: string; readonly tab
             onChange={(event) => set({ query: event.target.value })}
           />
         </Segment>
-        <Segment label="Sort">
-          <Dropdown
-            variant="inline"
-            label="Sort field"
-            testId="index-sort"
-            value={draft.sortField ?? SCORE_SORT}
-            options={sortOptions}
-            onChange={(value) => set({ sortField: value === SCORE_SORT ? null : value })}
-          />
+        <Segment label="Sort" className="gap-0">
           {draft.sortField === null ? null : (
             <button
               type="button"
@@ -184,18 +195,28 @@ export function SearchBar({ tabId, tab }: { readonly tabId: string; readonly tab
               data-order={draft.sortOrder}
               aria-label={SORT_ORDER_TEXT[draft.sortOrder]}
               title={SORT_ORDER_TEXT[draft.sortOrder]}
-              className="flex h-row shrink-0 items-center px-1 text-ink-muted hover:bg-hover hover:text-ink"
+              className="ml-cell flex h-row shrink-0 items-center px-1 text-ink-muted hover:bg-hover hover:text-ink"
               onClick={() => set({ sortOrder: draft.sortOrder === "asc" ? "desc" : "asc" })}
             >
               <OrderIcon aria-hidden className="size-icon" />
             </button>
           )}
+          <Dropdown
+            variant="inline"
+            label="Sort field"
+            testId="index-sort"
+            className={draft.sortField === null ? "ml-cell" : undefined}
+            value={draft.sortField ?? SCORE_SORT}
+            options={sortOptions}
+            onChange={(value) => set({ sortField: value === SCORE_SORT ? null : value })}
+          />
         </Segment>
         {timeField === null ? null : (
-          <Segment label={timeField}>
+          <Segment label={<TimeRangeIcon aria-hidden className="size-icon" />}>
             <Dropdown
               variant="inline"
-              label="Time range"
+              label={`Time range on ${timeField}`}
+              title={`Time range on ${timeField}`}
               testId="index-range"
               value={draft.range}
               options={RANGE_OPTIONS}

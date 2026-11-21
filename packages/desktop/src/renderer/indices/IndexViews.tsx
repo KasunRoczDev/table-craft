@@ -1,8 +1,13 @@
 import { json } from "@codemirror/lang-json";
-import type { SearchField, SearchHistogram, SearchTargetDescription } from "@table-craft/desktop/engine/protocol.js";
+import type {
+  SearchField,
+  SearchHistogram,
+  SearchTargetDescription,
+  SearchTimeRange,
+} from "@table-craft/desktop/engine/protocol.js";
 import { invoke } from "@table-craft/desktop/renderer/actions/index.js";
 import { INDEX_ACTION_IDS } from "@table-craft/desktop/renderer/actions/indexActions.js";
-import { analyzedFields, droppedTokens } from "@table-craft/desktop/renderer/model/indexSearch.js";
+import { analyzedFields, droppedTokens, histogramPlot } from "@table-craft/desktop/renderer/model/indexSearch.js";
 import { useIndexTabs, type IndexTab } from "@table-craft/desktop/renderer/state/indexTabs.js";
 import { PLAIN_CELL, PLAIN_HEAD, PlainTable } from "@table-craft/desktop/renderer/topics/TopicViews.js";
 import { ActionButton } from "@table-craft/desktop/renderer/ui/ActionButton.js";
@@ -23,25 +28,49 @@ const STEP_KIND_LABELS = {
 } as const;
 const TOKEN_CLASS = "rounded bg-raised px-1 font-grid";
 
-/** One bar per bucket, one hue at low weight: where the hits fall in the range, not an exact chart. */
-export function HistogramStrip({ histogram }: { readonly histogram: SearchHistogram }) {
-  const counts = histogram.buckets.map((bucket) => Number(bucket.count));
-  const highest = Math.max(1, ...counts);
+function percent(ratio: number): string {
+  return `${String(ratio * 100)}%`;
+}
+
+/**
+ * One bar per bucket in one hue, on a round count scale with time labels under it. A bucket the
+ * range cuts is drawn faint, so a partial count does not read as a dip.
+ */
+export function HistogramStrip({
+  histogram,
+  time,
+}: {
+  readonly histogram: SearchHistogram;
+  readonly time: SearchTimeRange | null;
+}) {
+  const plot = histogramPlot(histogram.buckets, time);
+  const count = plot.bars.length;
   return (
     <div
       data-testid="index-histogram"
-      aria-label={`Hits over ${histogram.field}`}
+      aria-label={`Hits over ${histogram.field}, up to ${plot.top.toLocaleString("en-US")} per bar`}
       role="img"
-      className="flex h-10 shrink-0 items-end gap-px border-b border-line px-pane-inset pt-1"
+      className="grid shrink-0 grid-cols-[1fr_auto] gap-x-cell border-b border-line px-pane-inset pt-gap text-label text-ink-muted tabular-nums"
     >
-      {histogram.buckets.map((bucket, index) => (
-        <span
-          key={bucket.at}
-          title={`${bucket.at} · ${bucket.count}`}
-          className="min-w-px flex-1 bg-accent/40 hover:bg-accent/70"
-          style={{ height: `${String(((counts[index] ?? 0) / highest) * 100)}%` }}
-        />
-      ))}
+      <div className="flex h-10 items-end gap-px border-t border-b border-t-line/50 border-b-line">
+        {plot.bars.map((bar) => (
+          <span
+            key={bar.at}
+            data-partial={bar.partial}
+            title={`${bar.at} · ${bar.count.toLocaleString("en-US")}${bar.partial ? " (part of the bucket is outside the range)" : ""}`}
+            className="min-w-px flex-1 bg-accent/40 hover:bg-accent data-[partial=true]:bg-accent/15"
+            style={{ height: percent(bar.ratio) }}
+          />
+        ))}
+      </div>
+      <span className="-translate-y-1/2 self-start leading-none">{plot.top.toLocaleString("en-US")}</span>
+      <div className="relative h-row">
+        {plot.ticks.map((tick) => (
+          <span key={tick.index} className="absolute top-0" style={{ left: percent(tick.index / count) }}>
+            {tick.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

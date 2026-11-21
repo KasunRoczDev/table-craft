@@ -104,14 +104,16 @@ function Footer({ tab }: { readonly tab: IndexTabState }) {
   return (
     <div
       data-testid="index-footer"
-      className="flex h-row shrink-0 items-center gap-gap overflow-hidden border-t border-line bg-panel px-gap whitespace-nowrap text-ink-muted"
+      className="flex h-row shrink-0 items-center gap-cell overflow-hidden border-t border-line bg-panel px-gap whitespace-nowrap text-ink-muted"
     >
       {search === null ? null : (
         <>
           <span data-testid="index-hits" className="shrink-0 text-ink tabular-nums">
             {hitsText(tab.result?.rowCount ?? 0, search.total)}
           </span>
-          <span className="shrink-0 tabular-nums">· took {search.tookMs.toLocaleString("en-US")} ms ·</span>
+          <span aria-hidden>·</span>
+          <span className="shrink-0 tabular-nums">took {search.tookMs.toLocaleString("en-US")} ms</span>
+          <span aria-hidden>·</span>
           <ShardsText shards={search.shards} />
           <SearchWarnings warnings={search.warnings} />
         </>
@@ -136,7 +138,7 @@ function Documents({ tabId, tab }: { readonly tabId: string; readonly tab: Index
           {tab.queryError.message} <span className="text-ink-muted">{tab.queryError.hint}</span>
         </div>
       )}
-      {tab.histogram === null ? null : <HistogramStrip histogram={tab.histogram} />}
+      {tab.histogram === null ? null : <HistogramStrip histogram={tab.histogram} time={tab.applied?.time ?? null} />}
       {result === null ? (
         <div className="flex flex-1 items-center justify-center text-ink-muted">
           {tab.status === "loading" || tab.status === "connecting" || tab.describing

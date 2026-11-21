@@ -1,5 +1,6 @@
 import {
   SEARCH_PAGE_LIMIT,
+  type HistogramBucket,
   type SearchField,
   type SearchQueryLanguage,
   type SearchRequest,
@@ -80,6 +81,78 @@ export function searchRequestOf(
     fields: null,
     pageSize: Math.min(Math.max(1, Math.trunc(pageSize)), SEARCH_PAGE_LIMIT),
   };
+}
+
+export interface HistogramBar {
+  readonly at: string;
+  readonly count: number;
+  /** The bar's height against the scale's top, 0 to 1. */
+  readonly ratio: number;
+  /** The bucket reaches past the searched range, so its count covers only part of it. */
+  readonly partial: boolean;
+}
+
+export interface HistogramTick {
+  /** The bucket the label sits under. */
+  readonly index: number;
+  readonly label: string;
+}
+
+export interface HistogramPlot {
+  readonly bars: readonly HistogramBar[];
+  /** The scale's top: a round count at or above the highest bar. */
+  readonly top: number;
+  readonly ticks: readonly HistogramTick[];
+}
+
+/** Time labels under the strip, the first at its start; the end stays unlabelled. */
+const HISTOGRAM_TICKS = 4;
+const SCALE_STEPS = [1, 2, 5, 10] as const;
+const CLOCK_FORMAT: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+const DAY_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+
+/** The smallest of 1, 2, 5 times a power of ten at or above `value`. */
+export function roundScale(value: number): number {
+  if (value <= 1) return 1;
+  const power = 10 ** Math.floor(Math.log10(value));
+  return (SCALE_STEPS.find((step) => step * power >= value) ?? 10) * power;
+}
+
+/**
+ * The strip's bars, its scale and its time labels. The edge buckets of a time range start before
+ * it or end after it, so their counts are partial and would read as dips; they are marked.
+ */
+export function histogramPlot(
+  buckets: readonly HistogramBucket[],
+  time: { readonly from: string | null; readonly to: string | null } | null,
+): HistogramPlot {
+  const counts = buckets.map((bucket) => bucket.count);
+  const top = roundScale(Math.max(0, ...counts));
+  const first = buckets[0];
+  const second = buckets[1];
+  const step = first === undefined || second === undefined ? 0 : Date.parse(second.at) - Date.parse(first.at);
+  const from = time?.from == null ? null : Date.parse(time.from);
+  const to = time?.to == null ? null : Date.parse(time.to);
+  const last = buckets.length - 1;
+  const bars = buckets.map((bucket, index): HistogramBar => {
+    const at = Date.parse(bucket.at);
+    const partial =
+      time !== null &&
+      ((index === 0 && from !== null && at < from) || (index === last && (to === null || at + step > to)));
+    const count = counts[index] ?? 0;
+    return { at: bucket.at, count, ratio: count / top, partial };
+  });
+  const span = first === undefined ? 0 : Date.parse(buckets[last]?.at ?? first.at) + step - Date.parse(first.at);
+  const format = span > DAY_MS ? DAY_FORMAT : CLOCK_FORMAT;
+  const ticks: HistogramTick[] = [];
+  if (buckets.length >= HISTOGRAM_TICKS) {
+    const every = Math.round(buckets.length / HISTOGRAM_TICKS);
+    for (let index = 0; index < buckets.length - every / 2; index += every) {
+      const bucket = buckets[index];
+      if (bucket !== undefined) ticks.push({ index, label: new Date(bucket.at).toLocaleString("en-US", format) });
+    }
+  }
+  return { bars, top, ticks };
 }
 
 /** The fields a search can sort by: those with doc values. */
