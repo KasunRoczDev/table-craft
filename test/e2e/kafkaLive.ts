@@ -20,7 +20,7 @@ const BULK_VALUE_BYTES = 200;
 const BULK_BATCH = 2000;
 /** Two large values per request, so a batch stays under the broker's default 1 MB message cap. */
 const LARGE_BATCH = 2;
-/** Ends every large value, so a test can tell the whole value from its 1 KB preview. */
+/** Ends every large value, so a test can tell the whole value from its 1,024-character preview. */
 export const LARGE_VALUE_END = "|end";
 
 export const ORDERS_PARTITIONS = 3;

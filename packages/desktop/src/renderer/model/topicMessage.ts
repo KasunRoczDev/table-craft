@@ -120,7 +120,7 @@ export function focusedCellText(
 }
 
 /** Shown when a large message's whole text is gone and only its preview is left. */
-export const PREVIEW_ONLY_NOTICE = "Only the first 1 KB is kept; the full message is no longer available.";
+export const PREVIEW_ONLY_NOTICE = "Only the first 1,024 characters are kept; the full message is no longer available.";
 
 /** The message as one JSON document, for Copy Message as JSON (audit M12); JSON values stay JSON. */
 export function messageJson(message: TopicMessage): string {

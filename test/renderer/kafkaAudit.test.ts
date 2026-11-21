@@ -186,7 +186,7 @@ describe("message panel", () => {
     const whole = withFullCells(preview, { key: "cust-42", value: { kind: "json", text: `"${long}"` }, headers: null });
     expect(whole).toMatchObject({ value: `"${long}"`, valueJson: true, headers: [], offset: "1204331" });
     expect(isPreviewMessage(whole)).toBe(false);
-    expect(PREVIEW_ONLY_NOTICE).toContain("first 1 KB");
+    expect(PREVIEW_ONLY_NOTICE).toContain("first 1,024 characters");
   });
 
   it("givenKeyOrHeadersCellFocused_whenPanelShown_thenItsWholeTextShownApart", () => {

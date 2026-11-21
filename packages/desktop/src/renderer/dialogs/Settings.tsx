@@ -755,8 +755,8 @@ function DataEditorPage() {
         </label>
       </FieldRow>
       <p className="col-start-2 text-ink-muted">
-        A message over 1 KB keeps its first 1 KB in memory and the rest in a temporary file, deleted when its tab or
-        tail closes. Applies to the next read or tail.
+        A message over 1,024 characters keeps its first 1,024 characters in memory and the rest in a temporary file,
+        deleted when its tab or tail closes. Applies to the next read or tail.
       </p>
     </>
   );

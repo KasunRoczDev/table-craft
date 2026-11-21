@@ -41,7 +41,7 @@ subjects whose names match; a console command or a tab opened by name still reac
   out, its headers, and its partition, offset, time, size and schema ids. **Copy Message as JSON**
   copies all of it and **Open Message in Console** writes the `consume` command that reads it again.
   When the read started from a group, the message at that group's committed offset says so.
-- **Large messages.** A message whose key, value or headers run past 1 KB shows its first 1 KB in
+- **Large messages.** A message whose key, value or headers run past 1,024 characters shows its first 1,024 characters in
   the grid, ending in `…`; the whole message waits in a temporary file on your disk, and the
   message details, Copy (of cells or rows, in any format), Copy Message as JSON, Produce Again and
   Export read it from there, so they always give the whole message. A read keeps
@@ -87,10 +87,10 @@ subjects whose names match; a console command or a tab opened by name still reac
   counts what arrived. **Filter** takes text or a `/regex/`. Select a message to see its key, headers
   and value; **Open in Topic Tab at This Offset** (or a double-click) reads from it. **Export…**
   writes the held messages to a JSON Lines file, and **Copy as JSON Lines** copies them. A large
-  message shows its first 1 KB; selecting it reads the whole one from the tail's temporary file,
-  which keeps the newest 512 MB of them, so an older one may say only its first 1 KB is kept.
+  message shows its first 1,024 characters; selecting it reads the whole one from the tail's temporary file,
+  which keeps the newest 512 MB of them, so an older one may say only its first 1,024 characters are kept.
   Export and Copy write whole messages from that file; one it no longer holds, or one past 64 MB of
-  copied text, goes out as its first 1 KB, and they say how many did.
+  copied text, goes out as its first 1,024 characters, and they say how many did.
 - **Schema Registry.** Double-click a subject for its tab: its versions, each version's schema, the
   compatibility level, **Check Compatibility…** for a new schema and **Register New Version…**.
   Double-click a broker for its information.
