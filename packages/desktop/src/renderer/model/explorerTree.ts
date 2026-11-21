@@ -19,6 +19,12 @@ import {
   type TreeNode,
 } from "@table-craft/desktop/renderer/model/datasourceTree.js";
 import {
+  EMPTY_INDICES,
+  indexRows,
+  type DatasourceIndices,
+  type IndexTreeNode,
+} from "@table-craft/desktop/renderer/model/indexTree.js";
+import {
   EMPTY_KEYSPACE,
   keyspaceRows,
   type DatasourceKeyspace,
@@ -165,7 +171,7 @@ export type CatalogNode =
   | SequenceNode;
 
 export type ExplorerNode =
-  FolderNode | DatasourceNode | CatalogNode | KeyTreeNode | StreamTreeNode | LoadingNode | ErrorNode;
+  FolderNode | DatasourceNode | CatalogNode | KeyTreeNode | StreamTreeNode | IndexTreeNode | LoadingNode | ErrorNode;
 
 export interface ExplorerRow {
   readonly node: ExplorerNode;
@@ -198,6 +204,10 @@ export interface ExplorerInput {
   readonly streams?: Readonly<Record<string, DatasourceStreams>>;
   /** Whether the datasource lists topics rather than namespaces (`topics`). */
   readonly browsesStreams?: (datasource: DatasourceView) => boolean;
+  /** Search datasources' indices, aliases and data streams (decision 174); absent, none. */
+  readonly indices?: Readonly<Record<string, DatasourceIndices>>;
+  /** Whether the datasource lists indices rather than namespaces (`searchIndices`). */
+  readonly browsesIndices?: (datasource: DatasourceView) => boolean;
 }
 
 export function pathKey(path: readonly string[]): string {
@@ -545,6 +555,15 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
     streamRows(sink, datasource.id, streams, options, depth + 1);
     return;
   }
+  if (builder.input.browsesIndices?.(datasource) === true) {
+    const sink = {
+      push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean) =>
+        push(builder, child, at, key, label, opens),
+      keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
+    };
+    indexRows(sink, datasource.id, builder.input.indices?.[datasource.id] ?? EMPTY_INDICES, depth + 1);
+    return;
+  }
   if (builder.input.browsesKeys?.(datasource) === true) {
     const sink = {
       push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean) =>
@@ -628,6 +647,8 @@ export function objectNameOf(node: ExplorerNode): string | null {
       return node.group.id;
     case "subject":
       return node.subject.subject;
+    case "searchTarget":
+      return node.target.name;
     default:
       return null;
   }

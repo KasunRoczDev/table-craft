@@ -128,6 +128,20 @@ import {
   type ServerTimeout,
   type Session,
   MESSAGE_FORMATS,
+  SEARCH_ID_COLUMN,
+  SEARCH_INDEX_COLUMN,
+  SEARCH_PAGE_LIMIT,
+  SEARCH_QUERY_LANGUAGES,
+  SEARCH_SOURCE_COLUMN,
+  SEARCH_TARGET_KINDS,
+  type AnalyzeRequest,
+  type AnalyzeStep,
+  type SearchHistogram,
+  type SearchRequest,
+  type SearchShards,
+  type SearchTarget,
+  type SearchTargetDescription,
+  type SearchTotal,
   SCHEMA_TYPES,
   TOPIC_MESSAGE_COLUMNS,
   TOPIC_READ_LIMIT,
@@ -243,6 +257,25 @@ describe("engine protocol", () => {
     expectTypeOf<protocol.ViewState>().toEqualTypeOf<ViewState>();
     expectTypeOf<protocol.FoundMatch>().toEqualTypeOf<FoundMatch>();
     expectTypeOf<protocol.ResultWindow>().toEqualTypeOf<ResultWindow>();
+  });
+
+  it("givenSearchTypes_whenComparedWithPluginApi_thenIdentical", () => {
+    expect(protocol.SEARCH_TARGET_KINDS).toEqual(SEARCH_TARGET_KINDS);
+    expect(protocol.SEARCH_QUERY_LANGUAGES).toEqual(SEARCH_QUERY_LANGUAGES);
+    expect(protocol.SEARCH_PAGE_LIMIT).toBe(SEARCH_PAGE_LIMIT);
+    expect([protocol.SEARCH_ID_COLUMN, protocol.SEARCH_INDEX_COLUMN, protocol.SEARCH_SOURCE_COLUMN]).toEqual([
+      SEARCH_ID_COLUMN,
+      SEARCH_INDEX_COLUMN,
+      SEARCH_SOURCE_COLUMN,
+    ]);
+    expectTypeOf<protocol.SearchTarget>().toEqualTypeOf<SearchTarget>();
+    expectTypeOf<protocol.SearchTargetDescription>().toEqualTypeOf<SearchTargetDescription>();
+    expectTypeOf<protocol.SearchRequest>().toEqualTypeOf<SearchRequest>();
+    expectTypeOf<protocol.SearchTotal>().toEqualTypeOf<SearchTotal>();
+    expectTypeOf<protocol.SearchShards>().toEqualTypeOf<SearchShards>();
+    expectTypeOf<protocol.SearchHistogram>().toEqualTypeOf<SearchHistogram>();
+    expectTypeOf<protocol.AnalyzeStep>().toEqualTypeOf<AnalyzeStep>();
+    expectTypeOf<protocol.AnalyzeRequest>().toEqualTypeOf<AnalyzeRequest>();
   });
 
   it("givenProtocolWireTypes_whenComparedWithPluginApi_thenIdentical", () => {

@@ -112,6 +112,13 @@
         "@table-craft/plugin-api": "workspace:*",
       },
     },
+    "plugins/elasticsearch": {
+      "name": "@table-craft/plugin-elasticsearch",
+      "version": "0.0.0",
+      "dependencies": {
+        "@table-craft/plugin-api": "workspace:*",
+      },
+    },
     "plugins/etcd": {
       "name": "@table-craft/plugin-etcd",
       "version": "0.0.0",
@@ -758,6 +765,8 @@
     "@table-craft/plugin-api": ["@table-craft/plugin-api@workspace:packages/plugin-api"],
 
     "@table-craft/plugin-duckdb": ["@table-craft/plugin-duckdb@workspace:plugins/duckdb"],
+
+    "@table-craft/plugin-elasticsearch": ["@table-craft/plugin-elasticsearch@workspace:plugins/elasticsearch"],
 
     "@table-craft/plugin-etcd": ["@table-craft/plugin-etcd@workspace:plugins/etcd"],
 

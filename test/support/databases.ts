@@ -43,6 +43,7 @@ export const DATABASE_IDS = [
   "redis",
   "etcd",
   "kafka",
+  "elasticsearch",
 ] as const;
 export type DatabaseId = (typeof DATABASE_IDS)[number];
 export const DATABASES_ENV = "TABLE_CRAFT_DATABASES";
@@ -454,6 +455,49 @@ export const KAFKA_SASL_CONFIG = {
   password: CREDENTIAL,
 } as const;
 
+const DEFAULT_ELASTICSEARCH_PORT = 59200;
+const DEFAULT_OPENSEARCH_PORT = 59203;
+const HTTPS_PORT = 443;
+const HTTP_PORT = 80;
+/**
+ * A shared remote cluster named in the git-ignored `.env`, which the Elasticsearch suite runs
+ * against besides the `elasticsearch` and `opensearch` services (test/db/elasticsearch.test.ts).
+ */
+export const ELASTICSEARCH_REMOTE_ENV = "TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL";
+/** Every index and alias the suites create starts with this, so they never touch one they did not make. */
+export const ELASTICSEARCH_SCRATCH_PREFIX = "tc_run_";
+
+/** The remote cluster's URL when `.env` names one, read when called. */
+export function elasticsearchRemoteUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = (env[ELASTICSEARCH_REMOTE_ENV] ?? "").trim();
+  return value === "" ? null : value;
+}
+
+/** The plugin's connection config for a cluster URL such as `http://host:9200`. */
+export function elasticsearchConfigOf(url: string): Readonly<Record<string, unknown>> {
+  const parsed = new URL(url);
+  const https = parsed.protocol === "https:";
+  return {
+    host: parsed.hostname,
+    port: parsed.port === "" ? (https ? HTTPS_PORT : HTTP_PORT) : Number(parsed.port),
+    tlsMode: https ? "verify-full" : "disable",
+    ...(parsed.username === "" ? {} : { authMode: "basic", user: decodeURIComponent(parsed.username) }),
+    ...(parsed.password === "" ? {} : { password: decodeURIComponent(parsed.password) }),
+  };
+}
+
+/** The `elasticsearch` service: Elasticsearch 8 without security. */
+export const ELASTICSEARCH_CONFIG = {
+  host: hostFromEnv("TABLE_CRAFT_ELASTICSEARCH_HOST"),
+  port: portFromEnv("TABLE_CRAFT_ELASTICSEARCH_PORT", DEFAULT_ELASTICSEARCH_PORT),
+} as const;
+
+/** The `opensearch` service: OpenSearch 2 without its security plugin. */
+export const OPENSEARCH_CONFIG = {
+  host: hostFromEnv("TABLE_CRAFT_OPENSEARCH_HOST"),
+  port: portFromEnv("TABLE_CRAFT_OPENSEARCH_PORT", DEFAULT_OPENSEARCH_PORT),
+} as const;
+
 export function withWrongPassword<Config extends { readonly password: string }>(config: Config): Config {
   return { ...config, password: WRONG_PASSWORD };
 }
@@ -472,6 +516,8 @@ export const WITHOUT_MSSQL = !databaseEnabled("mssql");
 export const WITHOUT_ETCD = !databaseEnabled("etcd");
 /** The Kafka suites and scenarios skip unless `TABLE_CRAFT_DATABASES` selects it. */
 export const WITHOUT_KAFKA = !databaseEnabled("kafka");
+/** The Elasticsearch suites and scenarios skip unless `TABLE_CRAFT_DATABASES` selects it. */
+export const WITHOUT_ELASTICSEARCH = !databaseEnabled("elasticsearch");
 
 /** Whether a scenario on a datasource of `pluginId` skips, because its server is not selected. */
 export function serverSkipped(pluginId: string): boolean {
@@ -481,6 +527,7 @@ export function serverSkipped(pluginId: string): boolean {
     (pluginId === "oracle" && WITHOUT_ORACLE) ||
     (pluginId === "mssql" && WITHOUT_MSSQL) ||
     (pluginId === "etcd" && WITHOUT_ETCD) ||
-    (pluginId === "kafka" && WITHOUT_KAFKA)
+    (pluginId === "kafka" && WITHOUT_KAFKA) ||
+    (pluginId === "elasticsearch" && WITHOUT_ELASTICSEARCH)
   );
 }

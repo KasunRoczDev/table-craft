@@ -37,6 +37,7 @@ import {
   CheckCircle,
   XCircle,
   Prohibit,
+  Clock,
   ClockCounterClockwise,
   FolderOpen,
   ArrowClockwise,
@@ -112,6 +113,8 @@ import {
   Broadcast,
   PaperPlaneTilt,
   PencilSimple,
+  ListMagnifyingGlass,
+  Waves,
   type Icon,
 } from "@phosphor-icons/react";
 import type { ActionIcon } from "@table-craft/desktop/renderer/actions/registry.js";
@@ -188,6 +191,11 @@ export {
   PencilSimple as EditValueIcon,
   ArrowCounterClockwise as ResetToDefaultIcon,
   ArrowUUpLeft as UndoEditIcon,
+  ListMagnifyingGlass as SearchIndexIcon,
+  Stack as IndexFamilyIcon,
+  Waves as DataStreamIcon,
+  Clock as TimeRangeIcon,
+  BracketsCurly as RequestIcon,
 };
 
 /** The header's type glyph per column class (plan 007 decision 7); temporal reads as a date. */
@@ -288,4 +296,6 @@ export const ACTION_ICONS: Readonly<Record<ActionIcon, Icon>> = {
   group: UsersThree,
   produce: PaperPlaneTilt,
   tail: Broadcast,
+  searchIndex: ListMagnifyingGlass,
+  analyze: TextAa,
 };

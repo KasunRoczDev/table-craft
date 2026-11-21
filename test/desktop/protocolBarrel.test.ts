@@ -17,6 +17,7 @@ import * as sql from "@table-craft/desktop/engine/protocol/sql.js";
 import * as server from "@table-craft/desktop/engine/protocol/server.js";
 import * as topics from "@table-craft/desktop/engine/protocol/topics.js";
 import * as groups from "@table-craft/desktop/engine/protocol/groups.js";
+import * as indices from "@table-craft/desktop/engine/protocol/indices.js";
 import * as schemas from "@table-craft/desktop/engine/protocol/schemas.js";
 import * as streamCalls from "@table-craft/desktop/engine/protocol/streamCalls.js";
 import * as tables from "@table-craft/desktop/engine/protocol/tables.js";
@@ -34,6 +35,7 @@ const AREAS = {
   catalog,
   datasource,
   groups,
+  indices,
   inspection,
   keyspace,
   keyAdvanced,
@@ -216,6 +218,12 @@ const METHODS = [
   "schemas.register",
   "schemas.compatibility",
   "schemas.delete",
+  "indices.list",
+  "indices.describe",
+  "indices.open",
+  "indices.count",
+  "indices.histogram",
+  "indices.analyze",
 ] as const;
 
 async function lintProtocolModule(source: string): Promise<string[]> {

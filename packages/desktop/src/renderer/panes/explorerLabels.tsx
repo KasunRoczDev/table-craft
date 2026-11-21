@@ -8,6 +8,13 @@ import {
   subjectDetail,
   topicDetail,
 } from "@table-craft/desktop/renderer/model/streamTree.js";
+import {
+  familyDetail,
+  healthTone,
+  INDEX_SECTION_LABELS,
+  middleTruncate,
+  searchTargetDetail,
+} from "@table-craft/desktop/renderer/model/indexTree.js";
 import { KeyTreeContent, KeyTreeMetadata } from "@table-craft/desktop/renderer/panes/KeyTreeMetadata.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import { KeyTypeBadge, keyTypeLabel } from "@table-craft/desktop/renderer/ui/KeyTypeBadge.js";
@@ -33,7 +40,22 @@ import {
   ConsumerGroupIcon,
   BrokerIcon,
   SubjectIcon,
+  AliasIcon,
+  DataStreamIcon,
+  IndexFamilyIcon,
+  SearchIndexIcon,
+  SuppressIcon,
 } from "@table-craft/desktop/renderer/ui/icons.js";
+
+const SEARCH_TARGET_ICONS = { index: SearchIndexIcon, alias: AliasIcon, dataStream: DataStreamIcon } as const;
+const INDEX_SECTION_ICONS = {
+  indices: SearchIndexIcon,
+  dataStreams: DataStreamIcon,
+  aliases: AliasIcon,
+  hidden: SuppressIcon,
+} as const;
+const SEARCH_TARGET_NOUNS = { index: "index", alias: "alias", dataStream: "data stream" } as const;
+const HEALTH_CLASSES = { warning: "text-warning", danger: "text-danger" } as const;
 
 const ICON_CLASS = "size-icon shrink-0";
 /** The name keeps its width and the detail after it gives way, as DataGrip truncates a long type. */
@@ -169,9 +191,40 @@ export function NodeIcon({ node }: { readonly node: ExplorerNode }) {
       return <BrokerIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
     case "subject":
       return <SubjectIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "indexSection": {
+      const Glyph = INDEX_SECTION_ICONS[node.section];
+      return <Glyph aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    }
+    case "indexFolder":
+    case "indexOlder":
+      return <FolderIcon aria-hidden className={cn(ICON_CLASS, "text-ink-muted")} />;
+    case "indexFamily":
+      return <IndexFamilyIcon aria-hidden className={cn(ICON_CLASS, "text-accent")} />;
+    case "searchTarget": {
+      const Glyph = SEARCH_TARGET_ICONS[node.target.kind];
+      return (
+        <Glyph
+          aria-hidden
+          className={cn(ICON_CLASS, node.target.kind === "index" ? "text-accent" : "text-ink-muted")}
+        />
+      );
+    }
     default:
       return null;
   }
+}
+
+function HealthMark({ health }: { readonly health: string | null }) {
+  const tone = healthTone(health);
+  if (tone === null) return null;
+  return (
+    <WarningIcon
+      data-testid="index-health"
+      aria-label={`health ${health ?? ""}`}
+      weight="fill"
+      className={cn("size-3 shrink-0", HEALTH_CLASSES[tone])}
+    />
+  );
 }
 
 function keyCount(count: number): string {
@@ -272,9 +325,33 @@ export function NodeDetail({ node }: { readonly node: ExplorerNode }) {
       return <Detail>{brokerDetail(node.broker)}</Detail>;
     case "subject":
       return <Detail>{subjectDetail(node.subject)}</Detail>;
+    case "indexSection":
+    case "indexFolder":
+      return <Detail>{node.count.toLocaleString("en-US")}</Detail>;
+    case "indexFamily":
+      return (
+        <Detail>
+          {node.writeAlias === null || node.writeAlias === node.base
+            ? familyDetail(node.members)
+            : `${node.writeAlias} · ${familyDetail(node.members)}`}
+        </Detail>
+      );
+    case "searchTarget":
+      return (
+        <>
+          <HealthMark health={node.target.health} />
+          <Detail>{searchTargetDetail(node.target)}</Detail>
+        </>
+      );
     default:
       return null;
   }
+}
+
+/** The name a row draws: a long index name loses its middle unless speed search marks it. */
+export function shownText(row: ExplorerRow, positions: readonly number[]): string {
+  const text = nodeText(row);
+  return row.node.kind === "searchTarget" && positions.length === 0 ? middleTruncate(text) : text;
 }
 
 /** The row's name as shown; groups show their word, the loading row its ellipsis. */
@@ -282,6 +359,7 @@ export function nodeText(row: ExplorerRow): string {
   const { node } = row;
   if (node.kind === "objectGroup" || node.kind === "relationGroup") return GROUP_LABELS[node.group];
   if (node.kind === "streamSection") return STREAM_SECTION_LABELS[node.section];
+  if (node.kind === "indexSection") return INDEX_SECTION_LABELS[node.section];
   if (node.kind === "loading") return "loading…";
   return row.label;
 }
@@ -328,6 +406,17 @@ export function nodeAriaLabel(row: ExplorerRow): string {
       return `Broker ${text}, ${brokerDetail(node.broker)}`;
     case "subject":
       return `${text}, subject, ${subjectDetail(node.subject)}`;
+    case "indexSection":
+    case "indexFolder":
+    case "indexOlder":
+      return `${text} ${String(node.count)}`;
+    case "indexFamily":
+      return `${text}, index family, ${familyDetail(node.members)}`;
+    case "searchTarget": {
+      const tone = healthTone(node.target.health);
+      const detail = searchTargetDetail(node.target);
+      return `${text}, ${SEARCH_TARGET_NOUNS[node.target.kind]}${detail === "" ? "" : `, ${detail}`}${tone === null ? "" : `, health ${node.target.health ?? ""}`}`;
+    }
     default:
       return text;
   }
@@ -347,6 +436,10 @@ export function nodeTitle(node: ExplorerNode): string | undefined {
       : `${node.accessError.message} ${node.accessError.hint}`;
   if (node.kind === "keyEntry") return `${node.key.text}${node.key.hex === null ? "" : ` · Hex: ${node.key.hex}`}`;
   if (node.kind === "topic") return `${node.topic.name} · ${topicDetail(node.topic)}, estimated`;
+  if (node.kind === "searchTarget") {
+    const detail = searchTargetDetail(node.target);
+    return detail === "" ? node.target.name : `${node.target.name} · ${detail}`;
+  }
   return undefined;
 }
 

@@ -11,6 +11,7 @@ import {
   TopicIcon,
   ConsumerGroupIcon,
   SubjectIcon,
+  SearchIndexIcon,
 } from "@table-craft/desktop/renderer/ui/icons.js";
 
 const TAB_ICONS = {
@@ -25,6 +26,7 @@ const TAB_ICONS = {
   topic: TopicIcon,
   group: ConsumerGroupIcon,
   subject: SubjectIcon,
+  index: SearchIndexIcon,
 } as const satisfies Record<TabKind, unknown>;
 
 export function TabIcon({ kind }: { readonly kind: TabKind }) {

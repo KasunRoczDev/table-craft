@@ -383,6 +383,7 @@ describe("user docs", () => {
       "topics",
       "consumerGroups",
       "schemaRegistry",
+      "searchIndices",
     ];
     const plugins = section("docs/guide/writing-plugins.md", "Capabilities");
     const listed = [...plugins.matchAll(/^\| `(\w+)` +\|/gm)].map((match) => match[1]);

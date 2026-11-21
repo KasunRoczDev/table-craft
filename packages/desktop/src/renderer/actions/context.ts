@@ -40,6 +40,7 @@ import { useServer, type ServerTab } from "@table-craft/desktop/renderer/state/s
 import { useTopicTabs, type TopicTab } from "@table-craft/desktop/renderer/state/topicTabs.js";
 import { useGroupTabs, type GroupTab } from "@table-craft/desktop/renderer/state/groupTabs.js";
 import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
+import { useIndexTabs, type IndexTab } from "@table-craft/desktop/renderer/state/indexTabs.js";
 import { useStreamDialog } from "@table-craft/desktop/renderer/streams/dialogStore.js";
 import { useSessions, type SessionsTab } from "@table-craft/desktop/renderer/state/sessions.js";
 import { activeTab, useTabs, type Tab } from "@table-craft/desktop/renderer/state/tabs.js";
@@ -106,6 +107,8 @@ export interface ActionContext {
   readonly topicTab?: TopicTab | null;
   /** The active tab's consumer group, when the active tab is a group tab (plan 164). */
   readonly groupTab?: GroupTab | null;
+  /** The active tab's index, alias or data stream, when the active tab is an index tab (plan 165). */
+  readonly indexTab?: IndexTab | null;
   /** The grid's result: the active console's shown result tab, or the active table's or key's rows. */
   readonly result: ResultTab | null;
   readonly datasources: readonly DatasourceView[];
@@ -203,6 +206,7 @@ export function currentContext(tabId?: string): ActionContext {
   const serverTab = active?.kind === "server" ? (useServer.getState().tabs[active.id] ?? null) : null;
   const topicTab = active?.kind === "topic" ? (useTopicTabs.getState().tabs[active.id] ?? null) : null;
   const groupTab = active?.kind === "group" ? (useGroupTabs.getState().tabs[active.id] ?? null) : null;
+  const indexTab = active?.kind === "index" ? (useIndexTabs.getState().tabs[active.id] ?? null) : null;
   const tabDatasourceId =
     console?.datasourceId ??
     table?.datasourceId ??
@@ -213,6 +217,7 @@ export function currentContext(tabId?: string): ActionContext {
     serverTab?.datasourceId ??
     topicTab?.datasourceId ??
     groupTab?.datasourceId ??
+    indexTab?.datasourceId ??
     (active?.kind === "subject" ? useSubjectTabs.getState().tabs[active.id]?.datasourceId : undefined) ??
     (active === null ? undefined : useKeyAdmin.getState().tabs[active.id]?.datasourceId);
   const focus = focusedRegion();
@@ -240,9 +245,14 @@ export function currentContext(tabId?: string): ActionContext {
     serverTab,
     topicTab,
     groupTab,
+    indexTab,
     result:
       console === null
-        ? (table?.result ?? keyTab?.result ?? (topicTab?.view === "messages" ? topicTab.result : null) ?? null)
+        ? (table?.result ??
+          keyTab?.result ??
+          (topicTab?.view === "messages" ? topicTab.result : null) ??
+          (indexTab?.view === "documents" ? indexTab.result : null) ??
+          null)
         : (activeResultOf(console) ?? null),
     datasources: datasources.datasources,
     selection: datasources.selection,

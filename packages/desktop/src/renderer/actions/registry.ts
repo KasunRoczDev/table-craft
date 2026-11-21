@@ -11,6 +11,7 @@ export type ActionCategory =
   | "Table Editor"
   | "Key Editor"
   | "Streams"
+  | "Search"
   | "Database"
   | "Editor Tabs"
   | "Tool Windows"
@@ -105,7 +106,9 @@ export type ActionIcon =
   | "topic"
   | "group"
   | "produce"
-  | "tail";
+  | "tail"
+  | "searchIndex"
+  | "analyze";
 
 export interface Action<A = void> {
   readonly id: string;

@@ -44,6 +44,7 @@ import {
   sessionId,
   statementLimit,
 } from "@table-craft/desktop/engine/requestParts.js";
+import { INDEX_REQUESTS } from "@table-craft/desktop/engine/indexRequests.js";
 import { STREAM_REQUESTS } from "@table-craft/desktop/engine/streamRequests.js";
 
 const handle = z.string().min(1);
@@ -590,6 +591,7 @@ export const engineRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ id: requestId, type: z.literal("sessions.cancel"), target: sessionTarget }),
   z.strictObject({ id: requestId, type: z.literal("sessions.terminate"), target: sessionTarget }),
   ...STREAM_REQUESTS,
+  ...INDEX_REQUESTS,
 ]) satisfies z.ZodType<EngineRequest>;
 
 const idOnly = z.object({ id: requestId });

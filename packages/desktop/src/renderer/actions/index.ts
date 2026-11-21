@@ -9,6 +9,8 @@ import { useTopicTabs } from "@table-craft/desktop/renderer/state/topicTabs.js";
 import { useGroupTabs } from "@table-craft/desktop/renderer/state/groupTabs.js";
 import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
+import { useIndexTabs } from "@table-craft/desktop/renderer/state/indexTabs.js";
 import { useStreamDialog } from "@table-craft/desktop/renderer/streams/dialogStore.js";
 import { useTail } from "@table-craft/desktop/renderer/tail/store.js";
 import { currentContext } from "@table-craft/desktop/renderer/actions/context.js";
@@ -63,6 +65,8 @@ const STORES = [
   useGroupTabs,
   useSubjectTabs,
   useStreams,
+  useIndices,
+  useIndexTabs,
   useStreamDialog,
   useTail,
   useTabs,

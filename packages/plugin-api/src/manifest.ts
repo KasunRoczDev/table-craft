@@ -382,6 +382,21 @@ export const pluginManifestSchema = z
     (manifest) =>
       !manifest.capabilities.includes("topics") || !includesAny(manifest.capabilities, "schemaTree", "keyValue"),
     { message: "the topics capability excludes schemaTree and keyValue", path: ["capabilities"] },
+  )
+  // Index admin is confirmed as console requests, and agents reach indices through them (plan 165).
+  .refine(
+    (manifest) => !manifest.capabilities.includes("searchIndices") || manifest.capabilities.includes("commands"),
+    {
+      message: "the searchIndices capability requires commands",
+      path: ["capabilities"],
+    },
+  )
+  // A datasource draws one tree; the index tree is the fourth (plan 165).
+  .refine(
+    (manifest) =>
+      !manifest.capabilities.includes("searchIndices") ||
+      !includesAny(manifest.capabilities, "schemaTree", "keyValue", "topics"),
+    { message: "the searchIndices capability excludes schemaTree, keyValue and topics", path: ["capabilities"] },
   );
 
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;

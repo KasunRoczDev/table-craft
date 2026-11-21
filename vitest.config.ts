@@ -137,6 +137,15 @@ export default defineConfig({
         replacement: resolve(WORKSPACE_ROOT, "plugins/kafka/src/$1.ts"),
       },
       { find: "@table-craft/plugin-kafka", replacement: resolve(WORKSPACE_ROOT, "plugins/kafka/src/index.ts") },
+      // The Elasticsearch plugin's parts, which its unit tests drive without a cluster (plan 165).
+      {
+        find: /^@table-craft\/plugin-elasticsearch\/(\w+)$/,
+        replacement: resolve(WORKSPACE_ROOT, "plugins/elasticsearch/src/$1.ts"),
+      },
+      {
+        find: "@table-craft/plugin-elasticsearch",
+        replacement: resolve(WORKSPACE_ROOT, "plugins/elasticsearch/src/index.ts"),
+      },
       // The DuckDB plugin's parts, which its unit tests drive on an in-memory database (plan 152).
       {
         find: /^@table-craft\/plugin-duckdb\/(\w+)$/,

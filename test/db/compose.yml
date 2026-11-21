@@ -3,7 +3,8 @@
 # worktrees each set COMPOSE_PROJECT_NAME, TABLE_CRAFT_PG_PORT, TABLE_CRAFT_MYSQL_PORT,
 # TABLE_CRAFT_MARIADB_PORT, TABLE_CRAFT_TIDB_PORT, TABLE_CRAFT_SSH_PORT,
 # TABLE_CRAFT_PG_TLS_PORT, TABLE_CRAFT_MYSQL_TLS_PORT, TABLE_CRAFT_ORACLE_PORT,
-# TABLE_CRAFT_MSSQL_PORT, TABLE_CRAFT_ETCD_PORT, TABLE_CRAFT_ETCD35_PORT and TABLE_CRAFT_ETCD_TLS_PORT
+# TABLE_CRAFT_MSSQL_PORT, TABLE_CRAFT_ETCD_PORT, TABLE_CRAFT_ETCD35_PORT, TABLE_CRAFT_ETCD_TLS_PORT,
+# TABLE_CRAFT_ELASTICSEARCH_PORT and TABLE_CRAFT_OPENSEARCH_PORT
 # so one checkout's `up` never recreates the containers another checkout is
 # testing against.
 # Every database service sits behind a profile named after the database (decision 099):
@@ -541,6 +542,50 @@ services:
       timeout: 20s
       retries: 60
 
+  # Elasticsearch and OpenSearch for plan 165, one node each without security, so the suites reach
+  # them over plain HTTP. They hold no fixture of their own: each suite creates its `tc_run_*`
+  # indices and deletes them afterwards. A remote cluster named by TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL
+  # in `.env` is tested besides them.
+  elasticsearch:
+    profiles: ["elasticsearch"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.7
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false"
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:${TABLE_CRAFT_ELASTICSEARCH_PORT:-59200}:9200"
+    tmpfs:
+      - /usr/share/elasticsearch/data:uid=1000
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s' >/dev/null"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+
+  opensearch:
+    profiles: ["elasticsearch"]
+    image: opensearchproject/opensearch:2.19.3
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:${TABLE_CRAFT_OPENSEARCH_PORT:-59203}:9200"
+    tmpfs:
+      - /usr/share/opensearch/data:uid=1000
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s' >/dev/null"]
+      interval: 2s
+      timeout: 10s
+      retries: 90
+
   # The headless box the smoke and live tests run in (plan 031), on this project's network so it
   # reaches the databases by service name. Only `--profile e2e` starts it.
   e2e:
@@ -603,6 +648,11 @@ services:
       TABLE_CRAFT_KAFKA_BOOTSTRAP: kafka:19092
       TABLE_CRAFT_KAFKA_SASL_BOOTSTRAP: kafka:19093
       TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP: ${TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP:-}
+      TABLE_CRAFT_ELASTICSEARCH_HOST: elasticsearch
+      TABLE_CRAFT_ELASTICSEARCH_PORT: "9200"
+      TABLE_CRAFT_OPENSEARCH_HOST: opensearch
+      TABLE_CRAFT_OPENSEARCH_PORT: "9200"
+      TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL: ${TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL:-}
       TABLE_CRAFT_DATABASES: ${TABLE_CRAFT_DATABASES:-}
       TABLE_CRAFT_EVIDENCE_DIR: ${TABLE_CRAFT_EVIDENCE_DIR:-}
     volumes:
@@ -620,6 +670,7 @@ services:
       - node-modules-etcd:/work/plugins/etcd/node_modules
       - node-modules-duckdb:/work/plugins/duckdb/node_modules
       - node-modules-kafka:/work/plugins/kafka/node_modules
+      - node-modules-elasticsearch:/work/plugins/elasticsearch/node_modules
       - bun-cache:/root/.bun/install/cache
       - electron-cache:/root/.cache/electron
 
@@ -734,6 +785,7 @@ volumes:
   node-modules-etcd:
   node-modules-duckdb:
   node-modules-kafka:
+  node-modules-elasticsearch:
   # Downloads only, shared by every checkout; node_modules stay per checkout.
   bun-cache:
     name: table-craft-e2e-bun-cache

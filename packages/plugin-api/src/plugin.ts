@@ -56,6 +56,7 @@ export const CAPABILITIES = [
   "topics",
   "consumerGroups",
   "schemaRegistry",
+  "searchIndices",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];

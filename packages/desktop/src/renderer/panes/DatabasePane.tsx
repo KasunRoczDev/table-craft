@@ -42,6 +42,8 @@ import {
 } from "@table-craft/desktop/renderer/panes/streamRows.js";
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { shownTopicCount } from "@table-craft/desktop/renderer/model/streamTree.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
+import { activateIndexRow, indexMenuOf, indexRowAttributes } from "@table-craft/desktop/renderer/panes/indexRows.js";
 import { invoke, registry, subscribeToActions, useActionEnabled } from "@table-craft/desktop/renderer/actions/index.js";
 import { ROUTINE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/routineActions.js";
 import { SERVER_ACTION_IDS } from "@table-craft/desktop/renderer/actions/serverActions.js";
@@ -87,6 +89,7 @@ import {
   nodeAriaLabel,
   nodeText,
   nodeTitle,
+  shownText,
 } from "@table-craft/desktop/renderer/panes/explorerLabels.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import {
@@ -228,7 +231,7 @@ const COLUMN_MENU = [
   ACTION_IDS.toggleSystemSchemas,
 ] as const;
 /** What lets a datasource's node expand: a catalog, keys (decision 113) or topics (decision 169). */
-const TREE_CAPABILITIES = ["schemaTree", "keyValue", "topics"] as const;
+const TREE_CAPABILITIES = ["schemaTree", "keyValue", "topics", "searchIndices"] as const;
 /**
  * A row spans the widest row, so the browser's focus scroll would centre it sideways and hide every
  * name's start; the virtualizer brings the row into view instead.
@@ -359,7 +362,7 @@ function menuOf(node: ExplorerNode): readonly MenuEntry[] {
   if (node.kind === "column") return COLUMN_MENU;
   if (node.kind === "routine") return ROUTINE_MENU;
   if (node.kind === "keyEntry") return KEY_MENU;
-  const stream = streamMenuOf(node);
+  const stream = streamMenuOf(node) ?? indexMenuOf(node);
   if (stream !== null) return stream;
   if (KEY_TREE_KINDS.has(node.kind)) return [KEY_EDIT_ACTION_IDS.refreshFolder, ...KEYSPACE_MENU];
   if (node.kind === "namespace" || node.kind === "objectGroup") return NAMESPACE_MENU;
@@ -531,6 +534,7 @@ function TreeRow({
           data-state={connection?.status ?? (failedNamespace ? "failed" : undefined)}
           data-kind={node.kind}
           {...streamRowAttributes(node)}
+          {...indexRowAttributes(node)}
           style={{
             paddingLeft:
               node.kind === "keyFilter" && node.serverChildren === true
@@ -593,7 +597,7 @@ function TreeRow({
               {node.kind === "keyEntry" && node.key.hex !== null ? (
                 <EscapedKeyName text={nodeText(row)} positions={positions} />
               ) : (
-                <Highlighted text={nodeText(row)} positions={positions} />
+                <Highlighted text={shownText(row, positions)} positions={positions} />
               )}
               <NodeDetail node={node} />
             </>
@@ -654,6 +658,7 @@ export function DatabasePane() {
   const showEmptyDatabases = useLayout((state) => state.layout.showEmptyDatabases);
   const keyspaces = useKeys((state) => state.keyspaces);
   const streams = useStreams((state) => state.streams);
+  const indices = useIndices((state) => state.indices);
   const elements = useRef(new Map<string, HTMLLIElement>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef<string | null>(null);
@@ -677,8 +682,10 @@ export function DatabasePane() {
         showEmptyDatabases,
         streams,
         browsesStreams: (datasource) => capabilitiesOf(plugins, datasource.pluginId).includes("topics"),
+        indices,
+        browsesIndices: (datasource) => capabilitiesOf(plugins, datasource.pluginId).includes("searchIndices"),
       }),
-    [tree, catalogs, expanded, collapsedFolders, showSystem, plugins, keyspaces, showEmptyDatabases, streams],
+    [tree, catalogs, expanded, collapsedFolders, showSystem, plugins, keyspaces, showEmptyDatabases, streams, indices],
   );
   const matches = useMemo(
     () =>
@@ -847,6 +854,11 @@ export function DatabasePane() {
     if (node.kind === "folder") catalog.toggleFolder(node.path);
     else if (node.kind === "datasource" && capabilitiesOf(plugins, node.datasource.pluginId).includes("topics")) {
       void useStreams.getState().expandDatasource(node.datasource.id);
+    } else if (
+      node.kind === "datasource" &&
+      capabilitiesOf(plugins, node.datasource.pluginId).includes("searchIndices")
+    ) {
+      void useIndices.getState().expandDatasource(node.datasource.id);
     } else if (node.kind === "datasource" && capabilitiesOf(plugins, node.datasource.pluginId).includes("keyValue")) {
       void useKeys.getState().expandDatasource(node.datasource.id);
     } else if (node.kind === "datasource") void catalog.expandDatasource(node.datasource.id);
@@ -865,7 +877,7 @@ export function DatabasePane() {
     else if (node.kind === "relation") {
       const args: OpenTableArgs = { datasourceId: node.datasourceId, path: node.path, relation: node.relation.name };
       invoke(TABLE_ACTION_IDS.openData, args);
-    } else if (activateStreamRow(node)) {
+    } else if (activateStreamRow(node) || activateIndexRow(node)) {
       return;
     } else if (node.kind === "keyEntry") {
       const args: OpenKeyArgs = { datasourceId: node.datasourceId, database: node.database, key: node.key };

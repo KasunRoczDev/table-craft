@@ -5,6 +5,7 @@ import mysqlJson from "../../plugins/mysql/table-craft-plugin.json" with { type:
 import oracleJson from "../../plugins/oracle/table-craft-plugin.json" with { type: "json" };
 import postgresJson from "../../plugins/postgres/table-craft-plugin.json" with { type: "json" };
 import etcdJson from "../../plugins/etcd/table-craft-plugin.json" with { type: "json" };
+import elasticsearchJson from "../../plugins/elasticsearch/table-craft-plugin.json" with { type: "json" };
 import kafkaJson from "../../plugins/kafka/table-craft-plugin.json" with { type: "json" };
 import redisJson from "../../plugins/redis/table-craft-plugin.json" with { type: "json" };
 import sqliteJson from "../../plugins/sqlite/table-craft-plugin.json" with { type: "json" };
@@ -19,6 +20,7 @@ export const MSSQL_MANIFEST: PluginManifest = pluginManifestSchema.parse(mssqlJs
 export const ETCD_MANIFEST: PluginManifest = pluginManifestSchema.parse(etcdJson);
 export const DUCKDB_MANIFEST: PluginManifest = pluginManifestSchema.parse(duckdbJson);
 export const KAFKA_MANIFEST: PluginManifest = pluginManifestSchema.parse(kafkaJson);
+export const ELASTICSEARCH_MANIFEST: PluginManifest = pluginManifestSchema.parse(elasticsearchJson);
 
 /** A valid manifest for a fake plugin; the connection form is one optional text field. */
 export function fakeManifest(overrides: Partial<PluginManifest> & { readonly id: string }): PluginManifest {

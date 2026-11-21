@@ -1,0 +1,123 @@
+{
+  "id": "elasticsearch",
+  "name": "Elasticsearch",
+  "version": "0.0.0",
+  "apiVersion": "2.4.0",
+  "entry": "index.js",
+  "capabilities": ["commands", "searchIndices", "nodes", "serverInfo", "cancel", "keepAlive"],
+  "highlight": "elasticsearch",
+  "brands": [
+    { "id": "elasticsearch", "name": "Elasticsearch" },
+    { "id": "opensearch", "name": "OpenSearch" }
+  ],
+  "connection": {
+    "fields": [
+      { "key": "host", "label": "Host", "kind": "text", "default": "localhost", "required": true },
+      { "key": "port", "label": "Port", "kind": "number", "default": 9200, "required": true },
+      {
+        "key": "authMode",
+        "label": "Authentication",
+        "kind": "select",
+        "default": "none",
+        "options": [
+          { "value": "none", "label": "None" },
+          { "value": "basic", "label": "Username and password" },
+          { "value": "apiKey", "label": "API key" },
+          { "value": "bearer", "label": "Bearer token" }
+        ]
+      },
+      {
+        "key": "user",
+        "label": "Username",
+        "kind": "text",
+        "visibleWhen": { "key": "authMode", "equals": "basic" }
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "kind": "password",
+        "secret": true,
+        "visibleWhen": { "key": "authMode", "equals": "basic" }
+      },
+      {
+        "key": "apiKey",
+        "label": "API key",
+        "kind": "password",
+        "secret": true,
+        "visibleWhen": { "key": "authMode", "equals": "apiKey" },
+        "hint": "The encoded key Elasticsearch returns when it creates one."
+      },
+      {
+        "key": "token",
+        "label": "Bearer token",
+        "kind": "password",
+        "secret": true,
+        "visibleWhen": { "key": "authMode", "equals": "bearer" }
+      },
+      {
+        "key": "tlsMode",
+        "label": "TLS",
+        "kind": "select",
+        "default": "disable",
+        "options": [
+          { "value": "disable", "label": "Off (http)" },
+          { "value": "verify-full", "label": "Verify full" },
+          { "value": "verify-ca", "label": "Verify CA" },
+          { "value": "require", "label": "Require (no verification)" }
+        ],
+        "hint": "Require trusts any certificate; use it only for a test cluster with a self-signed one."
+      },
+      { "key": "tlsCa", "label": "CA certificate", "kind": "file", "group": "advanced" },
+      { "key": "tlsCert", "label": "Client certificate", "kind": "file", "group": "advanced" },
+      { "key": "tlsKey", "label": "Client key", "kind": "file", "group": "advanced" },
+      {
+        "key": "tlsKeyPassphrase",
+        "label": "Client key passphrase",
+        "kind": "password",
+        "secret": true,
+        "group": "advanced"
+      },
+      {
+        "key": "pathPrefix",
+        "label": "Path prefix",
+        "kind": "text",
+        "default": "",
+        "group": "advanced",
+        "placeholder": "/elasticsearch",
+        "hint": "When a proxy serves the cluster under a path. Blank: the root."
+      },
+      {
+        "key": "indexFilter",
+        "label": "Index filter",
+        "kind": "text",
+        "default": "",
+        "group": "advanced",
+        "placeholder": "logs-*, products",
+        "hint": "Only indices, aliases and data streams whose names match one of these globs are listed. Empty lists everything."
+      },
+      {
+        "key": "requestTimeout",
+        "label": "Request timeout (s)",
+        "kind": "number",
+        "default": 30,
+        "group": "advanced"
+      },
+      {
+        "key": "connectTimeout",
+        "label": "Connect timeout (s)",
+        "kind": "number",
+        "default": 10,
+        "group": "advanced"
+      }
+    ],
+    "network": { "host": "host", "port": "port", "connectTimeout": "connectTimeout" },
+    "tls": {
+      "mode": "tlsMode",
+      "verifyModes": ["verify-ca", "verify-full"],
+      "caFile": "tlsCa",
+      "certFile": "tlsCert",
+      "keyFile": "tlsKey",
+      "keyPassphrase": "tlsKeyPassphrase"
+    }
+  }
+}

@@ -105,6 +105,17 @@ export const PLUGIN_CATALOG: readonly CatalogEntry[] = [
     schemes: [],
     approximateBytes: 1_200_000,
   },
+  {
+    id: "elasticsearch",
+    name: "Elasticsearch",
+    packageName: officialPackage("elasticsearch"),
+    brands: [
+      { id: "elasticsearch", name: "Elasticsearch" },
+      { id: "opensearch", name: "OpenSearch" },
+    ],
+    schemes: [],
+    approximateBytes: 200_000,
+  },
 ];
 
 export function catalogEntry(id: string): CatalogEntry | undefined {
