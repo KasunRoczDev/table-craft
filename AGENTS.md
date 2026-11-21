@@ -82,9 +82,10 @@ unset). The next run recreates and reseeds them. Never take down another checkou
 
 CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, website:build, test:db) and the
 packaged suite on macOS arm64 and x64 (blocking), Windows and Linux (best-effort) on every push,
-plus `test:db:postgres`, `:oracle` and `:mssql` when `plugins/<id>/**`, the contract suite or
-`test/db/schema/<id>*` changed (PostgreSQL also on a tag), and `plugins` (pack, check, publish
-`--dry-run`), whose tarballs a tag attaches to the draft release.
+plus `test:db:postgres`, `:oracle`, `:mssql`, `:etcd` and `:kafka` when `plugins/<id>/**`, the
+contract suite, the compose stack or that server's seed and fixtures changed (PostgreSQL also on a
+tag), and `plugins` (pack, check with an offline connect of the Kafka package, publish `--dry-run`),
+whose tarballs a tag attaches to the draft release.
 
 Bun is the toolchain only. Electron runs Node, so nothing under `packages/*/src` or
 `plugins/*/src` may use `Bun.*` APIs, and drivers must be Node-compatible (decision 001).

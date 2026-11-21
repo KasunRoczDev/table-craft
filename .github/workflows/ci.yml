@@ -54,35 +54,45 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # `shared` is what every server's run reads: the contract suite and the stack that starts it.
           filters: |
-            postgres:
-              - "plugins/postgres/**"
+            shared: &shared
               - "packages/plugin-api/src/testing/**"
+              - "test/db/compose.yml"
+              - "test/db/stack.ts"
+              - "test/db/up.ts"
+              - "test/support/databases.ts"
+              - "vitest.db.config.ts"
+            postgres:
+              - *shared
+              - "plugins/postgres/**"
               - "test/db/schema/postgres*"
             oracle:
+              - *shared
               - "plugins/oracle/**"
-              - "packages/plugin-api/src/testing/**"
               - "test/db/schema/oracle*/**"
               - "test/db/schema/oracle*"
             mssql:
+              - *shared
               - "plugins/mssql/**"
-              - "packages/plugin-api/src/testing/**"
               - "test/db/schema/mssql*"
             etcd:
+              - *shared
               - "plugins/etcd/**"
-              - "packages/plugin-api/src/testing/**"
               - "test/db/schema/etcd*"
               - "test/db/etcd/**"
               - "test/db/etcd.test.ts"
               - "test/support/etcdFixture.ts"
             kafka:
+              - *shared
               - "plugins/kafka/**"
-              - "packages/plugin-api/src/testing/**"
               - "test/db/kafka.test.ts"
               - "test/support/kafkaFixture.ts"
+              - "test/support/kafkaRemote.ts"
+              - "test/support/schemaRegistryMock.ts"
 
-  # Decision 099: one job per opt-in server, run when its plugin, the contract suite or its seed
-  # changes. PostgreSQL also runs on a tag, so a release is checked against it.
+  # Decision 099: one job per opt-in server, run when its plugin, the contract suite, the compose
+  # stack or its seed and fixtures change. PostgreSQL also runs on a tag, so a release is checked against it.
   test-db:
     name: test:db (${{ matrix.database }})
     needs: changes
