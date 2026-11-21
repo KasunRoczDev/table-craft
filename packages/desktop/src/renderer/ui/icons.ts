@@ -111,6 +111,7 @@ import {
   BracketsSquare,
   Broadcast,
   PaperPlaneTilt,
+  PencilSimple,
   type Icon,
 } from "@phosphor-icons/react";
 import type { ActionIcon } from "@table-craft/desktop/renderer/actions/registry.js";
@@ -184,6 +185,9 @@ export {
   HardDrives as BrokerIcon,
   BracketsSquare as SubjectIcon,
   Broadcast as TailIcon,
+  PencilSimple as EditValueIcon,
+  ArrowCounterClockwise as ResetToDefaultIcon,
+  ArrowUUpLeft as UndoEditIcon,
 };
 
 /** The header's type glyph per column class (plan 007 decision 7); temporal reads as a date. */

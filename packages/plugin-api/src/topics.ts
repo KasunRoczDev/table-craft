@@ -64,7 +64,7 @@ export interface ConfigEntry {
   readonly name: string;
   /** Null for a sensitive value, which the broker never returns, or one that is unset. */
   readonly value: string | null;
-  /** Where the value comes from, in the broker's words: `DYNAMIC_TOPIC_CONFIG`, `DEFAULT_CONFIG`, ... */
+  /** Where the value comes from, in the user's words, such as `Topic` or `Default`; the host shows it as is. */
   readonly source: string;
   readonly isDefault: boolean;
   readonly sensitive: boolean;

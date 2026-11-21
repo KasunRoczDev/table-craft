@@ -107,6 +107,21 @@ export function configChangesOf(
   });
 }
 
+export type ConfigRowAction = "edit" | "reset" | "undo";
+
+/**
+ * A config row's action slots, left to right. Every row holds the same slots, an empty one as
+ * null, so the column keeps one width and Edit and Undo line up from row to row.
+ */
+export function configRowActions(
+  entry: Pick<ConfigEntry, "isDefault" | "readOnly" | "sensitive">,
+  edit: ConfigEdit | undefined,
+): readonly [ConfigRowAction | null, ConfigRowAction | null] {
+  if (entry.readOnly || entry.sensitive) return [null, null];
+  if (edit !== undefined) return ["undo", null];
+  return ["edit", entry.isDefault ? null : "reset"];
+}
+
 /** The new total Add Partitions asks for, or what to fix first. */
 export function partitionTotalOf(text: string, current: number): number | string {
   const total = text.trim();

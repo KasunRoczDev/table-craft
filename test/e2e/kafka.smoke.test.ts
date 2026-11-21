@@ -491,10 +491,12 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await tab.getByTestId("view-partitions").click();
       await shown(tab.getByRole("row").filter({ hasText: "in sync" }).or(tab.getByRole("row").nth(1)));
       await tab.getByTestId("view-configs").click();
-      const retentionRow = (scope: Locator) =>
-        scope.getByRole("row").filter({ has: page.getByText("retention.ms", { exact: true }) });
+      const configRow = (scope: Locator, name: string) =>
+        scope.getByRole("row").filter({ has: page.getByText(name, { exact: true }) });
+      const retentionRow = (scope: Locator) => configRow(scope, "retention.ms");
       const retention = () => retentionRow(tab);
       await shown(retention());
+      await text(retention()).toMatch(/Default|Broker|Static broker/);
 
       await tab.getByTestId("topic-edit-configs").click();
       const edit = page.getByTestId("edit-configs-dialog");
@@ -503,15 +505,25 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await edit.getByLabel("retention.ms", { exact: true }).fill("3600000");
       await text(edit.getByTestId("configs-changes")).toContain("retention.ms");
       await text(edit.getByTestId("edit-configs-apply")).toBe("Apply 1 Change");
-      await capture(page, "04-configs");
       await edit.getByTestId("edit-configs-apply").click();
       await count(edit).toBe(0);
       await text(retention()).toMatch(/1 h|3,?600,?000/);
+      await text(retention()).toContain("Topic");
+      await retention().scrollIntoViewIfNeeded();
+      await capture(page, "04-configs");
 
       await tab.getByTestId("topic-edit-configs").click();
-      await edit.getByTestId("configs-search").fill("retention.ms");
+      await edit.getByTestId("configs-search").fill("retention");
+      const bytes = configRow(edit, "retention.bytes");
+      await bytes.getByRole("button", { name: "Edit" }).click();
+      await edit.getByLabel("retention.bytes", { exact: true }).fill("1073741824");
       await retentionRow(edit).getByRole("button", { name: "Reset to Default" }).click();
+      await text(edit.getByTestId("edit-configs-apply")).toBe("Apply 2 Changes");
+      await capture(page, "04-edit-configs");
+      await bytes.getByRole("button", { name: "Undo" }).click();
+      await count(bytes.getByRole("button", { name: "Edit" })).toBe(1);
       await text(edit.getByTestId("configs-changes")).toContain("default");
+      await text(edit.getByTestId("edit-configs-apply")).toBe("Apply 1 Change");
       await edit.getByTestId("edit-configs-apply").click();
       await count(edit).toBe(0);
       await text(retention()).not.toMatch(/1 h|3,?600,?000/);

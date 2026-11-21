@@ -1,6 +1,7 @@
+import type { Icon } from "@phosphor-icons/react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRef, useState, type ReactNode } from "react";
-import type { DeleteRecordsPreview } from "@table-craft/desktop/engine/protocol.js";
+import type { ConfigEntry, DeleteRecordsPreview } from "@table-craft/desktop/engine/protocol.js";
 import {
   Button,
   DialogFooter,
@@ -14,6 +15,7 @@ import {
   collidingTopic,
   COMMON_TOPIC_CONFIGS,
   configChangesOf,
+  configRowActions,
   deleteRecordsNeedsName,
   partitionTotalOf,
   RECORDS_BEFORE_KINDS,
@@ -23,6 +25,7 @@ import {
   typedMatches,
   type ConfigEdit,
   type ConfigRow,
+  type ConfigRowAction,
   type RecordsBeforeKind,
 } from "@table-craft/desktop/renderer/model/topicAdmin.js";
 import { durationText, parsePartitions } from "@table-craft/desktop/renderer/model/topicRead.js";
@@ -37,12 +40,15 @@ import { TimestampHint } from "@table-craft/desktop/renderer/streams/TimestampHi
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import { onFieldEnter } from "@table-craft/desktop/renderer/streams/enterKey.js";
 import { ICON_BUTTON } from "@table-craft/desktop/renderer/ui/iconButtonClasses.js";
-import { CloseIcon } from "@table-craft/desktop/renderer/ui/icons.js";
+import { CloseIcon, EditValueIcon, ResetToDefaultIcon, UndoEditIcon } from "@table-craft/desktop/renderer/ui/icons.js";
+import { Tooltip } from "@table-craft/desktop/renderer/ui/Tooltip.js";
 import { Segmented } from "@table-craft/desktop/renderer/ui/Segmented.js";
 
 type RequestOf<K extends StreamDialogRequest["kind"]> = Extract<StreamDialogRequest, { kind: K }>;
 
 const CELL = "h-row px-gap whitespace-nowrap first:pl-cell last:pr-cell";
+/** A config row stands a little taller than a row, so the edit field and the action buttons clear its lines. */
+const CONFIG_CELL = "h-row-loose px-gap whitespace-nowrap first:pl-cell";
 const NUMBER_CELL = cn(CELL, "text-right font-grid tabular-nums");
 const SENSITIVE_MASK = "••••••";
 const OTHER_CONFIG = "";
@@ -288,6 +294,29 @@ export function CreateTopicDialog({ request }: { readonly request: RequestOf<"cr
   );
 }
 
+const CONFIG_ACTIONS: Readonly<Record<ConfigRowAction, { readonly label: string; readonly Icon: Icon }>> = {
+  edit: { label: "Edit", Icon: EditValueIcon },
+  reset: { label: "Reset to Default", Icon: ResetToDefaultIcon },
+  undo: { label: "Undo", Icon: UndoEditIcon },
+};
+
+function ConfigActionButton({ action, onClick }: { readonly action: ConfigRowAction; readonly onClick: () => void }) {
+  const { label, Icon } = CONFIG_ACTIONS[action];
+  return (
+    <Tooltip label={label} side="top">
+      <button
+        type="button"
+        aria-label={label}
+        data-testid={`config-${action}`}
+        className={ICON_BUTTON}
+        onClick={onClick}
+      >
+        <Icon aria-hidden className="size-icon" />
+      </button>
+    </Tooltip>
+  );
+}
+
 /** `604800000` and, for a `.ms` config, `7 d` beside it. */
 function configValueText(name: string, value: string | null): string {
   const duration = name.endsWith(".ms") ? durationText(value) : null;
@@ -301,6 +330,17 @@ export function EditConfigsDialog({ request }: { readonly request: RequestOf<"co
   const changes = configChangesOf(request.configs, edits);
   const shown = request.configs.filter((entry) => entry.name.includes(search.trim()));
   const before = new Map(request.configs.map((entry) => [entry.name, entry.value]));
+  const act = (entry: ConfigEntry, action: ConfigRowAction) => {
+    if (action === "undo") {
+      const { [entry.name]: _undone, ...rest } = edits;
+      setEdits(rest);
+      return;
+    }
+    setEdits({
+      ...edits,
+      [entry.name]: action === "edit" ? { kind: "set", value: entry.value ?? "" } : { kind: "reset" },
+    });
+  };
   const submit = (validateOnly: boolean) => {
     void write
       .attempt(
@@ -356,17 +396,18 @@ export function EditConfigsDialog({ request }: { readonly request: RequestOf<"co
               <th className={cn(CELL, "text-left font-normal")}>Name</th>
               <th className={cn(CELL, "text-left font-normal")}>Value</th>
               <th className={cn(CELL, "text-left font-normal")}>Source</th>
-              <th className={cn(CELL, "font-normal")} />
+              <th className={cn(CELL, "font-normal")}>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {shown.map((entry) => {
               const edit = edits[entry.name];
-              const editable = !entry.readOnly && !entry.sensitive;
               return (
                 <tr key={entry.name} className="border-t border-line" title={entry.documentation ?? undefined}>
-                  <td className={cn(CELL, "font-grid")}>{entry.name}</td>
-                  <td className={CELL}>
+                  <td className={cn(CONFIG_CELL, "font-grid")}>{entry.name}</td>
+                  <td className={CONFIG_CELL}>
                     {edit?.kind === "set" ? (
                       <TextInput
                         aria-label={entry.name}
@@ -384,33 +425,17 @@ export function EditConfigsDialog({ request }: { readonly request: RequestOf<"co
                       </span>
                     )}
                   </td>
-                  <td className={cn(CELL, entry.isDefault ? "text-ink-muted" : "")}>{entry.source}</td>
-                  <td className={cn(CELL, "text-right")}>
-                    {!editable ? null : edit === undefined ? (
-                      <span className="flex justify-end gap-cell">
-                        <Button
-                          onClick={() =>
-                            setEdits({ ...edits, [entry.name]: { kind: "set", value: entry.value ?? "" } })
-                          }
-                        >
-                          Edit
-                        </Button>
-                        {entry.isDefault ? null : (
-                          <Button onClick={() => setEdits({ ...edits, [entry.name]: { kind: "reset" } })}>
-                            Reset to Default
-                          </Button>
-                        )}
-                      </span>
-                    ) : (
-                      <Button
-                        onClick={() => {
-                          const { [entry.name]: _undone, ...rest } = edits;
-                          setEdits(rest);
-                        }}
-                      >
-                        Undo
-                      </Button>
-                    )}
+                  <td className={cn(CONFIG_CELL, entry.isDefault ? "text-ink-muted" : "")}>{entry.source}</td>
+                  <td className={cn(CONFIG_CELL, "px-cell")}>
+                    <span className="flex justify-end gap-1">
+                      {configRowActions(entry, edit).map((action, slot) =>
+                        action === null ? (
+                          <span key={slot} aria-hidden className="size-row shrink-0" />
+                        ) : (
+                          <ConfigActionButton key={action} action={action} onClick={() => act(entry, action)} />
+                        ),
+                      )}
+                    </span>
                   </td>
                 </tr>
               );

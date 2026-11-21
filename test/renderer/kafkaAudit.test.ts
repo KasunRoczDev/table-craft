@@ -12,6 +12,7 @@ import { isFieldEnter } from "@table-craft/desktop/renderer/streams/enterKey.js"
 import { zoneLabel, localZoneSuffix, utcInstantText } from "@table-craft/desktop/renderer/model/timeZone.js";
 import {
   collidingTopic,
+  configRowActions,
   configRowsOf,
   deleteRecordsNeedsName,
   typedMatches,
@@ -80,6 +81,29 @@ describe("create topic", () => {
         { name: "a", value: "2" },
       ]),
     ).toMatch(/twice/);
+  });
+});
+
+describe("config row actions", () => {
+  const entry = { isDefault: false, readOnly: false, sensitive: false };
+
+  it("givenEachRowState_whenActionsAsked_thenTwoSlotsWithEditAndUndoInTheSameOne", () => {
+    const states = [
+      configRowActions(entry, undefined),
+      configRowActions({ ...entry, isDefault: true }, undefined),
+      configRowActions(entry, { kind: "set", value: "1" }),
+      configRowActions(entry, { kind: "reset" }),
+      configRowActions({ ...entry, readOnly: true }, undefined),
+      configRowActions({ ...entry, sensitive: true }, undefined),
+    ];
+    expect(states).toEqual([
+      ["edit", "reset"],
+      ["edit", null],
+      ["undo", null],
+      ["undo", null],
+      [null, null],
+      [null, null],
+    ]);
   });
 });
 

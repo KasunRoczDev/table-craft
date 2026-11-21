@@ -21,11 +21,18 @@ type DescribeConfigsResponseConfig = ConfigDescription["configs"][number];
 
 /** Kafka's own prefix for the topics it manages, such as `__consumer_offsets`. */
 const INTERNAL_PREFIX = "__";
-const SOURCE_NAMES = new Map<number, string>(
-  Object.entries(ConfigSources)
-    .filter(([name]) => name !== "TOPIC_CONFIG")
-    .map(([name, code]) => [code, name]),
-);
+/** Kafka's config sources in the user's words; the host shows `ConfigEntry.source` as is. */
+const SOURCE_LABELS = new Map<number, string>([
+  [ConfigSources.DYNAMIC_TOPIC_CONFIG, "Topic"],
+  [ConfigSources.DYNAMIC_BROKER_CONFIG, "Broker"],
+  [ConfigSources.DYNAMIC_DEFAULT_BROKER_CONFIG, "Broker default"],
+  [ConfigSources.STATIC_BROKER_CONFIG, "Static broker"],
+  [ConfigSources.DEFAULT_CONFIG, "Default"],
+  [ConfigSources.DYNAMIC_BROKER_LOGGER_CONFIG, "Broker logger"],
+  [ConfigSources.CLIENT_METRICS_CONFIG, "Client metrics"],
+  [ConfigSources.GROUP_CONFIG, "Group"],
+]);
+const UNKNOWN_SOURCE = "Unknown";
 const DEFAULT_SOURCE = ConfigSources.DEFAULT_CONFIG;
 const STATIC_SOURCE = ConfigSources.STATIC_BROKER_CONFIG;
 
@@ -74,11 +81,11 @@ export function isInternalTopic(name: string): boolean {
   return name.startsWith(INTERNAL_PREFIX);
 }
 
-function configEntry(config: DescribeConfigsResponseConfig): ConfigEntry {
+export function configEntry(config: DescribeConfigsResponseConfig): ConfigEntry {
   return {
     name: config.name,
     value: config.isSensitive ? null : (config.value ?? null),
-    source: SOURCE_NAMES.get(config.configSource) ?? "UNKNOWN",
+    source: SOURCE_LABELS.get(config.configSource) ?? UNKNOWN_SOURCE,
     isDefault: config.configSource === DEFAULT_SOURCE || config.configSource === STATIC_SOURCE,
     sensitive: config.isSensitive,
     readOnly: config.readOnly,

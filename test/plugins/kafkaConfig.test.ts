@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pluginManifestSchema, serviceProblems } from "@table-craft/plugin-api";
+import { ConfigSources } from "@platformatic/kafka";
 import plugin from "@table-craft/plugin-kafka";
+import { configEntry } from "@table-craft/plugin-kafka/admin";
 import { connectionSchema, parseBootstrap } from "@table-craft/plugin-kafka/config";
 import { globMatcher, nameFilter } from "@table-craft/plugin-kafka/glob";
 import { clusterModeOf, missingApis, serverVersionOf, type BrokerApi } from "@table-craft/plugin-kafka/version";
@@ -87,5 +89,32 @@ describe("kafka name filter", () => {
     expect(globMatcher("a*b*c")("axxbyyc")).toBe(true);
     expect(globMatcher("*.v?")("orders.v1")).toBe(true);
     expect(globMatcher("orders")("orders.v1")).toBe(false);
+  });
+});
+
+describe("kafka config sources", () => {
+  const entryFrom = (configSource: (typeof ConfigSources)[keyof typeof ConfigSources]) =>
+    configEntry({
+      name: "retention.ms",
+      value: "604800000",
+      readOnly: false,
+      configSource,
+      isSensitive: false,
+      synonyms: [],
+      configType: 0,
+      documentation: null,
+    });
+
+  it("givenEachBrokerSource_whenDescribed_thenSaidInTheUsersWords", () => {
+    const sources = [
+      [ConfigSources.DYNAMIC_TOPIC_CONFIG, "Topic", false],
+      [ConfigSources.DYNAMIC_BROKER_CONFIG, "Broker", false],
+      [ConfigSources.DYNAMIC_DEFAULT_BROKER_CONFIG, "Broker default", false],
+      [ConfigSources.STATIC_BROKER_CONFIG, "Static broker", true],
+      [ConfigSources.DEFAULT_CONFIG, "Default", true],
+      [ConfigSources.DYNAMIC_BROKER_LOGGER_CONFIG, "Broker logger", false],
+      [ConfigSources.UNKNOWN, "Unknown", false],
+    ] as const;
+    for (const [code, source, isDefault] of sources) expect(entryFrom(code)).toMatchObject({ source, isDefault });
   });
 });
