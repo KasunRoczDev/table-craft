@@ -7,6 +7,7 @@ import {
   type IndexBrowser,
   type PluginErrorCode,
   type Row,
+  type SearchOutcome,
   type SearchRequest,
   type Session,
 } from "@table-craft/plugin-api";
@@ -49,6 +50,13 @@ async function collect(rows: AsyncIterable<Row>): Promise<Row[]> {
   const all: Row[] = [];
   for await (const row of rows) all.push(row);
   return all;
+}
+
+/** The `_id` of every hit; a plugin places the column where it reads best. */
+async function idsOf(outcome: SearchOutcome): Promise<unknown[]> {
+  const at = outcome.result.columns.findIndex((column) => column.name === SEARCH_ID_COLUMN);
+  expect(at).toBeGreaterThanOrEqual(0);
+  return (await collect(outcome.result.rows)).map((row) => row[at]);
 }
 
 async function rejectionCode(pending: Promise<unknown>): Promise<PluginErrorCode | "notAPluginError" | "resolved"> {
@@ -135,12 +143,12 @@ export function runSearchContract(contract: SearchContract): void {
       await withIndices(async (indices) => {
         const outcome = await indices.search(request());
         const names = outcome.result.columns.map((column) => column.name);
-        expect(names[0]).toBe(SEARCH_ID_COLUMN);
+        expect(names).toContain(SEARCH_ID_COLUMN);
         expect(names.at(-1)).toBe(SEARCH_SOURCE_COLUMN);
         expect(outcome.total).toEqual({ value: String(fixture().documents), relation: "eq" });
         expect(outcome.shards.failed).toBe(0);
         expect(outcome.request).toContain("_search");
-        const ids = (await collect(outcome.result.rows)).map((row) => row[0]);
+        const ids = await idsOf(outcome);
         expect(ids).toHaveLength(fixture().documents);
         expect(new Set(ids).size).toBe(fixture().documents);
         expect(ids).toEqual([...ids].sort());
@@ -152,7 +160,7 @@ export function runSearchContract(contract: SearchContract): void {
         const { lucene, dsl, ids } = fixture().query;
         for (const query of [request({ query: lucene }), request({ language: "dsl", query: dsl })]) {
           const outcome = await indices.search(query);
-          expect((await collect(outcome.result.rows)).map((row) => row[0])).toEqual(ids);
+          expect(await idsOf(outcome)).toEqual(ids);
           expect(await indices.count(query)).toBe(String(ids.length));
         }
       });

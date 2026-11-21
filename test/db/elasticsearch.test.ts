@@ -85,7 +85,7 @@ describe.runIf(ENABLED).each(elasticTargets())("elasticsearch plugin on $label",
         for await (const row of outcome.result.rows) all.push(row);
         expect(all).toHaveLength(ES_SEARCH.documents);
         expect(all[0]?.[0]).toBe("p-120");
-        expect(outcome.result.columns.map((column) => column.name)).toEqual(["_id", "sku", "category", "_source"]);
+        expect(outcome.result.columns.map((column) => column.name)).toEqual(["sku", "category", "_id", "_source"]);
         expect((browser as unknown as { openScrolls: number }).openScrolls).toBe(0);
       });
     });
@@ -105,8 +105,8 @@ describe.runIf(ENABLED).each(elasticTargets())("elasticsearch plugin on $label",
         });
         const all: Row[] = [];
         for await (const row of outcome.result.rows) all.push(row);
-        expect(outcome.result.columns.map((column) => column.name)).toContain("_index");
-        expect(all[0]?.[1]).toBe(ES_FIXTURE_INDEX);
+        const names = outcome.result.columns.map((column) => column.name);
+        expect(all[0]?.[names.indexOf("_index")]).toBe(ES_FIXTURE_INDEX);
       });
     });
 

@@ -181,8 +181,43 @@ const DDL_ENDPOINTS = new Set([
   "_flush",
 ]);
 
+/** Endpoints whose DELETE drops indices wholesale: a data stream's backing indices, or templates new indices take. */
+const DROPPING_ENDPOINTS = new Set(["_data_stream", "_index_template", "_template", "_component_template"]);
+/** Prefixes plugins put their endpoints under, such as `_plugins/_sql`. */
+const NAMESPACES = new Set(["_plugins", "_opendistro", "_xpack"]);
+/** `_all` names every index. */
+const ALL_INDICES = "_all";
+const BULK_DELETE = /"delete"\s*:/;
+
 function isIndexName(segment: string | undefined): segment is string {
   return segment !== undefined && segment !== "" && !segment.startsWith("_");
+}
+
+/**
+ * A request's target and endpoint by position: `/<target>/<endpoint>/…` or `/<endpoint>/…`, a
+ * plugin namespace skipped, and on 6.x a type between them. Matching by position rather than
+ * anywhere in the path keeps an index named `scroll` or `_search` in a document id from reading
+ * as an endpoint.
+ */
+function routeOf(segments: readonly string[]): {
+  readonly target: string | null;
+  readonly endpoint: string | null;
+  readonly rest: readonly string[];
+} {
+  const target = isIndexName(segments[0]) ? segments[0] : segments[0] === ALL_INDICES ? ALL_INDICES : null;
+  let at = target === null ? 0 : 1;
+  if (NAMESPACES.has(segments[at] ?? "")) at += 1;
+  if (target !== null && isIndexName(segments[at]) && segments[at + 1]?.startsWith("_") === true) at += 1;
+  const candidate = segments[at];
+  const endpoint = candidate?.startsWith("_") === true ? candidate : null;
+  return { target, endpoint, rest: endpoint === null ? [] : segments.slice(at + 1) };
+}
+
+function isCursorRequest(target: string | null, endpoint: string | null, rest: readonly string[]): boolean {
+  if (endpoint === "_pit") return true;
+  if (endpoint !== "_search") return false;
+  const sub = rest[0];
+  return (target === null && sub === "scroll") || sub === "point_in_time";
 }
 
 /** What a request does (plan 165): reads, writes, index changes, and which need confirming. */
@@ -191,30 +226,41 @@ export function classify(command: string): StatementClass {
   if (request === null) return { kind: "other", destructive: null };
   if (request.kind !== "rest") return { kind: "read", destructive: null };
   const segments = pathSegments(request.path);
-  const endpoints = segments.filter((segment) => segment.startsWith("_"));
-  const target = isIndexName(segments[0]) ? segments[0] : null;
+  if (segments.some((segment) => segment === "." || segment === "..")) return { kind: "write", destructive: null };
+  const { target, endpoint, rest } = routeOf(segments);
+  const endpoints = endpoint === null ? [] : [endpoint];
   if (request.method === "GET" || request.method === "HEAD") return { kind: "read", destructive: null };
-  if (segments.includes("scroll") || endpoints.includes("_pit") || endpoints.includes("_point_in_time")) {
+  if (isCursorRequest(target, endpoint, rest)) return { kind: "read", destructive: null };
+  if (request.method === "POST" && endpoint !== null && READ_ENDPOINTS.has(endpoint)) {
     return { kind: "read", destructive: null };
   }
-  if (request.method === "POST" && endpoints.some((endpoint) => READ_ENDPOINTS.has(endpoint))) {
+  if (request.method === "POST" && segments[0] === "_xpack" && segments[1] === "sql") {
     return { kind: "read", destructive: null };
   }
   if (request.method === "DELETE") {
-    if (target !== null && segments.length === 1) {
+    if (target !== null && endpoint === null && segments.length === 1) {
       return {
         kind: "ddl",
-        destructive: `DELETE ${target} deletes the index and every document in it`,
+        destructive:
+          target === ALL_INDICES
+            ? "DELETE _all deletes every index and every document in them"
+            : `DELETE ${target} deletes the index and every document in it`,
         confirmByName: true,
       };
     }
-    if (endpoints.includes("_doc") || endpoints.includes("_alias") || endpoints.includes("_aliases")) {
-      return { kind: endpoints.includes("_doc") ? "write" : "ddl", destructive: null };
+    if (endpoint !== null && DROPPING_ENDPOINTS.has(endpoint)) {
+      return { kind: "ddl", destructive: `${request.method} ${request.path} deletes it for good`, confirmByName: true };
     }
-    if (endpoints.some((endpoint) => DDL_ENDPOINTS.has(endpoint))) {
+    if (endpoint === "_doc" || endpoint === "_alias" || endpoint === "_aliases") {
+      return { kind: endpoint === "_doc" ? "write" : "ddl", destructive: null };
+    }
+    if (endpoint !== null && DDL_ENDPOINTS.has(endpoint)) {
       return { kind: "ddl", destructive: `${request.method} ${request.path} deletes it for good` };
     }
     return { kind: "write", destructive: `${request.method} ${request.path} deletes it for good` };
+  }
+  if (endpoint === "_bulk" && BULK_DELETE.test(request.body)) {
+    return { kind: "write", destructive: "_bulk with delete actions deletes those documents for good" };
   }
   if (endpoints.includes("_delete_by_query")) {
     const matchAll = request.body.trim() === "" || /"match_all"/.test(request.body);

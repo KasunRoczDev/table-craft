@@ -39,25 +39,37 @@ export function typeClassOf(type: string): TypeClass {
   return "text";
 }
 
-/** The fields a search shows when the request names none (plan 165): all of a narrow mapping, a few of a wide one. */
+/**
+ * The fields a search shows when the request names none (plan 165): all of a narrow mapping, a few
+ * of a wide one. A time-series target leads with its time, level and message, the columns a log
+ * reader looks at first.
+ */
 export function defaultFields(fields: readonly SearchField[], timeField: string | null): string[] {
   const values = valueFields(fields);
-  if (values.length <= ALL_FIELDS_LIMIT) return values.map((field) => field.path);
+  const limit = values.length <= ALL_FIELDS_LIMIT ? values.length : WIDE_COLUMNS;
   const chosen: string[] = [];
   const add = (path: string): void => {
-    if (!chosen.includes(path) && chosen.length < WIDE_COLUMNS) chosen.push(path);
+    if (!chosen.includes(path) && chosen.length < limit) chosen.push(path);
   };
-  if (timeField !== null) add(timeField);
-  for (const name of LOG_FIELDS) if (values.some((field) => field.path === name)) add(name);
-  for (const field of values) if (field.type === "keyword") add(field.path);
+  if (timeField !== null) {
+    add(timeField);
+    for (const name of LOG_FIELDS) if (values.some((field) => field.path === name)) add(name);
+  }
+  if (values.length <= ALL_FIELDS_LIMIT) for (const field of values) add(field.path);
+  else for (const field of values) if (field.type === "keyword") add(field.path);
   return chosen;
 }
+
+/** Where `_id`, `_index` and `_score` sit: before the fields, or after them for a time series. */
+export const HIT_META_PLACES = ["first", "last"] as const;
+export type HitMetaPlace = (typeof HIT_META_PLACES)[number];
 
 export interface HitColumns {
   readonly columns: readonly Column[];
   readonly fields: readonly string[];
   readonly withIndex: boolean;
   readonly withScore: boolean;
+  readonly meta: HitMetaPlace;
 }
 
 export function hitColumns(
@@ -65,17 +77,19 @@ export function hitColumns(
   mapping: readonly SearchField[],
   withIndex: boolean,
   withScore: boolean,
+  meta: HitMetaPlace = "first",
 ): HitColumns {
   const byPath = new Map(mapping.map((field) => [field.path, field]));
-  const columns: Column[] = [{ name: SEARCH_ID_COLUMN, type: "keyword", typeClass: "text" }];
-  if (withIndex) columns.push({ name: SEARCH_INDEX_COLUMN, type: "keyword", typeClass: "text" });
-  if (withScore) columns.push({ name: SCORE_COLUMN, type: "float", typeClass: "float" });
-  for (const path of fields) {
+  const metaColumns: Column[] = [{ name: SEARCH_ID_COLUMN, type: "keyword", typeClass: "text" }];
+  if (withIndex) metaColumns.push({ name: SEARCH_INDEX_COLUMN, type: "keyword", typeClass: "text" });
+  if (withScore) metaColumns.push({ name: SCORE_COLUMN, type: "float", typeClass: "float" });
+  const fieldColumns: Column[] = fields.map((path) => {
     const type = byPath.get(path)?.type ?? null;
-    columns.push({ name: path, type, typeClass: type === null ? "text" : typeClassOf(type) });
-  }
+    return { name: path, type, typeClass: type === null ? "text" : typeClassOf(type) };
+  });
+  const columns = meta === "first" ? [...metaColumns, ...fieldColumns] : [...fieldColumns, ...metaColumns];
   columns.push({ name: SEARCH_SOURCE_COLUMN, type: "json", typeClass: "json" });
-  return { columns, fields, withIndex, withScore };
+  return { columns, fields, withIndex, withScore, meta };
 }
 
 /**
@@ -109,10 +123,11 @@ export function cellOf(value: unknown): WireValue {
 }
 
 export function hitRow(hit: Hit, shape: HitColumns): Row {
-  const row: WireValue[] = [typeof hit._id === "string" ? hit._id : cellOf(hit._id)];
-  if (shape.withIndex) row.push(cellOf(hit._index));
-  if (shape.withScore) row.push(typeof hit._score === "number" ? hit._score : null);
-  for (const path of shape.fields) row.push(cellOf(valueAt(hit._source, path)));
+  const meta: WireValue[] = [typeof hit._id === "string" ? hit._id : cellOf(hit._id)];
+  if (shape.withIndex) meta.push(cellOf(hit._index));
+  if (shape.withScore) meta.push(typeof hit._score === "number" ? hit._score : null);
+  const values = shape.fields.map((path) => cellOf(valueAt(hit._source, path)));
+  const row = shape.meta === "first" ? [...meta, ...values] : [...values, ...meta];
   row.push(hit._source === undefined ? null : { kind: "json", text: JSON.stringify(hit._source) });
   return row;
 }

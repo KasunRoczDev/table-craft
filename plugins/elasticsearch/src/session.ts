@@ -41,7 +41,9 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
     this.#readOnly = options.readOnly;
     this.serverVersion = connection.dialect.versionText;
     this.serverBrand = connection.dialect.distribution;
-    this.#indices = new ElasticIndices(connection.client, connection.dialect, config.indexFilter);
+    this.#indices = new ElasticIndices(connection.client, connection.dialect, config.indexFilter, (work) =>
+      this.#tracked(work),
+    );
     this.services = {
       searchIndices: this.#indices,
       nodes: { list: () => nodeList(this.#checked()) },
@@ -92,6 +94,17 @@ export class ElasticSession implements PluginSession<ElasticCapability> {
       .filter((target) => !target.hidden && target.name.startsWith(prefix))
       .map((target) => target.name)
       .slice(0, SUGGESTION_LIMIT);
+  }
+
+  async #tracked<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    this.#checked();
+    const controller = new AbortController();
+    this.#running.add(controller);
+    try {
+      return await work(controller.signal);
+    } finally {
+      this.#running.delete(controller);
+    }
   }
 
   #cancel(): Promise<void> {

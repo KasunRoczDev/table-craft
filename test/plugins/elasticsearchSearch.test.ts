@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SearchField } from "@table-craft/plugin-api";
 import { dialectOf, rootVersion } from "@table-craft/plugin-elasticsearch/dialect";
 import { defaultFields, hitColumns, hitRow, valueAt } from "@table-craft/plugin-elasticsearch/hits";
+import { sqlResult } from "@table-craft/plugin-elasticsearch/console";
 import { parseMapping, timeFieldOf } from "@table-craft/plugin-elasticsearch/mapping";
 import { histogramInterval, queryOf } from "@table-craft/plugin-elasticsearch/query";
 import { analyzeSteps, totalOf } from "@table-craft/plugin-elasticsearch/search";
@@ -14,18 +15,24 @@ describe("elasticsearch dialect", () => {
   it("givenSix_whenDialect_thenMappingTypesAndScroll", () => {
     const dialect = dialectOf("elasticsearch", "6.8.23");
     expect(dialect.mappingTypes).toBe(true);
-    expect(dialect.totalObject).toBe(false);
-    expect(dialect.pointInTime).toBe(false);
+    expect(dialect.fixedInterval).toBe(false);
     expect(dialect.catExpandWildcards).toBe(false);
     expect(dialect.sqlPath).toBe("/_xpack/sql?format=json");
   });
 
-  it("givenOpenSearch_whenDialect_thenPluginsPathsAndPit", () => {
+  it.each([
+    ["7.1.1", false],
+    ["7.2.0", true],
+    ["8.19.7", true],
+  ])("givenElasticsearch %s_whenDialect_thenFixedIntervalIs %s", (version, fixed) => {
+    expect(dialectOf("elasticsearch", version).fixedInterval).toBe(fixed);
+  });
+
+  it("givenOpenSearch_whenDialect_thenPluginsPaths", () => {
     const dialect = dialectOf("opensearch", "2.19.3");
-    expect(dialect.pointInTime).toBe(true);
+    expect(dialect.fixedInterval).toBe(true);
     expect(dialect.sqlPath).toBe("/_plugins/_sql");
     expect(dialect.pplPath).toBe("/_plugins/_ppl");
-    expect(dialect.termsEnum).toBe(false);
   });
 
   it("givenFive_whenDialect_thenRefused", () => {
@@ -95,6 +102,23 @@ describe("elasticsearch hits", () => {
     expect(row.slice(0, 4)).toEqual(["p-1", "products", "p-1", null]);
     expect(row[4]).toEqual({ kind: "json", text: '{"sku":"p-1"}' });
   });
+
+  it("givenTimeBasedTarget_whenColumnsPlaceMetaLast_thenFieldsLeadAndSourceStaysLast", () => {
+    const fields = [field("@timestamp", "date"), field("message", "text"), field("sku", "keyword")];
+    const shape = hitColumns(["@timestamp", "message"], fields, true, false, "last");
+    expect(shape.columns.map((column) => column.name)).toEqual(["@timestamp", "message", "_id", "_index", "_source"]);
+    const row = hitRow({ _id: "e-1", _index: "logs-1", _source: { "@timestamp": "t", message: "m" } }, shape);
+    expect(row.slice(0, 4)).toEqual(["t", "m", "e-1", "logs-1"]);
+  });
+
+  it("givenNarrowMappingWithTime_whenDefaultFields_thenTimeAndMessageLead", () => {
+    const chosen = defaultFields(
+      [field("sku", "keyword"), field("message", "text"), field("@timestamp", "date")],
+      "@timestamp",
+    );
+    expect(chosen.slice(0, 2)).toEqual(["@timestamp", "message"]);
+    expect(chosen).toContain("sku");
+  });
 });
 
 describe("elasticsearch query", () => {
@@ -161,5 +185,21 @@ describe("elasticsearch replies", () => {
       ["lowercase", "tokenFilter", 2],
       ["length", "tokenFilter", 1],
     ]);
+  });
+});
+
+describe("elasticsearch sql answers", () => {
+  it("givenSqlColumns_whenResult_thenTypeClassesAlignCounts", () => {
+    const elastic = sqlResult({
+      columns: [
+        { name: "category", type: "keyword" },
+        { name: "n", type: "long" },
+        { name: "at", type: "datetime" },
+      ],
+      rows: [],
+    });
+    expect(elastic.columns.map((column) => column.typeClass)).toEqual(["text", "integer", "temporal"]);
+    const open = sqlResult({ schema: [{ name: "n", type: "LONG" }], datarows: [] });
+    expect(open.columns[0]?.typeClass).toBe("integer");
   });
 });

@@ -21,16 +21,8 @@ export interface Dialect {
   readonly versionText: string;
   /** 6.x keeps one mapping type per index under `mappings.<type>`. */
   readonly mappingTypes: boolean;
-  /** `hits.total` is `{ value, relation }` (7.0+) instead of a number. */
-  readonly totalObject: boolean;
-  /** `track_total_hits` exists (7.0+); before it every search counts exactly. */
-  readonly trackTotalHits: boolean;
-  /** A point in time for consistent paging: Elasticsearch 7.10+, OpenSearch 2.4+. */
-  readonly pointInTime: boolean;
-  /** Path that opens a point in time on an index. */
-  readonly pitOpenPath: (index: string) => string;
-  /** Path and body that close one. */
-  readonly pitClose: (id: string) => { readonly path: string; readonly body: unknown };
+  /** `date_histogram` takes `fixed_interval` (Elasticsearch 7.2+, OpenSearch); before it, `interval`. */
+  readonly fixedInterval: boolean;
   /** Data streams are listed (Elasticsearch 7.9+, OpenSearch 1.0+). */
   readonly dataStreams: boolean;
   /**
@@ -41,8 +33,6 @@ export interface Dialect {
   readonly sqlPath: string | null;
   /** PPL (`source=…`), OpenSearch only. */
   readonly pplPath: string | null;
-  /** `_terms_enum` (Elasticsearch 7.14+): value completion without an aggregation. */
-  readonly termsEnum: boolean;
   /** `expand_wildcards` on `_cat/indices` and `_cat/aliases` (Elasticsearch 7.7+), which 6.x rejects. */
   readonly catExpandWildcards: boolean;
 }
@@ -76,31 +66,21 @@ export function dialectOf(distribution: Distribution, versionText: string): Dial
       `Elasticsearch ${versionText} is older than 6.0, the oldest version TableCraft speaks.`,
     );
   }
-  const pointInTime = opensearch ? atLeast(version, 2, 4) : atLeast(version, 7, 10);
   return {
     distribution,
     version,
     versionText,
     mappingTypes: !opensearch && version.major < 7,
-    totalObject: opensearch || version.major >= 7,
-    trackTotalHits: opensearch || version.major >= 7,
-    pointInTime,
-    pitOpenPath: opensearch
-      ? (index) => `/${encodeURIComponent(index)}/_search/point_in_time?keep_alive=${PIT_KEEP_ALIVE}`
-      : (index) => `/${encodeURIComponent(index)}/_pit?keep_alive=${PIT_KEEP_ALIVE}`,
-    pitClose: opensearch
-      ? (id) => ({ path: "/_search/point_in_time", body: { pit_id: [id] } })
-      : (id) => ({ path: "/_pit", body: { id } }),
+    fixedInterval: opensearch || atLeast(version, 7, 2),
     dataStreams: opensearch || atLeast(version, 7, 9),
     sqlPath: opensearch ? "/_plugins/_sql" : version.major >= 7 ? "/_sql?format=json" : "/_xpack/sql?format=json",
     pplPath: opensearch ? "/_plugins/_ppl" : null,
-    termsEnum: !opensearch && atLeast(version, 7, 14),
     catExpandWildcards: opensearch || atLeast(version, 7, 7),
   };
 }
 
-/** How long a point in time or scroll is kept between two pages. */
-export const PIT_KEEP_ALIVE = "5m";
+/** How long a scroll is kept between two pages. */
+export const SCROLL_KEEP_ALIVE = "5m";
 
 /** What `GET /` answers. */
 export interface RootInfo {

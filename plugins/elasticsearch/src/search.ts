@@ -16,7 +16,7 @@ import {
   type SearchTotal,
 } from "@table-craft/plugin-api";
 import { isForbidden, type ElasticClient } from "./client.js";
-import { PIT_KEEP_ALIVE, type Dialect } from "./dialect.js";
+import { SCROLL_KEEP_ALIVE, type Dialect } from "./dialect.js";
 import { defaultFields, hitColumns, hitRow, type Hit, type HitColumns } from "./hits.js";
 import { listTargets } from "./indices.js";
 import { parseMapping, timeFieldOf } from "./mapping.js";
@@ -40,6 +40,8 @@ interface SearchReply {
 const JSON_INDENT = 2;
 const HISTOGRAM_AGG = "over_time";
 const WILDCARD = /[*?,]/;
+/** The span a histogram covers when its range has no start. */
+const OPEN_RANGE_MS = 24 * 60 * 60 * 1000;
 
 function int(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -100,6 +102,21 @@ function encoded(target: string): string {
 }
 
 /**
+ * Runs one request of the service with a signal the session's cancel aborts; the default runs it
+ * with a signal nothing aborts.
+ */
+export type TrackRequest = <T>(work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+
+const UNTRACKED: TrackRequest = (work) => work(new AbortController().signal);
+
+interface MappingOf {
+  readonly reply: Record<string, unknown>;
+  readonly fields: SearchTargetDescription["fields"];
+  readonly mappingType: string | null;
+  readonly indices: readonly string[];
+}
+
+/**
  * The `searchIndices` service over the REST client (plan 165). Pages past the first ride a scroll,
  * which every version and fork keeps alike; it is cleared as soon as the rows run out or the host
  * lets the result go.
@@ -108,52 +125,65 @@ export class ElasticIndices implements IndexBrowser {
   readonly #client: ElasticClient;
   readonly #dialect: Dialect;
   readonly #filter: string;
+  readonly #track: TrackRequest;
   readonly #scrolls = new Set<string>();
 
-  constructor(client: ElasticClient, dialect: Dialect, filter: string) {
+  constructor(client: ElasticClient, dialect: Dialect, filter: string, track: TrackRequest = UNTRACKED) {
     this.#client = client;
     this.#dialect = dialect;
     this.#filter = filter;
+    this.#track = track;
   }
 
   list(): Promise<readonly SearchTarget[]> {
-    return listTargets(this.#client, this.#dialect, this.#filter);
+    return this.#track((signal) => listTargets(this.#client, this.#dialect, this.#filter, signal));
   }
 
-  async describe(target: string): Promise<SearchTargetDescription> {
-    const path = `/${encoded(target)}`;
-    const warnings: string[] = [];
-    const mappingReply = await this.#client.json<Record<string, unknown>>("GET", `${path}/_mapping`);
-    const settingsReply = await this.#client
-      .json<Record<string, unknown>>("GET", `${path}/_settings`)
-      .catch((error: unknown) => {
-        if (!isForbidden(error)) throw error;
-        warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
-        return null;
-      });
-    const { fields, mappingType } = parseMapping(mappingReply, this.#dialect.mappingTypes);
-    const indices = Object.keys(mappingReply).sort();
-    const kind = indices.length === 1 && indices[0] === target ? "index" : "alias";
-    return {
-      name: target,
-      kind,
-      indices,
-      mappingType,
-      fields,
-      timeField: timeFieldOf(fields),
-      mapping: pretty(mappingReply),
-      settings: settingsReply === null ? null : pretty(settingsReply),
-      warnings,
-    };
+  async #mapping(target: string, signal: AbortSignal): Promise<MappingOf> {
+    const reply = await this.#client.json<Record<string, unknown>>("GET", `/${encoded(target)}/_mapping`, { signal });
+    const { fields, mappingType } = parseMapping(reply, this.#dialect.mappingTypes);
+    return { reply, fields, mappingType, indices: Object.keys(reply).sort() };
   }
 
-  async search(request: SearchRequest): Promise<SearchOutcome> {
+  describe(target: string): Promise<SearchTargetDescription> {
+    return this.#track(async (signal) => {
+      const warnings: string[] = [];
+      const { reply, fields, mappingType, indices } = await this.#mapping(target, signal);
+      const settingsReply = await this.#client
+        .json<Record<string, unknown>>("GET", `/${encoded(target)}/_settings`, { signal })
+        .catch((error: unknown) => {
+          if (!isForbidden(error)) throw error;
+          warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
+          return null;
+        });
+      const kind = indices.length === 1 && indices[0] === target ? "index" : "alias";
+      return {
+        name: target,
+        kind,
+        indices,
+        mappingType,
+        fields,
+        timeField: timeFieldOf(fields),
+        mapping: pretty(reply),
+        settings: settingsReply === null ? null : pretty(settingsReply),
+        warnings,
+      };
+    });
+  }
+
+  search(request: SearchRequest): Promise<SearchOutcome> {
+    return this.#track((signal) => this.#search(request, signal));
+  }
+
+  async #search(request: SearchRequest, signal: AbortSignal): Promise<SearchOutcome> {
     const pageSize = Math.min(Math.max(1, Math.trunc(request.pageSize)), SEARCH_PAGE_LIMIT);
-    const description = await this.describe(request.target);
-    const fields = request.fields ?? defaultFields(description.fields, description.timeField);
-    const withIndex = description.indices.length > 1 || WILDCARD.test(request.target);
+    const mapping = await this.#mapping(request.target, signal);
+    const timeField = timeFieldOf(mapping.fields);
+    const fields = request.fields ?? defaultFields(mapping.fields, timeField);
+    const withIndex = mapping.indices.length > 1 || WILDCARD.test(request.target);
     const sort = sortOf(request);
-    const shape = hitColumns(fields, description.fields, withIndex, sort.length === 0);
+    const scored = sort.length === 0 && request.query.trim() !== "";
+    const shape = hitColumns(fields, mapping.fields, withIndex, scored, timeField === null ? "first" : "last");
     const body: Record<string, unknown> = {
       query: queryOf(request),
       size: pageSize,
@@ -161,8 +191,8 @@ export class ElasticIndices implements IndexBrowser {
     };
     const first = await this.#client.json<SearchReply>(
       "POST",
-      `/${encoded(request.target)}/_search?scroll=${PIT_KEEP_ALIVE}`,
-      { body },
+      `/${encoded(request.target)}/_search?scroll=${SCROLL_KEEP_ALIVE}`,
+      { body, signal },
     );
     const scrollId = typeof first._scroll_id === "string" ? first._scroll_id : null;
     const hits = first.hits?.hits ?? [];
@@ -189,9 +219,13 @@ export class ElasticIndices implements IndexBrowser {
     try {
       for (const hit of first) yield hitRow(hit, shape);
       while (current !== null) {
-        const reply: SearchReply = await this.#client.json<SearchReply>("POST", "/_search/scroll", {
-          body: { scroll: PIT_KEEP_ALIVE, scroll_id: current },
-        });
+        const scrollId = current;
+        const reply: SearchReply = await this.#track((signal) =>
+          this.#client.json<SearchReply>("POST", "/_search/scroll", {
+            body: { scroll: SCROLL_KEEP_ALIVE, scroll_id: scrollId },
+            signal,
+          }),
+        );
         const next = typeof reply._scroll_id === "string" ? reply._scroll_id : current;
         if (next !== current) {
           this.#scrolls.delete(current);
@@ -219,21 +253,27 @@ export class ElasticIndices implements IndexBrowser {
     return this.#scrolls.size;
   }
 
-  async count(request: SearchRequest): Promise<string> {
-    const reply = await this.#client.json<{ count?: unknown }>("POST", `/${encoded(request.target)}/_count`, {
-      body: { query: queryOf(request) },
+  count(request: SearchRequest): Promise<string> {
+    return this.#track(async (signal) => {
+      const reply = await this.#client.json<{ count?: unknown }>("POST", `/${encoded(request.target)}/_count`, {
+        body: { query: queryOf(request) },
+        signal,
+      });
+      return String(int(reply.count));
     });
-    return String(int(reply.count));
   }
 
-  async histogram(request: SearchRequest, buckets: number): Promise<SearchHistogram> {
+  histogram(request: SearchRequest, buckets: number): Promise<SearchHistogram> {
+    return this.#track((signal) => this.#histogram(request, buckets, signal));
+  }
+
+  async #histogram(request: SearchRequest, buckets: number, signal: AbortSignal): Promise<SearchHistogram> {
     const time = request.time;
     if (time === null) throw new PluginError("statementFailed", "A histogram needs a time field and a time range.");
     const to = time.to === null ? Date.now() : Date.parse(time.to);
-    const from = time.from === null ? to - 24 * 60 * 60 * 1000 : Date.parse(time.from);
+    const from = time.from === null ? to - OPEN_RANGE_MS : Date.parse(time.from);
     const interval = histogramInterval(Math.max(1, to - from), buckets);
-    const intervalKey =
-      this.#dialect.version.major < 7 && this.#dialect.distribution === "elasticsearch" ? "interval" : "fixed_interval";
+    const intervalKey = this.#dialect.fixedInterval ? "fixed_interval" : "interval";
     const body = {
       size: 0,
       query: queryOf(request),
@@ -248,7 +288,7 @@ export class ElasticIndices implements IndexBrowser {
         },
       },
     };
-    const reply = await this.#client.json<SearchReply>("POST", `/${encoded(request.target)}/_search`, { body });
+    const reply = await this.#client.json<SearchReply>("POST", `/${encoded(request.target)}/_search`, { body, signal });
     const agg = reply.aggregations?.[HISTOGRAM_AGG] as
       { buckets?: readonly { key?: unknown; doc_count?: unknown }[] } | undefined;
     return {
@@ -261,14 +301,18 @@ export class ElasticIndices implements IndexBrowser {
     };
   }
 
-  async analyze(request: AnalyzeRequest): Promise<readonly AnalyzeStep[]> {
+  analyze(request: AnalyzeRequest): Promise<readonly AnalyzeStep[]> {
     const body: Record<string, unknown> = { text: request.text, explain: true };
     if (request.field !== null) body.field = request.field;
     else if (request.analyzer !== null) body.analyzer = request.analyzer;
-    const reply = await this.#client.json<{ detail?: AnalyzeDetail }>("POST", `/${encoded(request.target)}/_analyze`, {
-      body,
+    return this.#track(async (signal) => {
+      const reply = await this.#client.json<{ detail?: AnalyzeDetail }>(
+        "POST",
+        `/${encoded(request.target)}/_analyze`,
+        { body, signal },
+      );
+      return analyzeSteps(reply.detail);
     });
-    return analyzeSteps(reply.detail);
   }
 
   async close(): Promise<void> {

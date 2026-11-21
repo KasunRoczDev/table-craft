@@ -19,8 +19,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function typeOf(property: Property): string {
-  if (typeof property.type === "string") return property.type;
-  return isRecord(property.properties) ? "object" : "object";
+  return typeof property.type === "string" ? property.type : "object";
 }
 
 function walk(properties: Readonly<Record<string, unknown>>, prefix: string, out: Map<string, SearchField>): void {

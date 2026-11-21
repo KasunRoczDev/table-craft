@@ -96,7 +96,8 @@ jobs:
               - "plugins/elasticsearch/**"
               - "test/db/elasticsearch/**"
               - "test/db/elasticsearch.test.ts"
-              - "test/support/elasticsearchFixture.ts"
+              - "test/support/elasticsearch*.ts"
+              - "test/support/manifests.ts"
 
   # Decision 099: one job per opt-in server, run when its plugin, the contract suite, the compose
   # stack or its seed and fixtures change. PostgreSQL also runs on a tag, so a release is checked against it.

@@ -47,7 +47,7 @@ export interface SearchTargetDescription {
   /** The 6.x mapping type the index keeps its fields under, such as `_doc`; null from 7.0. */
   readonly mappingType: string | null;
   readonly fields: readonly SearchField[];
-  /** A `date` field the documents are best read by: `@timestamp`, else the first date; null without one. */
+  /** A `date` field the documents are best read by: `@timestamp` when it is a date; null without one. */
   readonly timeField: string | null;
   /** The mapping and settings as the server returns them, pretty-printed JSON; null when not allowed. */
   readonly mapping: string | null;

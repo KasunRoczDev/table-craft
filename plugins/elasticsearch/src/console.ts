@@ -1,7 +1,7 @@
 import { PluginError, type Column, type ExecuteResult, type Row, type WireValue } from "@table-craft/plugin-api";
 import type { ElasticClient, Reply } from "./client.js";
 import type { Dialect } from "./dialect.js";
-import { cellOf, type Hit } from "./hits.js";
+import { cellOf, typeClassOf, type Hit } from "./hits.js";
 import { classify, parseRequest, pathSegments } from "./language.js";
 import { shardWarnings } from "./search.js";
 
@@ -11,6 +11,8 @@ const CONSOLE_FIELD_LIMIT = 200;
 /** The host's hint says how to turn read-only off; the message only says what was held back. */
 const READ_ONLY_ADVICE = "the data source is read-only.";
 const NDJSON_ENDPOINTS = new Set(["_bulk", "_msearch", "_msearch_template"]);
+/** Date types the SQL endpoints name beyond the mapping's own (`datetime` on Elasticsearch, `timestamp` on OpenSearch). */
+const SQL_TEMPORAL_TYPES = new Set(["datetime", "timestamp", "date", "time"]);
 
 async function* yieldRows(rows: readonly Row[]): AsyncIterable<Row> {
   for (const row of rows) yield row;
@@ -134,10 +136,14 @@ export function sqlResult(body: unknown): ExecuteResult {
     Array.isArray(body.rows) ? body.rows : Array.isArray(body.datarows) ? body.datarows : []
   ) as unknown[][];
   return tableResult(
-    columns.map((column) => ({
-      name: typeof column.name === "string" ? column.name : "?",
-      type: typeof column.type === "string" ? column.type : null,
-    })),
+    columns.map((column): Column => {
+      const type = typeof column.type === "string" ? column.type.toLowerCase() : null;
+      return {
+        name: typeof column.name === "string" ? column.name : "?",
+        type,
+        ...(type === null ? {} : { typeClass: SQL_TEMPORAL_TYPES.has(type) ? "temporal" : typeClassOf(type) }),
+      };
+    }),
     rows.map((row): Row => row.map(cellOf)),
   );
 }

@@ -26,6 +26,18 @@ const NETWORK_CODES = new Set([
   "ECONNABORTED",
 ]);
 const ERROR_PREVIEW_CHARS = 300;
+const DOT_SEGMENT = /^\.{1,2}$/;
+
+/** Whether a path holds a `.` or `..` segment, plain or percent-encoded, which a URL would resolve away. */
+export function hasDotSegment(path: string): boolean {
+  return path.split("/").some((segment) => {
+    try {
+      return DOT_SEGMENT.test(decodeURIComponent(segment));
+    } catch {
+      return DOT_SEGMENT.test(segment);
+    }
+  });
+}
 
 export interface ClientOptions {
   readonly baseUrl: string;
@@ -182,10 +194,8 @@ export class ElasticClient {
 
   /** Sends `method path`; rejects with an `ElasticHttpError` for an error status, `connectionLost` when unreachable, `cancelled` when aborted. */
   request(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<Reply> {
-    const url = new URL(
-      this.#base.pathname.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`),
-      this.#base,
-    );
+    const url = this.#urlOf(path);
+    if (typeof url === "string") return Promise.reject(new PluginError("statementFailed", url));
     const payload = encodeBody(options.body, options.ndjson === true);
     this.#sequence += 1;
     const headers: Record<string, string> = {
@@ -269,6 +279,25 @@ export class ElasticClient {
       if (payload !== null) request.write(payload);
       request.end();
     });
+  }
+
+  /**
+   * The URL of `path` under the base, or why it is refused. Built by setting the pathname, never by
+   * resolving the path against the base: `//host/x` would leave for another host with the
+   * credentials, and `..` would send another endpoint than the one the console classified.
+   */
+  #urlOf(path: string): URL | string {
+    const queryAt = path.indexOf("?");
+    const bare = queryAt === -1 ? path : path.slice(0, queryAt);
+    if (hasDotSegment(bare)) {
+      return `The path ${bare} has a "." or ".." segment; name the index and endpoint directly.`;
+    }
+    const url = new URL(this.#base.href);
+    url.pathname = `${this.#base.pathname.replace(/\/$/, "")}/${bare.replace(/^\/+/, "")}`;
+    url.search = queryAt === -1 ? "" : path.slice(queryAt);
+    url.hash = "";
+    if (url.origin !== this.#base.origin) return `The path ${bare} leaves ${this.#base.host}; it is not sent.`;
+    return url;
   }
 
   /** A JSON body, or a `statementFailed` saying the reply was something else. */

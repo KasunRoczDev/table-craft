@@ -65,8 +65,34 @@ describe("elasticsearch classify", () => {
     ["PUT products", "ddl"],
     ['PUT products/_mapping\n{"properties":{}}', "ddl"],
     ["SELECT 1", "read"],
+    ["POST _plugins/_ppl\n{}", "read"],
+    ["POST products/_pit?keep_alive=1m", "read"],
+    ["DELETE _pit\n{}", "read"],
+    ["POST products/_search/point_in_time", "read"],
+    ["DELETE logs/_doc/scroll", "write"],
+    ["POST scroll/_delete_by_query\n{}", "write"],
+    ["POST logs/_search/../_delete_by_query", "write"],
+    ["POST logs/_search/%2e%2e/_delete_by_query", "write"],
+    ["POST products/_doc/_search", "write"],
   ])("given %s_whenClassified_thenItsKind", (command, kind) => {
     expect(classify(command).kind).toBe(kind);
+  });
+
+  it.each([
+    "DELETE scroll",
+    "DELETE _all",
+    "DELETE _data_stream/logs-checkout",
+    "DELETE _index_template/logs",
+    "DELETE products,orders",
+  ])("given %s_whenClassified_thenDestructiveByName", (command) => {
+    const result = classify(command);
+    expect(result.destructive).not.toBeNull();
+    expect(result.confirmByName).toBe(true);
+  });
+
+  it("givenBulkWithDeleteActions_whenClassified_thenDestructive", () => {
+    expect(classify('POST _bulk\n{"delete":{"_index":"p","_id":"1"}}').destructive).not.toBeNull();
+    expect(classify('POST _bulk\n{"index":{"_index":"p"}}\n{"a":1}').destructive).toBeNull();
   });
 
   it("givenDeleteIndex_whenClassified_thenDestructiveByName", () => {
