@@ -83,10 +83,11 @@ import type {
 } from "./transfer.js";
 import type { ResultPaging, StatementLimit } from "./wire.js";
 import type { KeyAdvancedCalls } from "./keyAdvancedCalls.js";
+import type { IndexCalls } from "./indices.js";
 import type { StreamCalls } from "./streamCalls.js";
 
 /** The engine's calls: what each request carries and what its response answers with. */
-export interface EngineCalls extends KeyAdvancedCalls, StreamCalls {
+export interface EngineCalls extends KeyAdvancedCalls, StreamCalls, IndexCalls {
   /** `readOnly` asks for a read-only session on a writable datasource; it never lifts the datasource's own flag. */
   "session.open": { params: { readOnly?: boolean }; result: OpenedSession };
   /** Closes the session and releases every result it produced. */

@@ -21,5 +21,6 @@ export * from "./protocol/server.js";
 export * from "./protocol/topics.js";
 export * from "./protocol/groups.js";
 export * from "./protocol/schemas.js";
+export * from "./protocol/indices.js";
 export * from "./protocol/streamCalls.js";
 export * from "./protocol/calls.js";

@@ -1,10 +1,12 @@
 import {
   siApachekafka,
   siDuckdb,
+  siElasticsearch,
   siEtcd,
   siMariadb,
   siMongodb,
   siMysql,
+  siOpensearch,
   siPostgresql,
   siRedis,
   siSqlite,
@@ -43,6 +45,8 @@ export const BRAND_GLYPHS: Readonly<Record<string, BrandGlyph>> = {
   [siEtcd.slug]: siEtcd,
   [siApachekafka.slug]: siApachekafka,
   [siDuckdb.slug]: siDuckdb,
+  [siElasticsearch.slug]: siElasticsearch,
+  [siOpensearch.slug]: siOpensearch,
   [ORACLE_GLYPH.slug]: ORACLE_GLYPH,
   [SQL_SERVER_GLYPH.slug]: SQL_SERVER_GLYPH,
 };

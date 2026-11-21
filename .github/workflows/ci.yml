@@ -49,6 +49,7 @@ jobs:
       mssql: ${{ steps.filter.outputs.mssql }}
       etcd: ${{ steps.filter.outputs.etcd }}
       kafka: ${{ steps.filter.outputs.kafka }}
+      elasticsearch: ${{ steps.filter.outputs.elasticsearch }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
@@ -90,6 +91,12 @@ jobs:
               - "test/support/kafkaFixture.ts"
               - "test/support/kafkaRemote.ts"
               - "test/support/schemaRegistryMock.ts"
+            elasticsearch:
+              - *shared
+              - "plugins/elasticsearch/**"
+              - "test/db/elasticsearch/**"
+              - "test/db/elasticsearch.test.ts"
+              - "test/support/elasticsearchFixture.ts"
 
   # Decision 099: one job per opt-in server, run when its plugin, the contract suite, the compose
   # stack or its seed and fixtures change. PostgreSQL also runs on a tag, so a release is checked against it.
@@ -101,11 +108,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        database: [postgres, oracle, mssql, etcd, kafka]
+        database: [postgres, oracle, mssql, etcd, kafka, elasticsearch]
     if: >-
       needs.changes.outputs.postgres == 'true' || needs.changes.outputs.oracle == 'true' ||
       needs.changes.outputs.mssql == 'true' || needs.changes.outputs.etcd == 'true' ||
-      needs.changes.outputs.kafka == 'true' || startsWith(github.ref, 'refs/tags/')
+      needs.changes.outputs.kafka == 'true' || needs.changes.outputs.elasticsearch == 'true' ||
+      startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Skip unless this server's paths changed
         id: wanted

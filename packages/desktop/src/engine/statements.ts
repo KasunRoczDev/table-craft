@@ -54,6 +54,7 @@ import type {
   ExecutedStatement,
   ExplainedStatement,
   OpenedKey,
+  OpenedSearch,
   OpenedTopic,
   ParameterValue,
   RequestOf,
@@ -484,6 +485,40 @@ export function statementRunners(live: LiveContext) {
     }
   }
 
+  /** Runs a search on the index tab's session (plan 165); its rows page from the result store. */
+  async function openSearch(request: RequestOf<"indices.open">): Promise<OpenedSearch> {
+    const open = sessionFor(request.sessionId);
+    const readOnly = options.datasource.readOnly;
+    open.running += 1;
+    try {
+      const { value: opened } = await onLiveSession(
+        request.sessionId,
+        open,
+        request.timeoutSeconds ?? 0,
+        async (session) => {
+          const { result, ...search } = await serviceOf(session, "searchIndices").search(request.request);
+          return { search, summary: await results.put(result, request) };
+        },
+        (cause) => (cause instanceof EngineFailure ? cause : statementFailed(cause, readOnly)),
+        (late) => void results.release(late.summary.handle),
+      );
+      const { search, summary } = opened;
+      if (sessions.get(request.sessionId) !== open) {
+        await results.release(summary.handle);
+        sessionFor(request.sessionId);
+      }
+      handles.set(summary.handle, request.sessionId);
+      if (results.holdsCursor(summary.handle)) cursors.set(request.sessionId, summary.handle);
+      return {
+        search,
+        statement: { ...summary, firstWindow: results.window(summary.handle, 0), transactionOpen: false },
+      };
+    } finally {
+      open.running -= 1;
+      open.lastUsed = now();
+    }
+  }
+
   /** The full cells of one message a topic read shows, from its spill or its held row (decision 172). */
   function topicMessage(request: RequestOf<"topics.message">): Promise<SpilledMessage | null> {
     return spills.message(ownedHandle(request.handle), request.partition, request.offset);
@@ -700,6 +735,7 @@ export function statementRunners(live: LiveContext) {
     queryTable,
     openKey,
     openTopic,
+    openSearch,
     topicMessage,
     resultEditable,
     tableFor,
