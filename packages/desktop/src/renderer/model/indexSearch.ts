@@ -108,8 +108,14 @@ export interface HistogramPlot {
 /** Time labels under the strip, the first at its start; the end stays unlabelled. */
 const HISTOGRAM_TICKS = 4;
 const SCALE_STEPS = [1, 2, 5, 10] as const;
-const CLOCK_FORMAT: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
-const DAY_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+// In UTC, as the grid shows the documents' times, so a label and the rows under it read alike.
+const CLOCK_FORMAT: Intl.DateTimeFormatOptions = {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+};
+const DAY_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
 
 /** The smallest of 1, 2, 5 times a power of ten at or above `value`. */
 export function roundScale(value: number): number {

@@ -22,7 +22,11 @@ export const INDEX_ACTION_IDS = {
   openRequestInConsole: "index.openRequestInConsole",
   copyName: "index.copyName",
   analyze: "index.analyze",
+  toggleSortOrder: "index.toggleSortOrder",
+  searchAllTime: "index.searchAllTime",
 } as const;
+
+const ALL_TIME = "all";
 
 const SEARCH_CAPABILITY = "searchIndices";
 const INDEX_TAB_PREFIX = "index-";
@@ -101,10 +105,43 @@ export const INDEX_ACTIONS: readonly AnyAction[] = [
     category: "Search",
     icon: "run",
     tabKind: "index",
-    when: (context) => context.indexTab != null && canSearchIndex(context.indexTab.status),
+    when: (context) =>
+      context.indexTab != null &&
+      canSearchIndex(context.indexTab.status) &&
+      !(context.indexTab.describing && context.indexTab.description === null),
     busy: (context) => context.indexTab?.status === "loading",
     run: async (context) => {
       if (context.activeTab !== null) await useIndexTabs.getState().run(context.activeTab.id);
+    },
+  }),
+  defineAction({
+    id: INDEX_ACTION_IDS.toggleSortOrder,
+    title: "Reverse Sort Order",
+    category: "Search",
+    tabKind: "index",
+    when: (context) => context.indexTab?.draft.sortField != null,
+    run: (context) => {
+      const tab = context.indexTab;
+      if (context.activeTab === null || tab == null) return;
+      useIndexTabs
+        .getState()
+        .setDraft(context.activeTab.id, { sortOrder: tab.draft.sortOrder === "asc" ? "desc" : "asc" });
+    },
+  }),
+  defineAction({
+    id: INDEX_ACTION_IDS.searchAllTime,
+    title: "Search All Time",
+    category: "Search",
+    tabKind: "index",
+    when: (context) =>
+      context.indexTab != null &&
+      context.indexTab.draft.range !== ALL_TIME &&
+      context.indexTab.description?.timeField != null &&
+      canSearchIndex(context.indexTab.status),
+    run: async (context) => {
+      if (context.activeTab === null) return;
+      useIndexTabs.getState().setDraft(context.activeTab.id, { range: ALL_TIME });
+      await useIndexTabs.getState().run(context.activeTab.id);
     },
   }),
   defineAction({

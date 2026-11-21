@@ -283,15 +283,17 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
       const executionId = executions.start(id, { label: SEARCH_LABEL, sql: command, startedAt: begun });
       try {
         const timeoutSeconds = dependencies.statementTimeout?.(current.datasourceId) ?? 0;
-        const [answer, histogram] = await Promise.all([
-          client.call("indices.open", {
-            sessionId: current.sessionId,
-            request,
-            ...paging,
-            ...(timeoutSeconds > 0 ? { timeoutSeconds } : {}),
-          }),
-          timeField === null ? Promise.resolve(null) : histogramOf(client, request),
-        ]);
+        // The strip runs beside the hits and lands after them, so a slow histogram never holds the grid.
+        const histogram = timeField === null ? Promise.resolve(null) : histogramOf(client, request);
+        const answer = await client.call("indices.open", {
+          sessionId: current.sessionId,
+          request,
+          ...paging,
+          ...(timeoutSeconds > 0 ? { timeoutSeconds } : {}),
+        });
+        void histogram.then((plot) => {
+          if (live() && get().tabs[id]?.applied === request) patch(id, { histogram: plot });
+        });
         executions.finish(id, executionId, {
           outcome: "success",
           rowCount: answer.statement.rowCount,
@@ -319,7 +321,7 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
         patch(id, {
           result: { ...fresh, layout },
           search: answer.search,
-          histogram,
+          histogram: timeField === null ? null : (get().tabs[id]?.histogram ?? null),
           applied: request,
           queryError: null,
         });
@@ -355,7 +357,8 @@ export function createIndexTabsStore(dependencies: IndexTabsDependencies) {
         set({ tabs: { ...get().tabs, [id]: newTab(target) } });
         await describe(id);
         const described = get().tabs[id];
-        if (described === undefined) return;
+        // A search the user ran while the target was described keeps its query and result.
+        if (described === undefined || described.applied !== null || described.status === "loading") return;
         await execute(id, defaultDraft(described.description));
       },
 

@@ -38,8 +38,8 @@ request or a tab opened by name still reaches any of them.
   An error from the cluster shows under the bar and keeps the rows of the last search.
 - **Time first.** When the target has an `@timestamp` date field, the bar offers a time range,
   _Last 15 minutes_ by default, sorts newest first and draws a histogram of the hits over the
-  range above the grid, with the hits of its tallest bar and the time under every quarter; a bar
-  the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
+  range above the grid, with the hits per bar its height stands for and the time, in UTC, under
+  every quarter; a bar the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
 - **Paging.** The grid fetches pages as you scroll, through a scroll context that is cleared when
   the result is released, the tab closes or the last page arrives.
   The footer reads `1–100 of 2,431 hits · took 6 ms · 5 shards`; past 10,000 the count reads
@@ -82,8 +82,9 @@ SELECT category, COUNT(*) AS n FROM products GROUP BY category;
 - **Completion** offers the methods at the start of a line, endpoints such as `_search` and
   `_cat/indices` and the cluster's index names after the method, and Query DSL keys inside a body.
 - **What a request does.** Reads run at once. `DELETE <index>` deletes the index and every document
-  in it, so TableCraft asks you to type the index's name first; a `_delete_by_query` asks too, and
-  one that matches every document is marked as costly. A read-only data source refuses every
+  in it, so TableCraft asks you to type the data source's name first, as it does for a `DROP` in
+  SQL; deleting `_all`, a data stream or a template asks too, a `_delete_by_query` that matches
+  every document is marked as costly, and a `_bulk` with `delete` actions as destructive. A read-only data source refuses every
   request that would change something before it is sent.
 - **Cancel** stops the running request by closing its connection; Elasticsearch 7.4 and later
   and OpenSearch then stop the search on the cluster too.

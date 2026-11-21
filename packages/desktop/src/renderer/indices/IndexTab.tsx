@@ -35,6 +35,7 @@ const STATUS_TEXT = {
   failed: "",
   disconnected: "Disconnected; Run reconnects.",
 } as const;
+const ANALYZE_VIEW: IndexView = "analyze";
 const STALE_TEXT = "The connection closed; Run searches again.";
 const ERROR_CLASS = "shrink-0 border-b border-line bg-panel px-gap py-1 break-words text-danger";
 const HEALTH_CLASS = { warning: "text-warning", danger: "text-danger" } as const;
@@ -57,7 +58,7 @@ function Facts({ tab, listed }: { readonly tab: IndexTabState; readonly listed: 
     <>
       {searchTargetFacts(listed, tab.description.indices)}
       {tone === null || listed?.health == null ? null : (
-        <span data-testid="index-health" className={HEALTH_CLASS[tone]}>
+        <span data-testid="index-header-health" className={HEALTH_CLASS[tone]}>
           {" · "}
           <WarningIcon aria-hidden weight="fill" className="inline size-3 align-[-1px]" /> {listed.health}
         </span>
@@ -128,6 +129,29 @@ function Footer({ tab }: { readonly tab: IndexTabState }) {
   );
 }
 
+function NoHits({ tab }: { readonly tab: IndexTabState }) {
+  const ranged = tab.applied?.time?.from != null;
+  return (
+    <p data-testid="index-no-hits" className="shrink-0 border-b border-line px-gap py-1 text-ink-muted">
+      {ranged ? "No documents match in this time range." : "No documents match."}{" "}
+      {ranged ? (
+        <button type="button" className={LINK_BUTTON} onClick={() => void invoke(INDEX_ACTION_IDS.searchAllTime)}>
+          Search all time
+        </button>
+      ) : null}
+      {ranged ? " or " : null}
+      <button
+        type="button"
+        className={LINK_BUTTON}
+        onClick={() => void invoke(INDEX_ACTION_IDS.showView, { view: ANALYZE_VIEW })}
+      >
+        {ranged ? "analyze" : "Analyze"} how a field reads your words
+      </button>
+      .
+    </p>
+  );
+}
+
 function Documents({ tabId, tab }: { readonly tabId: string; readonly tab: IndexTabState }) {
   const { result } = tab;
   return (
@@ -139,6 +163,7 @@ function Documents({ tabId, tab }: { readonly tabId: string; readonly tab: Index
         </div>
       )}
       {tab.histogram === null ? null : <HistogramStrip histogram={tab.histogram} time={tab.applied?.time ?? null} />}
+      {result?.rowCount === 0 && tab.status === "ready" ? <NoHits tab={tab} /> : null}
       {result === null ? (
         <div className="flex flex-1 items-center justify-center text-ink-muted">
           {tab.status === "loading" || tab.status === "connecting" || tab.describing
@@ -202,7 +227,10 @@ export function IndexTab({ tabId }: { readonly tabId: string }) {
       />
       {tab.error === null ? null : (
         <div role="alert" data-testid="index-error" className={ERROR_CLASS}>
-          {tab.error.message} <span className="text-ink-muted">{tab.error.hint}</span>
+          {tab.error.message} <span className="text-ink-muted">{tab.error.hint}</span>{" "}
+          <button type="button" className={LINK_BUTTON} onClick={() => void invoke(INDEX_ACTION_IDS.refresh)}>
+            Retry
+          </button>
         </div>
       )}
       {tab.view === "documents" ? (

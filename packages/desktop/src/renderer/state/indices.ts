@@ -28,9 +28,14 @@ export interface IndicesDependencies {
 }
 
 export function createIndicesStore(dependencies: IndicesDependencies) {
-  /** Bumped by `clear`, so an answer from an engine that has since gone is dropped. */
+  /** Bumped by `clear` and by every listing, so only the newest answer from a live engine lands. */
   const generations = new Map<string, number>();
   const generationOf = (id: string) => generations.get(id) ?? 0;
+  const bump = (id: string) => {
+    const next = generationOf(id) + 1;
+    generations.set(id, next);
+    return next;
+  };
 
   return create<IndicesState>()((set, get) => {
     function indicesOf(id: string): DatasourceIndices {
@@ -42,7 +47,7 @@ export function createIndicesStore(dependencies: IndicesDependencies) {
     }
 
     async function list(id: string): Promise<void> {
-      const generation = generationOf(id);
+      const generation = bump(id);
       update(id, { loading: true, error: null });
       try {
         const client = await dependencies.connect(id);
@@ -76,7 +81,7 @@ export function createIndicesStore(dependencies: IndicesDependencies) {
       synchronize: list,
 
       clear(id) {
-        generations.set(id, generationOf(id) + 1);
+        bump(id);
         const { [id]: _gone, ...indices } = get().indices;
         set({ indices });
       },

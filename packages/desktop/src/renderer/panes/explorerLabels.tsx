@@ -331,7 +331,9 @@ export function NodeDetail({ node }: { readonly node: ExplorerNode }) {
     case "indexFamily":
       return (
         <Detail>
-          {node.writeAlias === null ? familyDetail(node.members) : `${node.writeAlias} · ${familyDetail(node.members)}`}
+          {node.writeAlias === null || node.writeAlias === node.base
+            ? familyDetail(node.members)
+            : `${node.writeAlias} · ${familyDetail(node.members)}`}
         </Detail>
       );
     case "searchTarget":

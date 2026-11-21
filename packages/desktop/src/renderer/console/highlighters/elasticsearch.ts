@@ -102,6 +102,10 @@ export const elasticsearchParser: StreamParser<ElasticState> = {
       }
     }
     if (stream.eatSpace()) return null;
+    if (state.sql && !state.ppl && stream.eat(";")) {
+      state.sql = false;
+      return "punctuation";
+    }
     if (state.sql) return queryToken(stream, state.ppl ? PPL_KEYWORD : SQL_KEYWORD);
     if (state.depth === 0 && stream.peek() !== "{" && stream.peek() !== "[") return pathToken(stream);
     return jsonToken(stream, state);

@@ -27,6 +27,9 @@ const STEP_KIND_LABELS = {
   analyzer: "analyzer",
 } as const;
 const TOKEN_CLASS = "rounded bg-raised px-1 font-grid";
+const SAMPLE_TEXT = "The Quick Brown Foxes";
+// Two rows high: enough for the bars to differ at a glance without crowding the grid.
+const PLOT_CLASS = "flex h-10 items-end gap-px border-t border-b border-t-line/50 border-b-line";
 
 function percent(ratio: number): string {
   return `${String(ratio * 100)}%`;
@@ -52,18 +55,18 @@ export function HistogramStrip({
       role="img"
       className="grid shrink-0 grid-cols-[1fr_auto] gap-x-cell border-b border-line px-pane-inset pt-gap text-label text-ink-muted tabular-nums"
     >
-      <div className="flex h-10 items-end gap-px border-t border-b border-t-line/50 border-b-line">
+      <div className={PLOT_CLASS}>
         {plot.bars.map((bar) => (
           <span
             key={bar.at}
             data-partial={bar.partial}
             title={`${bar.at} · ${bar.count.toLocaleString("en-US")}${bar.partial ? " (part of the bucket is outside the range)" : ""}`}
-            className="min-w-px flex-1 bg-accent/40 hover:bg-accent data-[partial=true]:bg-accent/15"
+            className="min-w-px flex-1 bg-plan-bar hover:bg-accent data-[partial=true]:border-t data-[partial=true]:border-plan-bar data-[partial=true]:bg-plan-bar/40"
             style={{ height: percent(bar.ratio) }}
           />
         ))}
       </div>
-      <span className="-translate-y-1/2 self-start leading-none">{plot.top.toLocaleString("en-US")}</span>
+      <span className="-translate-y-1/2 self-start leading-none">{plot.top.toLocaleString("en-US")} per bar</span>
       <div className="relative h-row">
         {plot.ticks.map((tick) => (
           <span key={tick.index} className="absolute top-0" style={{ left: percent(tick.index / count) }}>
@@ -71,6 +74,7 @@ export function HistogramStrip({
           </span>
         ))}
       </div>
+      {plot.ticks.length === 0 ? null : <span>UTC</span>}
     </div>
   );
 }
@@ -119,7 +123,8 @@ function JsonBlock({
 /** The target's fields as a table, then the mapping as the server returned it. */
 export function MappingView({ description }: { readonly description: SearchTargetDescription }) {
   return (
-    <div data-testid="index-mapping" className="flex min-h-0 flex-1 flex-col overflow-auto">
+    // A block scroller, not a column: in a column the table's flex-1 gives way to the JSON and shrinks to nothing.
+    <div data-testid="index-mapping" className="min-h-0 flex-1 overflow-auto">
       {description.fields.length === 0 ? (
         <p className="px-pane-inset py-gap text-ink-muted">No mapped fields.</p>
       ) : (
@@ -141,7 +146,7 @@ export function MappingView({ description }: { readonly description: SearchTarge
       )}
       {description.mapping === null ? null : (
         <>
-          <h2 className={SECTION_TITLE}>Mapping</h2>
+          <h2 className={SECTION_TITLE}>Mapping JSON</h2>
           <JsonBlock text={description.mapping} label="Mapping" testId="index-mapping-json" />
         </>
       )}
@@ -177,9 +182,31 @@ function AnalysisChain({ tab }: { readonly tab: IndexTab }) {
     );
   }
   const chain = droppedTokens(tab.analysis);
+  const drops = tab.analysis.flatMap((step, index) =>
+    (chain[index]?.dropped ?? []).map((token) => ({ token, step: step.name })),
+  );
   return (
-    <ol data-testid="index-analysis" className="flex min-h-0 flex-col overflow-auto">
-      {tab.analysis.map((step, index) => (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <p data-testid="index-analysis-verdict" className="px-pane-inset pb-cell text-ink-muted">
+        {drops.length === 0
+          ? "Every token reaches the index; a query reads them the same way."
+          : `${drops.map((drop) => `"${drop.token}" (${drop.step})`).join(", ")} never ${drops.length === 1 ? "reaches" : "reach"} the index, so a query on ${drops.length === 1 ? "it" : "them"} finds nothing.`}
+      </p>
+      <AnalysisSteps analysis={tab.analysis} chain={chain} />
+    </div>
+  );
+}
+
+function AnalysisSteps({
+  analysis,
+  chain,
+}: {
+  readonly analysis: NonNullable<IndexTab["analysis"]>;
+  readonly chain: ReturnType<typeof droppedTokens>;
+}) {
+  return (
+    <ol data-testid="index-analysis" className="flex flex-col">
+      {analysis.map((step, index) => (
         <li
           key={`${step.kind}-${step.name}-${String(index)}`}
           data-testid="index-analysis-step"
@@ -203,6 +230,7 @@ function AnalysisChain({ tab }: { readonly tab: IndexTab }) {
                 className={cn(TOKEN_CLASS, "text-danger line-through")}
               >
                 {token}
+                <span className="sr-only"> (dropped)</span>
               </span>
             ))}
           </span>
@@ -245,7 +273,7 @@ export function AnalyzeView({ tabId, tab }: { readonly tabId: string; readonly t
           aria-label="Text to analyze"
           data-testid="index-analyze-text"
           className="h-row min-w-0 flex-1 rounded border border-line bg-canvas px-cell font-grid text-ink outline-none placeholder:text-grid-null focus:border-accent"
-          placeholder="The Quick Brown Foxes"
+          placeholder={SAMPLE_TEXT}
           spellCheck={false}
           value={tab.analyzeDraft.text}
           onChange={(event) => set({ text: event.target.value })}

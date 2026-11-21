@@ -196,7 +196,7 @@ export function SearchBar({ tabId, tab }: { readonly tabId: string; readonly tab
               aria-label={SORT_ORDER_TEXT[draft.sortOrder]}
               title={SORT_ORDER_TEXT[draft.sortOrder]}
               className="ml-cell flex h-row shrink-0 items-center px-1 text-ink-muted hover:bg-hover hover:text-ink"
-              onClick={() => set({ sortOrder: draft.sortOrder === "asc" ? "desc" : "asc" })}
+              onClick={() => void invoke(INDEX_ACTION_IDS.toggleSortOrder)}
             >
               <OrderIcon aria-hidden className="size-icon" />
             </button>

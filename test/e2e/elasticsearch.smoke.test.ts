@@ -55,6 +55,8 @@ const LIVE_ID = "elasticsearch-live";
 const LIVE_NAME = "Shop search";
 const READ_ONLY_NAME = "Shop search (read-only)";
 const ANALYZE_TEXT = "Crème brûlée to go";
+/** The screen-reader suffix a dropped token carries after its text. */
+const DROPPED_SUFFIX = " (dropped)";
 const TEA_DSL = '{ "term": { "category": "tea" } }';
 const BY_STATUS = `GET ${LIVE_ORDERS}/_search
 {
@@ -198,8 +200,12 @@ describe.runIf(DATABASES_ENABLED && !WITHOUT_ELASTICSEARCH)("Elasticsearch live 
       await tab.getByTestId("index-analyze-text").fill(ANALYZE_TEXT);
       await tab.getByTestId("index-analyze").click();
       await expect
-        .poll(() => tab.getByTestId("index-token-dropped").allTextContents(), WAIT)
+        .poll(async () => {
+          const texts = await tab.getByTestId("index-token-dropped").allTextContents();
+          return texts.map((text) => text.replace(DROPPED_SUFFIX, ""));
+        }, WAIT)
         .toEqual(expect.arrayContaining(["to", "go"]));
+      expect(await tab.getByTestId("index-analysis-verdict").textContent()).toContain("never reach the index");
       const steps = await tab.getByTestId("index-analysis-step").count();
       expect(steps).toBeGreaterThan(2);
       await captureWindow(page, "07-analyze");
