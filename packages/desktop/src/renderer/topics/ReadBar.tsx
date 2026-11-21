@@ -22,9 +22,13 @@ const REGISTRY_FORMATS: ReadonlySet<MessageFormat> = new Set(["avro", "protobuf"
 /** Flush fields of the strip (design-system.md, Dropdowns: the flush rule). */
 const INPUT_CLASS =
   "h-row min-w-0 border border-transparent bg-transparent px-1 font-grid text-ink outline-none placeholder:text-grid-null focus:border-accent aria-invalid:border-danger";
-/** Each control a strip of its own row: the bar wraps to a second row in a narrow tab (audit M6). */
+/**
+ * Each control a strip of its own row: the bar wraps to a second row in a narrow tab (audit M6).
+ * Segments grow so every wrapped row ends at the bar's edge, and one wider than the bar shrinks
+ * to it rather than running under Read.
+ */
 const SEGMENT_CLASS =
-  "flex h-row shrink-0 items-center gap-cell border-r border-b border-line px-cell whitespace-nowrap";
+  "flex h-row max-w-full items-center gap-cell overflow-hidden border-r border-b border-line px-cell whitespace-nowrap";
 
 function Segment({
   label,
@@ -36,8 +40,8 @@ function Segment({
   readonly grow?: boolean;
 }) {
   return (
-    <div className={cn(SEGMENT_CLASS, grow === true && "min-w-64 flex-1")}>
-      {label === undefined ? null : <span className="text-ink-muted">{label}</span>}
+    <div className={cn(SEGMENT_CLASS, grow === true ? "min-w-64 grow-[4]" : "min-w-0 grow")}>
+      {label === undefined ? null : <span className="shrink-0 text-ink-muted">{label}</span>}
       {children}
     </div>
   );
@@ -130,14 +134,16 @@ export function ReadBar({
           />
         </Segment>
         <Segment label="From">
-          <Dropdown
-            variant="inline"
-            label="From"
-            testId="read-from"
-            value={draft.from}
-            options={fromOptions}
-            onChange={(value) => set({ from: value as FromKind })}
-          />
+          <span className="flex shrink-0">
+            <Dropdown
+              variant="inline"
+              label="From"
+              testId="read-from"
+              value={draft.from}
+              options={fromOptions}
+              onChange={(value) => set({ from: value as FromKind })}
+            />
+          </span>
           {draft.from === "latestN" ? (
             <input
               aria-label="Latest messages"
@@ -164,13 +170,13 @@ export function ReadBar({
               <input
                 aria-label="From timestamp"
                 data-testid="read-timestamp"
-                className={cn(INPUT_CLASS, "w-44")}
+                className={cn(INPUT_CLASS, "w-44 shrink-0")}
                 placeholder="2026-11-21 09:15:00"
                 aria-invalid={invalid}
                 value={draft.timestamp}
                 onChange={(event) => set({ timestamp: event.target.value })}
               />
-              <TimestampHint typed={draft.timestamp} />
+              <TimestampHint typed={draft.timestamp} truncate />
             </>
           ) : draft.from === "group" ? (
             <Dropdown

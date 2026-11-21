@@ -73,6 +73,10 @@ const PRODUCTION_NAME = "Kafka Production";
 const READ_ONLY_NAME = "Kafka Read-only";
 const UNREACHABLE_BOOTSTRAP = "127.0.0.1:59095";
 const NARROW_WINDOW = { width: 1024, height: 768 } as const;
+const NARROWER_WINDOW = { width: 900, height: 768 } as const;
+const ROW_EDGE_TOLERANCE_PX = 1;
+/** Before any seeded message, so a read from it matches the hot customer's. */
+const EARLY_TIMESTAMP = "2020-01-01 00:00:00";
 const TAIL_BURST = 2000;
 /** Above the tail ring's TOPIC_TAIL_MAX_MESSAGES, so the ring drops what the pane has not read. */
 const TAIL_OVERFLOW = 120_000;
@@ -116,6 +120,23 @@ const disabled = (locator: Locator) =>
 
 async function shown(locator: Locator, timeout: number = READ_TIMEOUT_MS): Promise<void> {
   await locator.first().waitFor({ state: "visible", timeout });
+}
+
+/** Every row the read bar wraps to ends at the bar's right edge (audit M6): none stops short. */
+async function readBarRowsFull(tab: Locator): Promise<void> {
+  const bar = tab.getByTestId("topic-read-bar");
+  const edge = await bar.boundingBox();
+  if (edge === null) throw new Error("The read bar must be visible.");
+  const rowEnds = new Map<number, number>();
+  for (const segment of await bar.locator(":scope > *").all()) {
+    const box = await segment.boundingBox();
+    if (box === null) continue;
+    const top = Math.round(box.y);
+    rowEnds.set(top, Math.max(rowEnds.get(top) ?? 0, box.x + box.width));
+  }
+  expect(rowEnds.size).toBeGreaterThan(1);
+  for (const end of rowEnds.values())
+    expect(Math.abs(edge.x + edge.width - end)).toBeLessThanOrEqual(ROW_EDGE_TOLERANCE_PX);
 }
 
 /** Wholly inside the window, so it is reachable without scrolling the bar sideways. */
@@ -883,12 +904,24 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       const kafka = seeded();
       const page = await launch(liveDatasource(liveConfig(kafka)), { size: NARROW_WINDOW });
       const tab = await openTopic(page, kafka.orders);
+      await text(tab.getByTestId("read-from")).toContain("Latest N");
       await inViewport(tab.getByTestId("read-filter"));
       await inViewport(tab.getByTestId("topic-read"));
+      await readBarRowsFull(tab);
       await tab.getByTestId("read-filter").fill(HOT_CUSTOMER);
       await read(tab);
       await text(tab.getByTestId("topic-scanned")).toContain("matched");
       await capture(page, "19-narrow");
+
+      await setWindowSize(runningApp(), NARROWER_WINDOW);
+      await chooseOption(tab.getByTestId("read-from"), "timestamp");
+      await tab.getByTestId("read-timestamp").fill(EARLY_TIMESTAMP);
+      await inViewport(tab.getByTestId("read-timestamp"));
+      await inViewport(tab.getByTestId("topic-read"));
+      await readBarRowsFull(tab);
+      await read(tab);
+      await text(tab.getByTestId("topic-scanned")).toContain("matched");
+      await capture(page, "19-narrow-timestamp");
     },
     SCENARIO_TIMEOUT_MS,
   );
