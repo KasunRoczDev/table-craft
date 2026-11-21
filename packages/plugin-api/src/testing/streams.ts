@@ -137,7 +137,9 @@ export function runStreamsContract(contract: StreamsContract): void {
     plugin.capabilities.includes(capability);
 
   function fixture(): StreamsFixture {
-    if (streams === undefined) throw new Error("A plugin that declares topics needs fixture.streams.");
+    if (streams === undefined) {
+      throw new Error("A plugin that declares topics, consumerGroups or schemaRegistry needs fixture.streams.");
+    }
     return streams;
   }
 
@@ -300,7 +302,7 @@ export function runStreamsContract(contract: StreamsContract): void {
       });
     });
 
-    it("givenSpill_whenLargeMessageRead_thenPreviewKeptAndWholeValuePutOrWholeRow", async () => {
+    it("givenSpill_whenLargeMessageRead_thenPreviewKeptAndWholeValuePut", async () => {
       await withSession(async (session) => {
         await withTopic(session, async (topic) => {
           const large = "v".repeat(MESSAGE_PREVIEW_CHARS * LARGE_MESSAGE_PREVIEWS);
@@ -318,11 +320,8 @@ export function runStreamsContract(contract: StreamsContract): void {
           expect(rows[1]?.[VALUE_COLUMN]).toBe("small");
           expect(spilled.has("0:1")).toBe(false);
           const shown = rows[0]?.[VALUE_COLUMN];
-          if (spilled.size === 0) expect(shown).toBe(large);
-          else {
-            expect(typeof shown === "string" && shown.length <= MESSAGE_PREVIEW_CHARS + 1).toBe(true);
-            expect(spilled.get("0:0")?.value).toBe(large);
-          }
+          expect(typeof shown === "string" && shown.length <= MESSAGE_PREVIEW_CHARS + 1).toBe(true);
+          expect(spilled.get("0:0")?.value).toBe(large);
         });
       });
     });
@@ -515,13 +514,37 @@ export function runStreamsContract(contract: StreamsContract): void {
     const commitOffsets = streams?.commitOffsets;
     const joinGroup = streams?.joinGroup;
 
-    it("givenRead_whenConsumersOfTopic_thenNoGroupCreated", async () => {
+    it("givenReadAndTail_whenGroupsListed_thenNoGroupCreatedOrCommitted", async () => {
       await withSession(async (session) => {
         await withTopic(session, async (topic) => {
+          const groupIds = async (): Promise<string[]> =>
+            (await groupsOf(session).list()).map((group) => group.id).sort();
+          const before = await groupIds();
           await produce(session, topic, 0, "browse");
           await readRows(topicsOf(session).read(request(topic, { kind: "earliest" })));
           await readRows(topicsOf(session).read(request(topic, { kind: "latestN", count: 1 })));
+          const tail = await topicsOf(session).tail({
+            topic,
+            partitions: null,
+            from: { kind: "earliest" },
+            keyFormat: "auto",
+            valueFormat: "auto",
+          });
+          try {
+            await tail.next({ count: TAIL_COUNT, maxBytes: TAIL_BYTES, timeoutMs: TAIL_WAIT_MS });
+          } finally {
+            await tail.close();
+          }
           expect(await groupsOf(session).consumersOf(topic)).toEqual([]);
+          const touching: string[] = [];
+          for (const id of (await groupIds()).filter((found) => !before.includes(found))) {
+            const described = await groupsOf(session).describe(id);
+            const onTopic =
+              described.offsets.some((lag) => lag.topic === topic) ||
+              described.members.some((member) => member.assignments.some((assigned) => assigned.topic === topic));
+            if (onTopic) touching.push(id);
+          }
+          expect(touching).toEqual([]);
         });
       });
     });

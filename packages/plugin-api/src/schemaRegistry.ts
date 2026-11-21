@@ -39,6 +39,8 @@ export interface RegisteredSchema {
  * The `schemaRegistry` service (plan 164): a Confluent-compatible registry beside the brokers.
  * A plugin declaring it returns the service on every session; without a registry it answers
  * `available: false` with its `reason`, and every other method rejects with `statementFailed`.
+ * A write fails as the `topics` service's writes do: `statementFailed` when the registry refused
+ * it, with `outcome: "unknown"` when it may have been applied.
  */
 export interface SchemaRegistry {
   readonly available: boolean;

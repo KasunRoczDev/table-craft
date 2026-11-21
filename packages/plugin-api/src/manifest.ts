@@ -370,6 +370,13 @@ export const pluginManifestSchema = z
       manifest.capabilities.includes("commands"),
     { message: "the topics, consumerGroups and schemaRegistry capabilities require commands", path: ["capabilities"] },
   )
+  // Groups and subjects open from the stream tree, which only a topics plugin draws (decision 169).
+  .refine(
+    (manifest) =>
+      !includesAny(manifest.capabilities, "consumerGroups", "schemaRegistry") ||
+      manifest.capabilities.includes("topics"),
+    { message: "the consumerGroups and schemaRegistry capabilities require topics", path: ["capabilities"] },
+  )
   // A datasource draws one tree: the catalog, the key tree or the stream tree (decision 169).
   .refine(
     (manifest) =>

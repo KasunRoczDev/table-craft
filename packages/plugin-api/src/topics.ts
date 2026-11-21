@@ -263,9 +263,16 @@ export interface TopicTailBatch {
   readonly error: string | null;
 }
 
-/** A live read of a topic that joins no group and commits nothing (decision 170). */
+/**
+ * A live read of a topic that joins no group and commits nothing (decision 170). From `latest` it
+ * starts at each partition's high watermark as it opens, so only messages produced after that
+ * arrive.
+ */
 export interface TopicTail {
-  /** Resolves with what arrived, at most `count` messages and about `maxBytes`, or empty after `timeoutMs`. */
+  /**
+   * Resolves with what arrived, at most `count` messages and about `maxBytes`, or empty after
+   * `timeoutMs`. After `close` it resolves at once, empty, with state `stopped`.
+   */
   next(request: {
     readonly count: number;
     readonly maxBytes: number;
@@ -277,7 +284,10 @@ export interface TopicTail {
 /**
  * The `topics` service (plan 164): a log of partitions addressed by offset. Reading never joins a
  * consumer group and never commits an offset (decision 170). Every write rejects with
- * `statementFailed` on a read-only session before anything is sent.
+ * `statementFailed` on a read-only session before anything is sent. A write that fails with
+ * `statementFailed` was refused and changed nothing; one that may have reached the server first
+ * (a timeout or a lost connection after sending) carries `outcome: "unknown"` on the error, which
+ * the host reports as possibly applied.
  */
 export interface TopicBrowser {
   readonly formats: readonly MessageFormat[];

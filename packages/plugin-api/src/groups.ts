@@ -85,7 +85,10 @@ export interface ResetPreview {
 /**
  * The `consumerGroups` service (plan 164). Kafka moves a group's offsets only while it has no
  * members; the service never removes members to force it. Every write rejects with
- * `statementFailed` on a read-only session before anything is sent.
+ * `statementFailed` on a read-only session before anything is sent. A write that fails with
+ * `statementFailed` was refused and changed nothing; one that may have reached the server first
+ * (a timeout or a lost connection after sending) carries `outcome: "unknown"` on the error, which
+ * the host reports as possibly applied.
  */
 export interface GroupManager {
   list(): Promise<readonly GroupSummary[]>;

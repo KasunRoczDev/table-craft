@@ -43,7 +43,7 @@
     {
       "key": "pluginManifestSchema",
       "kind": "addition",
-      "reason": "Widens through CAPABILITIES (rowLimit, which requires sql; topics, consumerGroups and schemaRegistry, which require commands, topics excluding schemaTree and keyValue), visibleWhen (and its list of values), hint and sets above; every manifest valid before still parses the same."
+      "reason": "Widens through CAPABILITIES (rowLimit, which requires sql; topics, consumerGroups and schemaRegistry, which require commands, topics excluding schemaTree and keyValue, consumerGroups and schemaRegistry requiring topics), visibleWhen (and its list of values), hint and sets above; every manifest valid before still parses the same."
     },
     {
       "key": "NamespaceStatementForm",
