@@ -71,16 +71,18 @@ export class KafkaSchemaRegistry implements SchemaRegistry {
   readonly cache: SchemaCache;
   readonly #client: RegistryClient;
   readonly #readOnly: boolean;
+  readonly #listed: (name: string) => boolean;
 
-  constructor(client: RegistryClient, readOnly: boolean) {
+  constructor(client: RegistryClient, readOnly: boolean, listed: (name: string) => boolean = () => true) {
     this.#client = client;
     this.cache = new SchemaCache(client);
     this.#readOnly = readOnly;
+    this.#listed = listed;
   }
 
   async subjects(glob: string | null): Promise<readonly SubjectSummary[]> {
     const matches = globMatcher(glob);
-    const names = (await this.#client.subjects()).filter(matches).sort();
+    const names = (await this.#client.subjects()).filter((subject) => matches(subject) && this.#listed(subject)).sort();
     return mapLimited(names, DESCRIBE_CONCURRENCY, async (subject) => {
       try {
         const latest = await this.#client.version(subject, null);

@@ -76,11 +76,13 @@ export class KafkaGroups implements GroupManager {
   readonly #admin: KafkaAdmin;
   readonly #prepared: PreparedStore;
   readonly #readOnly: boolean;
+  readonly #listed: (name: string) => boolean;
 
-  constructor(admin: KafkaAdmin, prepared: PreparedStore, readOnly: boolean) {
+  constructor(admin: KafkaAdmin, prepared: PreparedStore, readOnly: boolean, listed: (name: string) => boolean) {
     this.#admin = admin;
     this.#prepared = prepared;
     this.#readOnly = readOnly;
+    this.#listed = listed;
   }
 
   async #committed(groups: readonly string[], topic: string | null = null): Promise<Map<string, Committed[]>> {
@@ -135,7 +137,7 @@ export class KafkaGroups implements GroupManager {
 
   async list(): Promise<readonly GroupSummary[]> {
     const groups = await failures(() => this.#admin.reader.listGroups());
-    const ids = [...groups.keys()].sort();
+    const ids = [...groups.keys()].filter(this.#listed).sort();
     const committed = await this.#committed(ids).catch(() => new Map<string, Committed[]>());
     const marks = await this.#marks([...committed.values()].flat());
     return ids.map((id) => {
@@ -191,7 +193,7 @@ export class KafkaGroups implements GroupManager {
 
   async consumersOf(topic: string): Promise<readonly GroupSummary[]> {
     const groups = await failures(() => this.#admin.reader.listGroups());
-    const committed = await this.#committed([...groups.keys()], topic);
+    const committed = await this.#committed([...groups.keys()].filter(this.#listed), topic);
     const marks = await this.#marks([...committed.values()].flat());
     return [...committed.entries()]
       .filter(([, entries]) => entries.length > 0)

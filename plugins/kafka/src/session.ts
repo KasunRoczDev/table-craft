@@ -16,6 +16,7 @@ import {
 import { KafkaAdmin } from "./admin.js";
 import { brokerInfo, brokerNodes } from "./brokers.js";
 import type { KafkaConfig } from "./config.js";
+import { nameFilter } from "./glob.js";
 import { openConnection, type Connection } from "./connect.js";
 import { runCommand } from "./console.js";
 import { errorText, isNetworkError } from "./failures.js";
@@ -62,7 +63,7 @@ async function registryOf(config: KafkaConfig, readOnly: boolean): Promise<Schem
     tls: HTTPS.test(url) ? await tlsOptions(config) : null,
     timeoutMs: config.requestTimeout * MS_PER_SECOND,
   });
-  return new KafkaSchemaRegistry(client, readOnly);
+  return new KafkaSchemaRegistry(client, readOnly, nameFilter(config.nameFilter));
 }
 
 /** One datasource connection: a reading admin client, and the services built on it (plan 164). */
@@ -103,7 +104,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
       options.readOnly,
       config.requestTimeout * MS_PER_SECOND,
     );
-    this.#groups = new KafkaGroups(this.#admin, this.#prepared, options.readOnly);
+    this.#groups = new KafkaGroups(this.#admin, this.#prepared, options.readOnly, nameFilter(config.nameFilter));
     const topicAdmin = this.#topicAdmin;
     this.#topics = new KafkaTopics(
       this.#admin,
@@ -119,6 +120,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
         tail: (request) => this.#tail(request),
       },
       this.#cache !== null,
+      nameFilter(config.nameFilter),
     );
     this.services = {
       topics: this.#topics,

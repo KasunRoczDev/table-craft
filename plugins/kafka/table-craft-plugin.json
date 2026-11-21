@@ -140,6 +140,15 @@
         "default": 10000,
         "group": "advanced",
         "hint": "A consumer group's total lag above this is shown as a warning."
+      },
+      {
+        "key": "nameFilter",
+        "label": "Name filter",
+        "kind": "text",
+        "default": "",
+        "group": "advanced",
+        "placeholder": "orders.*, payments.*",
+        "hint": "Only topics, consumer groups and subjects whose names match one of these globs are listed. Empty lists everything."
       }
     ],
     "tls": {

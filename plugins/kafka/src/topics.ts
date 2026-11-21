@@ -59,10 +59,12 @@ export class KafkaTopics implements TopicBrowser {
   readonly formats: readonly MessageFormat[];
   readonly #admin: KafkaAdmin;
   readonly #parts: TopicParts;
+  readonly #listed: (name: string) => boolean;
 
-  constructor(admin: KafkaAdmin, parts: TopicParts, registry: boolean) {
+  constructor(admin: KafkaAdmin, parts: TopicParts, registry: boolean, listed: (name: string) => boolean) {
     this.#admin = admin;
     this.#parts = parts;
+    this.#listed = listed;
     this.formats = registry
       ? MESSAGE_FORMATS
       : MESSAGE_FORMATS.filter((format) => format !== "avro" && format !== "protobuf" && format !== "jsonSchema");
@@ -71,7 +73,7 @@ export class KafkaTopics implements TopicBrowser {
   async list(filter: { readonly glob: string | null; readonly internal: boolean }): Promise<readonly TopicSummary[]> {
     const matches = globMatcher(filter.glob);
     const names = (await this.#admin.topicNames(filter.internal))
-      .filter((name) => (filter.internal || !isInternalTopic(name)) && matches(name))
+      .filter((name) => (filter.internal || !isInternalTopic(name)) && matches(name) && this.#listed(name))
       .sort();
     if (names.length === 0) return [];
     const regular = names.filter((name) => !isInternalTopic(name));

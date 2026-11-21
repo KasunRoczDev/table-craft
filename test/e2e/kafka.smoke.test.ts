@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { WITHOUT_KAFKA } from "../support/databases.js";
+import { KAFKA_SCRATCH_PREFIX, kafkaRemoteBootstrap, WITHOUT_KAFKA } from "../support/databases.js";
 import {
   chooseOption,
   chooseTheme,
@@ -132,6 +132,7 @@ function liveConfig(kafka: LiveKafka): Readonly<Record<string, string | number |
     security: "PLAINTEXT",
     registryUrl: kafka.registry.url,
     lagWarning: LIVE_LAG_WARNING,
+    nameFilter: `${KAFKA_SCRATCH_PREFIX}*`,
   };
 }
 
@@ -219,9 +220,81 @@ async function settled(page: Page): Promise<void> {
   await page.evaluate(SETTLED_SCRIPT);
 }
 
+/**
+ * Evidence is published with the pull request, so a remote cluster's addresses become `broker-N`,
+ * and the private address a member connects from `client-host`, for the capture only.
+ */
+const MASK_SCRIPT = `(hosts) => {
+  const originals = new Map();
+  const swap = (text) =>
+    hosts
+      .reduce((out, host, i) => out.split(host).join("broker-" + (i + 1)), text)
+      .replace(/\\b(?:10(?:\\.\\d{1,3}){3}|(?:192\\.168|172\\.(?:1[6-9]|2\\d|3[01]))(?:\\.\\d{1,3}){2})\\b/g, "client-host");
+  const maskText = (node) => {
+    const entry = originals.get(node);
+    if (entry && entry[2] === node.data) return;
+    const next = swap(node.data);
+    if (next === node.data) { originals.delete(node); return; }
+    originals.set(node, ["data", node.data, next]);
+    node.data = next;
+  };
+  const maskTree = (root) => {
+    if (root.nodeType === Node.TEXT_NODE) return maskText(root);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) maskText(node);
+  };
+  maskTree(document.body);
+  for (const field of document.querySelectorAll("input, textarea")) {
+    const next = swap(field.value);
+    if (next !== field.value) { originals.set(field, ["value", field.value, next]); field.value = next; }
+  }
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === "characterData") maskText(record.target);
+      else for (const added of record.addedNodes) maskTree(added);
+    }
+  });
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  window.__evidenceMask = { originals, observer };
+  return true;
+}`;
+
+/** Gives a redraw started before the mask time to land, so the observer masks it before the capture. */
+const MASK_SETTLE_SCRIPT =
+  "new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))";
+
+const UNMASK_SCRIPT = `(() => {
+  const mask = window.__evidenceMask;
+  if (!mask) return true;
+  mask.observer.disconnect();
+  for (const [target, [key, value, masked]] of mask.originals) if (target[key] === masked) target[key] = value;
+  window.__evidenceMask = null;
+  return true;
+})()`;
+
+function remoteHosts(): string[] {
+  const bootstrap = kafkaRemoteBootstrap();
+  if (bootstrap === null) return [];
+  return bootstrap
+    .split(",")
+    .map((broker) => broker.trim().replace(/:\d+$/, ""))
+    .filter((host) => host.length > 0);
+}
+
 async function capture(page: Page, name: string): Promise<void> {
   await settled(page);
-  await captureWindow(page, name);
+  const hosts = remoteHosts();
+  if (hosts.length === 0) {
+    await captureWindow(page, name);
+    return;
+  }
+  await page.evaluate(`(${MASK_SCRIPT})(${JSON.stringify(hosts)})`);
+  try {
+    await page.evaluate(MASK_SETTLE_SCRIPT);
+    await captureWindow(page, name);
+  } finally {
+    await page.evaluate(UNMASK_SCRIPT);
+  }
 }
 
 async function openStreamRow(page: Page, kind: string, name: string): Promise<void> {

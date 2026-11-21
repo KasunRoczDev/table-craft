@@ -10,7 +10,9 @@ would not, and the form offers none. A **Schema Registry URL**, with basic authe
 for one, lets TableCraft decode and encode Avro, Protobuf and JSON Schema messages.
 
 TableCraft checks on connect that the brokers answer the requests it needs, and names the missing
-one when they do not.
+one when they do not. On a cluster shared by many teams, the advanced **Name filter** (globs
+separated by commas, such as `orders.*, payments.*`) lists only the topics, consumer groups and
+subjects whose names match; a console command or a tab opened by name still reaches any of them.
 
 - **Database tree.** **Topics** with their full names, folded on the part before the first `.`
   when two or more topics share it (and not every topic does), each with its partition count and

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { pluginManifestSchema, serviceProblems } from "@table-craft/plugin-api";
 import plugin from "@table-craft/plugin-kafka";
 import { connectionSchema, parseBootstrap } from "@table-craft/plugin-kafka/config";
+import { nameFilter } from "@table-craft/plugin-kafka/glob";
 import { clusterModeOf, missingApis, serverVersionOf, type BrokerApi } from "@table-craft/plugin-kafka/version";
 
 const MANIFEST = resolve(import.meta.dirname, "../../plugins/kafka/table-craft-plugin.json");
@@ -63,5 +64,17 @@ describe("kafka version estimate", () => {
     expect(clusterModeOf(apis({ ...BASE, LeaderAndIsr: 5 }), "abc")).toBe("ZooKeeper");
     expect(clusterModeOf(apis(BASE), "abc")).toBe("KRaft");
     expect(clusterModeOf(apis(BASE), "redpanda.1234")).toBe("Redpanda");
+  });
+});
+
+describe("kafka name filter", () => {
+  it("givenGlobList_whenNameFilter_thenAnyGlobMatches", () => {
+    const listed = nameFilter("orders.*, payments.v?");
+    expect(["orders.v1", "payments.v2", "payments.v10", "audit"].filter(listed)).toEqual(["orders.v1", "payments.v2"]);
+  });
+
+  it("givenEmptyFilter_whenNameFilter_thenEveryNameListed", () => {
+    expect(nameFilter(" ")("anything")).toBe(true);
+    expect(connectionSchema.parse({}).nameFilter).toBe("");
   });
 });

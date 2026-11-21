@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./config": "./src/config.ts",
+    "./glob": "./src/glob.ts",
     "./connect": "./src/connect.ts",
     "./version": "./src/version.ts",
     "./language": "./src/language.ts",

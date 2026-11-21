@@ -81,6 +81,7 @@ export const connectionSchema = z
     requestTimeout: z.number().positive().default(DEFAULT_REQUEST_TIMEOUT_SECONDS),
     maxScan: z.number().int().positive().default(DEFAULT_MAX_SCAN),
     lagWarning: z.number().int().nonnegative().default(DEFAULT_LAG_WARNING),
+    nameFilter: z.string().default(""),
   })
   .superRefine((value, context) => {
     if (usesSasl(value.security) && value.user.trim() === "") {
