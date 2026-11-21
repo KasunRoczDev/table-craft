@@ -35,3 +35,8 @@ ones.
 - An ephemeral datasource (`TABLE_CRAFT_DATASOURCE`) cannot be filtered, as it is never saved.
 - The Properties dialog does not edit the list but carries it through a save, and Duplicate copies
   it.
+- A stream datasource (Kafka, decision 169) has topics, not namespaces, so **Manage Shown Topics…**
+  keeps the same allow-list in its own optional `shownTopics` (plan 166). Reusing
+  `shownNamespaces` would have the MCP server read topic names as schemas. The filter is the
+  tree's alone, after the plugin's **Name filter** and **Show Internal Topics**: an internal topic
+  stays hidden while that is off, even when picked.

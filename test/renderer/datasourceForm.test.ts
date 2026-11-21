@@ -186,9 +186,22 @@ describe("datasource form", () => {
     expect(copy.datasource.shownNamespaces).toEqual(["shop", "billing"]);
   });
 
+  it("givenShownTopics_whenEditedAndSaved_thenKeptAndCopiedByDuplicate", () => {
+    const filtered = view({ ...SAVED, shownTopics: ["orders.v1", "audit.log"] });
+
+    const request = toSaveRequest(draftFromView(filtered, POSTGRES_PLUGIN), POSTGRES_PLUGIN);
+    const copy = toSaveRequest(duplicateDraft("new-0", filtered, POSTGRES_PLUGIN, [], "forever"), POSTGRES_PLUGIN);
+
+    expect(request.datasource.shownTopics).toEqual(["orders.v1", "audit.log"]);
+    expect(copy.datasource.shownTopics).toEqual(["orders.v1", "audit.log"]);
+  });
+
   it("givenNoShownNamespaces_whenSaveRequestBuilt_thenKeyAbsent", () => {
     expect(toSaveRequest(draftFromView(SAVED, POSTGRES_PLUGIN), POSTGRES_PLUGIN).datasource).not.toHaveProperty(
       "shownNamespaces",
+    );
+    expect(toSaveRequest(draftFromView(SAVED, POSTGRES_PLUGIN), POSTGRES_PLUGIN).datasource).not.toHaveProperty(
+      "shownTopics",
     );
     expect(
       toSaveRequest(newDraft("new-0", POSTGRES_PLUGIN, [], "forever"), POSTGRES_PLUGIN).datasource,

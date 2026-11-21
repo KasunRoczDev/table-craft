@@ -112,6 +112,8 @@ export interface StreamTreeOptions {
   /** Broker-internal topics such as `__consumer_offsets` show (Show System Schemas). */
   readonly showInternal: boolean;
   readonly lagWarning: number;
+  /** The topics Manage Shown Topics keeps; null or absent keeps them all. */
+  readonly shown?: ReadonlySet<string> | null;
 }
 
 export function streamSectionKey(sink: Pick<StreamRowSink, "keyOf">, section: StreamSection): string {
@@ -222,9 +224,35 @@ export function topicFolders(topics: readonly TopicSummary[]): TopicFolders {
   };
 }
 
-/** The topics the tree lists: internal ones only when asked. */
-export function shownTopics(topics: readonly TopicSummary[], showInternal: boolean): readonly TopicSummary[] {
-  return showInternal ? topics : topics.filter((topic) => !topic.internal);
+/** The topics the tree lists: internal ones only when asked, and only those `shown` keeps. */
+export function shownTopics(
+  topics: readonly TopicSummary[],
+  showInternal: boolean,
+  shown: ReadonlySet<string> | null = null,
+): readonly TopicSummary[] {
+  return topics.filter((topic) => (showInternal || !topic.internal) && (shown === null || shown.has(topic.name)));
+}
+
+/** The topics Manage Shown Topics keeps (decision 117); null when it keeps them all. */
+export function shownTopicFilter(datasource: {
+  readonly shownTopics?: readonly string[] | undefined;
+}): ReadonlySet<string> | null {
+  return datasource.shownTopics === undefined ? null : new Set(datasource.shownTopics);
+}
+
+/**
+ * How many listed topics Manage Shown Topics keeps, for the datasource row's "N of M"; null when it
+ * keeps them all or nothing is listed yet. Hidden internal topics count on neither side.
+ */
+export function shownTopicCount(
+  datasource: { readonly shownTopics?: readonly string[] | undefined },
+  topics: readonly TopicSummary[] | null,
+  showInternal: boolean,
+): { readonly shown: number; readonly total: number } | null {
+  const filter = shownTopicFilter(datasource);
+  if (filter === null || topics === null) return null;
+  const listed = shownTopics(topics, showInternal);
+  return { shown: shownTopics(listed, true, filter).length, total: listed.length };
 }
 
 /** A topic row keeps its full name under its folder, so the name read is the name typed (audit m1). */
@@ -260,7 +288,7 @@ export function streamRows(
     return;
   }
   const base: StreamNodeBase = { datasourceId, path: [] };
-  const topics = shownTopics(streams.topics, options.showInternal);
+  const topics = shownTopics(streams.topics, options.showInternal, options.shown ?? null);
   if (section(sink, base, "topics", topics.length, depth)) {
     const { folders, loose } = topicFolders(topics);
     for (const folder of folders) {

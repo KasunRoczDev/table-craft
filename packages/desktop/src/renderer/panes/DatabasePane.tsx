@@ -41,11 +41,13 @@ import {
   streamRowAttributes,
 } from "@table-craft/desktop/renderer/panes/streamRows.js";
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
+import { shownTopicCount } from "@table-craft/desktop/renderer/model/streamTree.js";
 import { invoke, registry, subscribeToActions, useActionEnabled } from "@table-craft/desktop/renderer/actions/index.js";
 import { ROUTINE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/routineActions.js";
 import { SERVER_ACTION_IDS } from "@table-craft/desktop/renderer/actions/serverActions.js";
 import { SESSIONS_ACTION_IDS } from "@table-craft/desktop/renderer/actions/sessionsActions.js";
 import { TABLE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/tableActions.js";
+import { TOPIC_ACTION_IDS } from "@table-craft/desktop/renderer/actions/topicActions.js";
 import type { OpenTableArgs } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 import { buildTree } from "@table-craft/desktop/renderer/model/datasourceTree.js";
 import { DRAG_OBJECT_TYPE, draggedObjectOf } from "@table-craft/desktop/renderer/model/dragObject.js";
@@ -150,6 +152,7 @@ const DATASOURCE_MENU = [
   OBJECT_ACTION_IDS.newDatabase,
   KEY_ACTION_IDS.goTo,
   ACTION_IDS.manageShownSchemas,
+  TOPIC_ACTION_IDS.manageShown,
   null,
   ACTION_IDS.datasourceProperties,
   ACTION_IDS.duplicateDatasource,
@@ -277,6 +280,7 @@ const HIDDEN_WHEN_DISABLED: ReadonlySet<string> = new Set([
   KEY_ACTION_IDS.goTo,
   KEY_ACTION_IDS.loadMore,
   ACTION_IDS.manageShownSchemas,
+  TOPIC_ACTION_IDS.manageShown,
   ...KEY_HIDDEN_WHEN_DISABLED,
   KEY_EDIT_ACTION_IDS.refreshFolder,
   ...DDL_SCRIPT_HIDDEN_WHEN_DISABLED,
@@ -362,14 +366,19 @@ function menuOf(node: ExplorerNode): readonly MenuEntry[] {
   return CATALOG_MENU;
 }
 
-/** "N of M" when Manage Shown Schemas hides some of the datasource's listed namespaces (decision 117). */
+/** "N of M" when Manage Shown Schemas or Topics hides some of what the datasource lists (decision 117). */
 function useShownText(node: ExplorerNode): string | null {
   const namespaces = useCatalog((state) =>
     node.kind === "datasource" ? (state.catalogs[node.datasource.id]?.namespaces ?? null) : null,
   );
+  const topics = useStreams((state) =>
+    node.kind === "datasource" ? (state.streams[node.datasource.id]?.topics ?? null) : null,
+  );
   const showSystem = useLayout((state) => state.layout.showSystemSchemas);
   if (node.kind !== "datasource") return null;
-  const count = shownNamespaceCount(node.datasource, namespaces, showSystem);
+  const count =
+    shownTopicCount(node.datasource, topics, showSystem) ??
+    shownNamespaceCount(node.datasource, namespaces, showSystem);
   return count === null ? null : `${String(count.shown)} of ${String(count.total)}`;
 }
 

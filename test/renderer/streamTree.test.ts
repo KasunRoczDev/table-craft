@@ -10,6 +10,9 @@ import {
   streamStatusText,
   subjectDetail,
   nounFor,
+  shownTopicCount,
+  shownTopicFilter,
+  shownTopics,
   topicDetail,
   topicFolders,
   type DatasourceStreams,
@@ -107,6 +110,45 @@ describe("stream tree", () => {
     expect(shown.map((row) => row.label)).toEqual(["__consumer_offsets", "audit.log", "plain"]);
     const topics = rows(STREAMS, false, SECTIONS).find((row) => row.node.kind === "streamSection");
     expect(topics?.node).toMatchObject({ section: "topics", count: 4 });
+  });
+
+  it("givenShownTopics_whenRows_thenOnlyThoseListAndTheSectionCountsThem", () => {
+    const filtered = { ...DATASOURCE, shownTopics: ["audit.log", "orders.v1", "gone"] };
+    const shown = explorerRows({
+      tree: [{ kind: "datasource", datasource: filtered }],
+      catalogs: {},
+      expanded: new Set(["datasource:kafka", ...SECTIONS]),
+      collapsedFolders: new Set(),
+      showSystem: false,
+      canExpand: () => true,
+      streams: { kafka: STREAMS },
+      browsesStreams: () => true,
+    });
+    expect(shown.filter((row) => row.node.kind === "topic").map((row) => row.label)).toEqual([
+      "audit.log",
+      "orders.v1",
+    ]);
+    expect(shown.find((row) => row.node.kind === "streamSection")?.node).toMatchObject({ count: 2 });
+  });
+
+  it("givenShownTopics_whenCounted_thenShownOfTheListedTopics", () => {
+    const topics = STREAMS.topics ?? [];
+    expect(shownTopicCount(DATASOURCE, topics, false)).toBeNull();
+    expect(shownTopicCount({ shownTopics: ["plain"] }, null, false)).toBeNull();
+    expect(shownTopicCount({ shownTopics: ["plain", "__consumer_offsets"] }, topics, false)).toEqual({
+      shown: 1,
+      total: 4,
+    });
+    expect(shownTopicCount({ shownTopics: ["plain", "__consumer_offsets"] }, topics, true)).toEqual({
+      shown: 2,
+      total: 5,
+    });
+  });
+
+  it("givenShownTopicsFilter_whenInternalHidden_thenInternalStaysHidden", () => {
+    const names = shownTopics(STREAMS.topics ?? [], false, shownTopicFilter({ shownTopics: ["__consumer_offsets"] }));
+    expect(names).toEqual([]);
+    expect(shownTopicFilter({})).toBeNull();
   });
 
   it("givenLagAboveTheDatasourceWarning_whenRows_thenGroupLagging", () => {
