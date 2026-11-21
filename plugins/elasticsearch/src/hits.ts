@@ -8,6 +8,7 @@ import {
   type TypeClass,
   type WireValue,
 } from "@table-craft/plugin-api";
+import { jsonCell, previewText } from "./limits.js";
 import { valueFields } from "./mapping.js";
 
 export const SCORE_COLUMN = "_score";
@@ -115,11 +116,12 @@ export function valueAt(source: unknown, path: string): unknown {
   return undefined;
 }
 
+/** A value as a cell; a text or JSON longer than `CELL_PREVIEW_CHARS` keeps only its start. */
 export function cellOf(value: unknown): WireValue {
   if (value === undefined || value === null) return null;
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return value;
-  return { kind: "json", text: JSON.stringify(value) };
+  if (typeof value === "string") return previewText(value);
+  if (typeof value === "boolean" || typeof value === "number") return value;
+  return jsonCell(JSON.stringify(value));
 }
 
 export function hitRow(hit: Hit, shape: HitColumns): Row {
@@ -128,6 +130,6 @@ export function hitRow(hit: Hit, shape: HitColumns): Row {
   if (shape.withScore) meta.push(typeof hit._score === "number" ? hit._score : null);
   const values = shape.fields.map((path) => cellOf(valueAt(hit._source, path)));
   const row = shape.meta === "first" ? [...meta, ...values] : [...values, ...meta];
-  row.push(hit._source === undefined ? null : { kind: "json", text: JSON.stringify(hit._source) });
+  row.push(hit._source === undefined ? null : jsonCell(JSON.stringify(hit._source)));
   return row;
 }

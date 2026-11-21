@@ -182,6 +182,15 @@ export function hitsText(shown: number, total: SearchTotal | null): string {
   return `${range} of ${count} ${total.value === "1" && total.relation === "eq" ? "hit" : "hits"}`;
 }
 
+/**
+ * Whether the rows ran out before the hits did: the plugin stops paging when the kept rows reach its
+ * memory cap, and the rest stay on the server.
+ */
+export function stoppedEarly(rowCount: number, complete: boolean, total: SearchTotal | null): boolean {
+  if (!complete || rowCount === 0 || total === null || !/^\d+$/.test(total.value)) return false;
+  return BigInt(total.value) > BigInt(rowCount);
+}
+
 /** Each step's tokens beside the tokens the step before it had and this one no longer has. */
 export interface AnalyzedChainStep {
   readonly kept: readonly string[];

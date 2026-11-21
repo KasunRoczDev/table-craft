@@ -18,7 +18,7 @@ An index is neither a table nor a key space. Mapping it onto `schemaTree` would 
 columns the cluster does not have (a mapping is per index, fields nest, a field may be text and
 keyword at once), and the table editor's generated SQL would have nothing to run. Search is
 also shaped differently from SQL: the total is an estimate past 10,000, pages are reached through a
-point in time or a scroll, and the useful default for a log index is the newest documents in a time
+scroll, and the useful default for a log index is the newest documents in a time
 range. Following decision 169, a service with its own capability lets the host show the right tree
 and tab while the console stays the plugin's own command language.
 

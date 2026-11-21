@@ -2,6 +2,7 @@ import { Agent as HttpAgent, request as httpRequest, type IncomingMessage } from
 import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import type { ConnectionOptions as TlsOptions } from "node:tls";
 import { PluginError } from "@table-craft/plugin-api";
+import { REPLY_MAX_BYTES } from "./limits.js";
 
 export const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"] as const;
 export type HttpMethod = (typeof HTTP_METHODS)[number];
@@ -26,6 +27,7 @@ const NETWORK_CODES = new Set([
   "ECONNABORTED",
 ]);
 const ERROR_PREVIEW_CHARS = 300;
+const MIB = 1024 * 1024;
 const DOT_SEGMENT = /^\.{1,2}$/;
 
 /** Whether a path holds a `.` or `..` segment, plain or percent-encoded, which a URL would resolve away. */
@@ -55,6 +57,8 @@ export interface RequestOptions {
   readonly ndjson?: boolean;
   /** Statuses that resolve instead of rejecting, such as 404 for an existence check. */
   readonly accept?: readonly number[];
+  /** The largest body read before the reply is dropped; `REPLY_MAX_BYTES` by default. */
+  readonly maxBytes?: number;
 }
 
 export interface Reply {
@@ -81,6 +85,23 @@ export class ElasticHttpError extends PluginError {
   get forbidden(): boolean {
     return this.status === HTTP_FORBIDDEN;
   }
+}
+
+/** A reply past `REPLY_MAX_BYTES`, dropped unread so its bytes never pile up in the engine. */
+export class ReplyTooLargeError extends PluginError {
+  readonly tooLarge = true;
+
+  constructor(readonly limit: number) {
+    super(
+      "statementFailed",
+      `The reply passed ${String(Math.round(limit / MIB))} MB and was dropped to keep memory free; ask for fewer hits with "size", or fewer fields with "_source" or "filter_path".`,
+    );
+  }
+}
+
+/** Structural, since an error may cross plugin bundles. */
+export function isReplyTooLarge(error: unknown): boolean {
+  return error instanceof Error && (error as { tooLarge?: unknown }).tooLarge === true;
 }
 
 /** Structural, since an error may cross plugin bundles. */
@@ -222,9 +243,26 @@ export class ElasticClient {
         clearTimeout(timer);
         outcome();
       };
+      const maxBytes = options.maxBytes ?? REPLY_MAX_BYTES;
       const request = send(url, { method, headers, agent: this.#agent }, (response: IncomingMessage) => {
         const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        let received = 0;
+        const tooLarge = (): void => {
+          chunks.length = 0;
+          request.destroy();
+          finish(() => {
+            reject(new ReplyTooLargeError(maxBytes));
+          });
+        };
+        if (Number(response.headers["content-length"] ?? 0) > maxBytes) {
+          tooLarge();
+          return;
+        }
+        response.on("data", (chunk: Buffer) => {
+          received += chunk.length;
+          if (received > maxBytes) tooLarge();
+          else chunks.push(chunk);
+        });
         response.on("error", (error) => {
           finish(() => {
             reject(new PluginError("connectionLost", `The connection broke while reading the reply: ${error.message}`));

@@ -8,7 +8,7 @@ The Elasticsearch plugin talks to Elasticsearch and OpenSearch through its own s
 Node's `http` and `https` modules, one keep-alive agent per session, with no client library. On
 connect it reads `GET /` (or the reached node's version when the user may not read it) and builds a
 dialect from the distribution and version: mapping types before 7.0, the hit total as a number or
-an object, points in time from Elasticsearch 7.10 and OpenSearch 2.4 with scrolls before them,
+an object, `fixed_interval` for date histograms from 7.2,
 `expand_wildcards` on `_cat` from 7.7, and the SQL and PPL endpoints of each. It refuses
 Elasticsearch older than 6.0. It never sniffs the cluster for other nodes.
 

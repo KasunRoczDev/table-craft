@@ -2,9 +2,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isPluginError } from "@table-craft/plugin-api";
-import { ElasticClient, hasDotSegment, isForbidden } from "@table-craft/plugin-elasticsearch/client";
+import { ElasticClient, hasDotSegment, isForbidden, isReplyTooLarge } from "@table-craft/plugin-elasticsearch/client";
 
 const AUTHORIZATION = "Basic dGVzdDp0ZXN0";
+const LARGE = "x".repeat(4096);
+const CHUNKS = 16;
+const SMALL_LIMIT = 1024;
 const seen: { path: string; authorization: string | undefined }[] = [];
 let server: Server;
 let client: ElasticClient;
@@ -27,6 +30,8 @@ function reply(path: string): { status: number; type: string; body: string } {
     };
   }
   if (path.startsWith("/html")) return { status: 200, type: "text/html", body: "<html>proxy</html>" };
+  if (path.startsWith("/large"))
+    return { status: 200, type: "application/json", body: JSON.stringify({ text: LARGE }) };
   return { status: 200, type: "application/json", body: JSON.stringify({ path }) };
 }
 
@@ -34,8 +39,14 @@ beforeAll(async () => {
   server = createServer((request, response) => {
     const path = request.url ?? "";
     seen.push({ path, authorization: request.headers.authorization });
+    if (path.startsWith("/chunked")) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      for (let chunk = 0; chunk < CHUNKS; chunk += 1) response.write(LARGE);
+      response.end();
+      return;
+    }
     const { status, type, body } = reply(path);
-    response.writeHead(status, { "Content-Type": type });
+    response.writeHead(status, { "Content-Type": type, "Content-Length": String(Buffer.byteLength(body)) });
     response.end(body);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -102,6 +113,19 @@ describe("elasticsearch client", () => {
   it("givenHtmlReply_whenJsonExpected_thenItSaysWhatCameBack", async () => {
     const error = await failure(client.json("GET", "/html"));
     expect(String((error as Error).message)).toContain("<html>proxy</html>");
+  });
+
+  it.each(["/large", "/chunked"])("givenReplyPastTheLimit %s_whenRequested_thenDroppedAsTooLarge", async (path) => {
+    const error = await failure(client.request("GET", path, { maxBytes: SMALL_LIMIT }));
+    expect(isReplyTooLarge(error)).toBe(true);
+    expect(isPluginError(error) && error.code === "statementFailed").toBe(true);
+    expect(String((error as Error).message)).toContain("filter_path");
+  });
+
+  it("givenReplyWithinTheLimit_whenRequestedAgain_thenTheConnectionStillServes", async () => {
+    await failure(client.request("GET", "/chunked", { maxBytes: SMALL_LIMIT }));
+    const body = await client.json<{ text: string }>("GET", "/large");
+    expect(body.text).toBe(LARGE);
   });
 
   it("givenAbortedSignal_whenRequested_thenCancelled", async () => {

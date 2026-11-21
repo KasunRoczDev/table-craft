@@ -15,7 +15,8 @@ import {
   type SearchTargetDescription,
   type SearchTotal,
 } from "@table-craft/plugin-api";
-import { isForbidden, type ElasticClient } from "./client.js";
+import { isForbidden, isReplyTooLarge, type ElasticClient } from "./client.js";
+import { SEARCH_KEPT_BYTES, rowBytes } from "./limits.js";
 import { SCROLL_KEEP_ALIVE, type Dialect } from "./dialect.js";
 import { defaultFields, hitColumns, hitRow, type Hit, type HitColumns } from "./hits.js";
 import { listTargets } from "./indices.js";
@@ -40,6 +41,10 @@ interface SearchReply {
 const JSON_INDENT = 2;
 const HISTOGRAM_AGG = "over_time";
 const WILDCARD = /[*?,]/;
+/** Indices of a large target whose mappings stand for all of them. */
+const MAPPING_SAMPLE = 4;
+/** How much smaller the first page gets each time its reply is too large to read. */
+const PAGE_SHRINK = 10;
 /** The span a histogram covers when its range has no start. */
 const OPEN_RANGE_MS = 24 * 60 * 60 * 1000;
 
@@ -114,6 +119,9 @@ interface MappingOf {
   readonly fields: SearchTargetDescription["fields"];
   readonly mappingType: string | null;
   readonly indices: readonly string[];
+  /** The path segment the mapping was read from: the target, or its sampled indices. */
+  readonly read: string;
+  readonly sampled: boolean;
 }
 
 /**
@@ -126,31 +134,71 @@ export class ElasticIndices implements IndexBrowser {
   readonly #dialect: Dialect;
   readonly #filter: string;
   readonly #track: TrackRequest;
+  readonly #keptBytes: number;
   readonly #scrolls = new Set<string>();
 
-  constructor(client: ElasticClient, dialect: Dialect, filter: string, track: TrackRequest = UNTRACKED) {
+  constructor(
+    client: ElasticClient,
+    dialect: Dialect,
+    filter: string,
+    track: TrackRequest = UNTRACKED,
+    keptBytes: number = SEARCH_KEPT_BYTES,
+  ) {
     this.#client = client;
     this.#dialect = dialect;
     this.#filter = filter;
     this.#track = track;
+    this.#keptBytes = keptBytes;
   }
 
   list(): Promise<readonly SearchTarget[]> {
     return this.#track((signal) => listTargets(this.#client, this.#dialect, this.#filter, signal));
   }
 
+  /** The indices behind a target, sorted, or null when `_cat` is not allowed. */
+  async #indexNames(target: string, signal: AbortSignal): Promise<string[] | null> {
+    try {
+      const rows = await this.#client.json<readonly { index?: unknown }[]>(
+        "GET",
+        `/_cat/indices/${encoded(target)}?format=json&h=index`,
+        { signal },
+      );
+      return rows
+        .map((row) => row.index)
+        .filter((name): name is string => typeof name === "string")
+        .sort();
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return null;
+    }
+  }
+
+  /**
+   * The mapping of a target, read from its last `MAPPING_SAMPLE` indices by name when it has more:
+   * a rollover family of hundreds shares one template, and their mappings together run to tens of
+   * megabytes read again on every search.
+   */
   async #mapping(target: string, signal: AbortSignal): Promise<MappingOf> {
-    const reply = await this.#client.json<Record<string, unknown>>("GET", `/${encoded(target)}/_mapping`, { signal });
+    const names = await this.#indexNames(target, signal);
+    const sampled = names !== null && names.length > MAPPING_SAMPLE ? names.slice(-MAPPING_SAMPLE) : null;
+    const read = sampled === null ? encoded(target) : sampled.map((name) => encodeURIComponent(name)).join(",");
+    const reply = await this.#client.json<Record<string, unknown>>("GET", `/${read}/_mapping`, { signal });
     const { fields, mappingType } = parseMapping(reply, this.#dialect.mappingTypes);
-    return { reply, fields, mappingType, indices: Object.keys(reply).sort() };
+    const indices = names !== null && names.length > 0 ? names : Object.keys(reply).sort();
+    return { reply, fields, mappingType, indices, read, sampled: sampled !== null };
   }
 
   describe(target: string): Promise<SearchTargetDescription> {
     return this.#track(async (signal) => {
       const warnings: string[] = [];
-      const { reply, fields, mappingType, indices } = await this.#mapping(target, signal);
+      const { reply, fields, mappingType, indices, read, sampled } = await this.#mapping(target, signal);
+      if (sampled) {
+        warnings.push(
+          `The mapping and settings shown are those of the last ${String(MAPPING_SAMPLE)} of ${indices.length.toLocaleString("en-US")} indices by name, the newest of a rollover family.`,
+        );
+      }
       const settingsReply = await this.#client
-        .json<Record<string, unknown>>("GET", `/${encoded(target)}/_settings`, { signal })
+        .json<Record<string, unknown>>("GET", `/${read}/_settings`, { signal })
         .catch((error: unknown) => {
           if (!isForbidden(error)) throw error;
           warnings.push(`The settings are hidden: ${error instanceof Error ? error.message : String(error)}`);
@@ -184,20 +232,27 @@ export class ElasticIndices implements IndexBrowser {
     const sort = sortOf(request);
     const scored = sort.length === 0 && request.query.trim() !== "";
     const shape = hitColumns(fields, mapping.fields, withIndex, scored, timeField === null ? "first" : "last");
-    const body: Record<string, unknown> = {
-      query: queryOf(request),
-      size: pageSize,
-      ...(sort.length === 0 ? {} : { sort }),
-    };
-    const first = await this.#client.json<SearchReply>(
-      "POST",
-      `/${encoded(request.target)}/_search?scroll=${SCROLL_KEEP_ALIVE}`,
-      { body, signal },
-    );
+    const query = queryOf(request);
+    let size = pageSize;
+    let body: Record<string, unknown> = {};
+    let first: SearchReply | null = null;
+    while (first === null) {
+      body = { query, size, ...(sort.length === 0 ? {} : { sort }) };
+      try {
+        first = await this.#client.json<SearchReply>(
+          "POST",
+          `/${encoded(request.target)}/_search?scroll=${SCROLL_KEEP_ALIVE}`,
+          { body, signal },
+        );
+      } catch (error) {
+        if (!isReplyTooLarge(error) || size === 1) throw error;
+        size = Math.max(1, Math.floor(size / PAGE_SHRINK));
+      }
+    }
     const scrollId = typeof first._scroll_id === "string" ? first._scroll_id : null;
     const hits = first.hits?.hits ?? [];
     const total = totalOf(first.hits?.total);
-    const done = hits.length < pageSize || (total?.relation === "eq" && Number(total.value) <= hits.length);
+    const done = hits.length < size || (total?.relation === "eq" && Number(total.value) <= hits.length);
     if (scrollId !== null && done) await this.#clearScroll(scrollId);
     else if (scrollId !== null) this.#scrolls.add(scrollId);
     return {
@@ -216,9 +271,20 @@ export class ElasticIndices implements IndexBrowser {
 
   async *#pages(first: readonly Hit[], scrollId: string | null, shape: HitColumns): AsyncIterable<Row> {
     let current = scrollId;
+    let kept = 0;
+    const keep = (hit: Hit): Row | null => {
+      if (kept >= this.#keptBytes) return null;
+      const row = hitRow(hit, shape);
+      kept += rowBytes(row);
+      return row;
+    };
     try {
-      for (const hit of first) yield hitRow(hit, shape);
-      while (current !== null) {
+      for (const hit of first) {
+        const row = keep(hit);
+        if (row === null) return;
+        yield row;
+      }
+      while (current !== null && kept < this.#keptBytes) {
         const scrollId = current;
         const reply: SearchReply = await this.#track((signal) =>
           this.#client.json<SearchReply>("POST", "/_search/scroll", {
@@ -233,7 +299,11 @@ export class ElasticIndices implements IndexBrowser {
           current = next;
         }
         const page = reply.hits?.hits ?? [];
-        for (const hit of page) yield hitRow(hit, shape);
+        for (const hit of page) {
+          const row = keep(hit);
+          if (row === null) return;
+          yield row;
+        }
         if (page.length === 0) break;
       }
     } finally {

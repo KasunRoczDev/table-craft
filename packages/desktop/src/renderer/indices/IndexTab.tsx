@@ -11,7 +11,7 @@ import {
   SettingsView,
 } from "@table-craft/desktop/renderer/indices/IndexViews.js";
 import { SearchBar } from "@table-craft/desktop/renderer/indices/SearchBar.js";
-import { hitsText } from "@table-craft/desktop/renderer/model/indexSearch.js";
+import { hitsText, stoppedEarly } from "@table-craft/desktop/renderer/model/indexSearch.js";
 import { healthTone, searchTargetFacts } from "@table-craft/desktop/renderer/model/indexTree.js";
 import {
   useIndexTabs,
@@ -37,6 +37,7 @@ const STATUS_TEXT = {
 } as const;
 const ANALYZE_VIEW: IndexView = "analyze";
 const STALE_TEXT = "The connection closed; Run searches again.";
+const STOPPED_TEXT = "Stopped here to keep memory free; narrow the search to reach the rest.";
 const ERROR_CLASS = "shrink-0 border-b border-line bg-panel px-gap py-1 break-words text-danger";
 const HEALTH_CLASS = { warning: "text-warning", danger: "text-danger" } as const;
 const VIEWS: readonly { readonly value: IndexView; readonly label: string }[] = [
@@ -116,6 +117,14 @@ function Footer({ tab }: { readonly tab: IndexTabState }) {
           <span className="shrink-0 tabular-nums">took {search.tookMs.toLocaleString("en-US")} ms</span>
           <span aria-hidden>·</span>
           <ShardsText shards={search.shards} />
+          {stoppedEarly(tab.result?.rowCount ?? 0, tab.result?.complete ?? false, search.total) ? (
+            <>
+              <span aria-hidden>·</span>
+              <span data-testid="index-stopped" className="min-w-0 truncate text-warning">
+                {STOPPED_TEXT}
+              </span>
+            </>
+          ) : null}
           <SearchWarnings warnings={search.warnings} />
         </>
       )}

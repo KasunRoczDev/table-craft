@@ -3,9 +3,12 @@ import type { ElasticClient, Reply } from "./client.js";
 import type { Dialect } from "./dialect.js";
 import { cellOf, typeClassOf, type Hit } from "./hits.js";
 import { classify, parseRequest, pathSegments } from "./language.js";
+import { REPLY_PREVIEW_CHARS, SEARCH_KEPT_BYTES, jsonCell, previewText, rowBytes } from "./limits.js";
 import { shardWarnings } from "./search.js";
 
 const JSON_INDENT = 2;
+const KIB = 1024;
+const MIB = KIB * KIB;
 /** A console search shows at most this many source fields as columns, the rest stay in `_source`. */
 const CONSOLE_FIELD_LIMIT = 200;
 /** The host's hint says how to turn read-only off; the message only says what was held back. */
@@ -65,14 +68,32 @@ export function hitsResult(hits: readonly Hit[]): ExecuteResult {
     ...fields.map((name) => ({ name, type: null })),
     { name: "_source", type: "json", typeClass: "json" },
   ];
-  const rows = hits.map((hit): Row => [
-    cellOf(hit._id),
-    cellOf(hit._index),
-    typeof hit._score === "number" ? hit._score : null,
-    ...fields.map((path) => cellOf(leafValue(hit._source, path))),
-    hit._source === undefined ? null : { kind: "json", text: JSON.stringify(hit._source) },
+  const rows: Row[] = [];
+  let kept = 0;
+  for (const hit of hits) {
+    if (kept >= SEARCH_KEPT_BYTES) break;
+    const row: Row = [
+      cellOf(hit._id),
+      cellOf(hit._index),
+      typeof hit._score === "number" ? hit._score : null,
+      ...fields.map((path) => cellOf(leafValue(hit._source, path))),
+      hit._source === undefined ? null : jsonCell(JSON.stringify(hit._source)),
+    ];
+    kept += rowBytes(row);
+    rows.push(row);
+  }
+  const result = tableResult(columns, rows);
+  if (rows.length === hits.length) return result;
+  return withWarnings(result, [
+    `Showing the first ${rows.length.toLocaleString("en-US")} of ${hits.length.toLocaleString("en-US")} hits: the rest pass ${String(SEARCH_KEPT_BYTES / MIB)} MB in memory; ask for fewer with "size" or "_source".`,
   ]);
-  return tableResult(columns, rows);
+}
+
+/** A result that also says `warnings` in Output, after any it already says. */
+function withWarnings(result: ExecuteResult, warnings: readonly string[]): ExecuteResult {
+  if (warnings.length === 0) return result;
+  const text = [result.reply?.text, ...warnings].filter((part) => part !== undefined).join(" ");
+  return { ...result, reply: { value: text, text } };
 }
 
 interface Bucket {
@@ -206,20 +227,21 @@ function restResult(method: string, segments: readonly string[], reply: Reply): 
         const buckets = bucketsResult(first[0], first[1]);
         if (buckets !== null) return buckets;
       }
-      if (hits !== null) {
-        const result = hitsResult(hits);
-        const warnings = shardWarnings(body);
-        return warnings.length === 0
-          ? result
-          : { ...result, reply: { value: warnings.join(" "), text: warnings.join(" ") } };
-      }
+      if (hits !== null) return withWarnings(hitsResult(hits), shardWarnings(body));
     }
   }
-  return replyResult(
-    { kind: "json", text: JSON.stringify(body) },
-    pretty(body),
-    method === "GET" && body !== null && typeof body === "object",
-  );
+  return jsonReply(body, method === "GET" && body !== null && typeof body === "object");
+}
+
+/**
+ * A reply shown in Output, cut to `REPLY_PREVIEW_CHARS`: a mapping of a few thousand indices runs to
+ * tens of megabytes, which Output cannot draw and nobody reads there.
+ */
+export function jsonReply(body: unknown, read: boolean): ExecuteResult {
+  const text = pretty(body);
+  if (text.length <= REPLY_PREVIEW_CHARS) return replyResult({ kind: "json", text: JSON.stringify(body) }, text, read);
+  const cut = `${previewText(text, REPLY_PREVIEW_CHARS)}\nOnly the first ${String(REPLY_PREVIEW_CHARS / KIB)} KB of ${Math.ceil(text.length / KIB).toLocaleString("en-US")} KB are shown; add "filter_path" to the request to get less.`;
+  return replyResult(cut, cut, read);
 }
 
 /** Runs one console request (plan 165), refused on a read-only session unless it only reads. */

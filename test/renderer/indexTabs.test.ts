@@ -19,6 +19,7 @@ import {
   roundScale,
   searchRequestOf,
   sortableFields,
+  stoppedEarly,
 } from "@table-craft/desktop/renderer/model/indexSearch.js";
 import { createIndexTabsStore, searchCommandText } from "@table-craft/desktop/renderer/state/indexTabs.js";
 
@@ -283,6 +284,22 @@ describe("index search bar", () => {
       { kind: "tokenizer", tokens: [token("Tea", 0), token("cup", 1)] },
     ];
     expect(droppedTokens(steps)[1]).toEqual({ kept: ["Tea", "cup"], dropped: [] });
+  });
+});
+
+describe("index search stopped early", () => {
+  it.each([
+    { rows: 500, complete: true, total: { value: "3263", relation: "eq" as const }, stopped: true },
+    { rows: 500, complete: false, total: { value: "3263", relation: "eq" as const }, stopped: false },
+    { rows: 3263, complete: true, total: { value: "3263", relation: "eq" as const }, stopped: false },
+    { rows: 9000, complete: true, total: { value: "10000", relation: "gte" as const }, stopped: true },
+    { rows: 0, complete: true, total: { value: "5", relation: "eq" as const }, stopped: false },
+  ])("givenRows $rows of $total.value complete $complete_whenChecked_thenStopped $stopped", (c) => {
+    expect(stoppedEarly(c.rows, c.complete, c.total)).toBe(c.stopped);
+  });
+
+  it("givenNoTotal_whenChecked_thenNotStopped", () => {
+    expect(stoppedEarly(10, true, null)).toBe(false);
   });
 });
 

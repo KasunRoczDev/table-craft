@@ -13,8 +13,7 @@ client certificate and key. A cluster behind a proxy that serves it under a path
 never discovers the others.
 
 On connect TableCraft reads the cluster's version and adapts to it: mapping types on 6.x, the shape
-of hit totals, points in time on Elasticsearch 7.10 and OpenSearch 2.4 and later, scrolls before
-them. When the user you sign in with may not read `GET /`, it asks the node it reached instead. On a
+of hit totals, the date histogram's interval and the SQL endpoint. When the user you sign in with may not read `GET /`, it asks the node it reached instead. On a
 cluster shared by many teams, the advanced **Index filter** (globs separated by commas, such as
 `logs-*, products`) lists only the indices, aliases and data streams whose names match; a console
 request or a tab opened by name still reaches any of them.
@@ -44,6 +43,11 @@ request or a tab opened by name still reaches any of them.
   the result is released, the tab closes or the last page arrives.
   The footer reads `1–100 of 2,431 hits · took 6 ms · 5 shards`; past 10,000 the count reads
   `≥ 10,000`. Shard failures show as a warning with the reason.
+- **Memory.** A search keeps at most 128 MB of rows; past that the footer says it stopped, and a
+  narrower query or time range reaches the rest. A field or `_source` longer than 32,768 characters
+  keeps its start and `…`; `GET <index>/_doc/<id>` in the console reads the whole document. A
+  page whose reply would pass 64 MB is asked for again ten times smaller. A family of hundreds of
+  indices reads the mapping of its last four by name, the newest, and says so.
 - **The request.** **Request** shows the exact request the search sent, with **Copy** and **Open in
   Console**, so a search built in the bar becomes a console request you can change.
 - **Mapping and Settings.** Mapping lists each field with its type, analyzer and multi-fields
@@ -79,6 +83,9 @@ SELECT category, COUNT(*) AS n FROM products GROUP BY category;
   `SHOW`, `DESCRIBE` or `EXPLAIN` goes to the cluster's SQL endpoint, and on OpenSearch a line
   starting with `source=` goes to PPL; their answers show as a grid. Any other answer shows as JSON
   in Output.
+- **Large answers.** A reply past 64 MB is dropped unread with advice to ask for less (`size`,
+  `_source`, `filter_path`). Output shows the first 256 KB of a longer JSON answer, and a search
+  grid keeps at most 128 MB of hits and says how many it showed.
 - **Completion** offers the methods at the start of a line, endpoints such as `_search` and
   `_cat/indices` and the cluster's index names after the method, and Query DSL keys inside a body.
 - **What a request does.** Reads run at once. `DELETE <index>` deletes the index and every document

@@ -17,6 +17,7 @@
     "./hits": "./src/hits.ts",
     "./indices": "./src/indices.ts",
     "./language": "./src/language.ts",
+    "./limits": "./src/limits.ts",
     "./mapping": "./src/mapping.ts",
     "./query": "./src/query.ts",
     "./search": "./src/search.ts",
