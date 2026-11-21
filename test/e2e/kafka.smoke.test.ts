@@ -921,9 +921,9 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
         dialogs.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: picked });
       }, target);
       await pane.getByTestId("tail-export").click();
+      // The engine renames the finished file onto the target, so it appears whole.
       await expect.poll(() => existsSync(target), { timeout: READ_TIMEOUT_MS }).toBe(true);
-      const lines = readFileSync(target, "utf8").trim().split("\n");
-      expect(lines.length).toBeGreaterThanOrEqual(TAIL_BURST);
+      expect(readFileSync(target, "utf8").trim().split("\n").length).toBeGreaterThanOrEqual(TAIL_BURST);
     },
     LONG_SCENARIO_MS,
   );
@@ -1041,6 +1041,14 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await count(panel.getByTestId("message-preview-only")).toBe(0);
       await capture(page, "25-large-message-panel");
 
+      await app.evaluate(({ clipboard }) => clipboard.clear());
+      await preview.click();
+      await pressChord(page, "C");
+      const clipboardText = () => app.evaluate(({ clipboard }) => clipboard.readText());
+      await eventually(async () => (await clipboardText()).length).toBe(LARGE_VALUE_BYTES);
+      const copied = await clipboardText();
+      expect(copied.endsWith(LARGE_VALUE_END)).toBe(true);
+
       await pressChord(page, "W");
       await count(topicTab(page)).toBe(0);
       await eventually(() => Promise.resolve(spillFiles().length)).toBe(0);
@@ -1050,6 +1058,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
           `Seeded ${String(LARGE_MESSAGES)} messages of ${String(LARGE_VALUE_BYTES / KIB)} KB on one partition.`,
           `While the topic tab was open: ${String(whileOpen.length)} spill file(s), ${String(Math.round(spilledBytes / KIB / KIB))} MB, under ${temp}:`,
           ...whileOpen.map((file) => `  ${file.slice(temp.length)}`),
+          `Copying the value cell (Mod+C) put ${String(copied.length)} characters on the clipboard, ending with "${LARGE_VALUE_END}".`,
           `After closing the tab: ${String(spillFiles().length)} spill file(s); every engine folder left: ${readdirSync(
             temp,
           )

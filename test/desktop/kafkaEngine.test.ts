@@ -31,6 +31,7 @@ import {
   type EngineResponse,
   type ExportTask,
   type OpenedTopic,
+  type TopicTailExtract,
   type TopicTailSummary,
   type TopicTailWindow,
 } from "@table-craft/desktop/engine/protocol.js";
@@ -483,6 +484,34 @@ describe("kafka large messages on disk", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
+  it("givenSpilledResult_whenCellAndRowsCopied_thenTheCopyHoldsFullValues", async () => {
+    const { engine, connection, handle } = await openSpilled();
+    const extract = async (id: number, rows: { from: number; to: number }, columns: number[]) =>
+      result<string>(
+        await connection.handle({ id, type: "result.extract", handle, extractor: "csv", rows: [rows], columns }),
+      );
+
+    const cell = await extract(3, { from: 0, to: 1 }, [VALUE_COLUMN]);
+    const rows = await extract(4, { from: 0, to: 2 }, [1, VALUE_COLUMN]);
+    const json = result<string>(
+      await connection.handle({
+        id: 5,
+        type: "result.extract",
+        handle,
+        extractor: "json",
+        rows: [{ from: 0, to: 2 }],
+        columns: [VALUE_COLUMN],
+      }),
+    );
+
+    expect(cell).toBe(FULL_VALUE);
+    expect(rows).toContain(FULL_VALUE);
+    expect(rows).toContain("tiny");
+    expect(rows).not.toContain("…");
+    expect(json).toContain(FULL_VALUE);
+    await engine.close();
+  });
+
   it("givenTailSpillRotated_whenTailMessageAsked_thenNullForRotatedAndFullForKept", async () => {
     const large = (offset: number): TailMessage => ({ ...message(offset), value: FULL_VALUE });
     const batches: TopicTailBatch[] = [
@@ -544,6 +573,74 @@ describe("kafka large messages on disk", () => {
     expect(await full(3)).toBeNull();
     await vi.waitFor(() => expect(budget.used).toBe(0));
     await engine.close();
+  });
+
+  it("givenTailSpillRotated_whenExtracted_thenKeptLargeMessagesWholeAndRotatedOnesCut", async () => {
+    const large = (offset: number): TailMessage => ({ ...message(offset), value: FULL_VALUE });
+    const batches: TopicTailBatch[] = [
+      { messages: [large(0), large(1), large(2), message(3)], state: "live", error: null },
+    ];
+    const tail: TopicTail = {
+      next: () => {
+        const batch = batches.shift();
+        return batch === undefined ? new Promise<TopicTailBatch>(() => undefined) : Promise.resolve(batch);
+      },
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const engine = setup(
+      () => Promise.resolve(session({ topics: { tail: () => Promise.resolve(tail) } as unknown as TopicBrowser })),
+      false,
+      new SpillBudget({ totalBytes: 12_000, minFreeBytes: 0 }),
+    );
+    const connection = engine.connect();
+    const { tailId } = result<TopicTailSummary>(
+      await connection.handle({
+        id: 1,
+        type: "topics.tailStart",
+        topic: "orders",
+        partitions: null,
+        from: { kind: "latest" },
+        keyFormat: "auto",
+        valueFormat: "auto",
+        maxMessages: 10,
+        maxBytes: 1_000_000,
+      }),
+    );
+    const whole = async (sequence: number) =>
+      result<TailMessage | null>(
+        await connection.handle({ id: 2, type: "topics.tailMessage", tailId, sequence: String(sequence) }),
+      );
+    await vi.waitFor(async () => expect((await whole(3))?.value).toBe(FULL_VALUE));
+    const kept = await Promise.all([1, 2, 3].map(async (sequence) => (await whole(sequence))?.value ?? PREVIEW_VALUE));
+    const rotated = kept.filter((value) => value === PREVIEW_VALUE).length;
+    const rows = [{ dropped: "5" }, ...[1, 2, 3, 4].map((sequence) => ({ sequence: String(sequence) }))];
+    const directory = await mkdtemp(join(tmpdir(), "table-craft-tail-export-"));
+    const path = join(directory, "tail.jsonl");
+
+    const copied = result<TopicTailExtract>(
+      await connection.handle({ id: 3, type: "topics.tailExtract", tailId, rows, path: null }),
+    );
+    const exported = result<TopicTailExtract>(
+      await connection.handle({ id: 4, type: "topics.tailExtract", tailId, rows, path }),
+    );
+    const missing = result<TopicTailExtract>(
+      await connection.handle({ id: 5, type: "topics.tailExtract", tailId, rows: [{ sequence: "9" }], path: null }),
+    );
+    const values = (text: string) =>
+      text
+        .trimEnd()
+        .split("\n")
+        .map((line) => (JSON.parse(line) as { value?: string; dropped?: string }).value ?? "gap");
+
+    expect(kept[0]).toBe(PREVIEW_VALUE);
+    expect(kept[2]).toBe(FULL_VALUE);
+    expect(copied).toMatchObject({ messages: 4, cut: rotated, missing: 0 });
+    expect(values(copied.text ?? "")).toEqual(["gap", ...kept, "v3"]);
+    expect(exported).toEqual({ text: null, messages: 4, cut: rotated, missing: 0 });
+    expect(await readFile(path, "utf8")).toBe(`${copied.text ?? ""}\n`);
+    expect(missing).toEqual({ text: null, messages: 0, cut: 0, missing: 1 });
+    await engine.close();
+    await rm(directory, { recursive: true, force: true });
   });
 });
 

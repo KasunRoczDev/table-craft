@@ -18,8 +18,8 @@ engine and are read back on demand.
 - **The engine.** `topics.open` makes one `SpillFile` per read (`spill`, default `true`), keeps it
   under the result handle, and deletes it when the handle is released, replaced, or its session or
   port closes. `topics.message` returns a row's whole cells; Copy Message as JSON, Produce Again and
-  the message panel ask for them, and an export of a topic result swaps them in row by row as it
-  writes. A live tail writes its large messages to its own file in rotate mode, capped at
+  the message panel ask for them, and an export or a copy of a topic result swaps them in row by
+  row as it writes. A live tail writes its large messages to its own file in rotate mode, capped at
   `TOPIC_TAIL_SPILL_BYTES` (512 MiB): the oldest 64 MiB segment goes first and `topics.tailMessage`
   answers null for what it held, which the pane says.
 - **The file.** Records are JSON, appended to 64 MiB segments in
@@ -53,10 +53,16 @@ read it in the message panel, one at a time, or export it.
 
 ## Consequences
 
-- Copy of a cell's value from the grid copies the preview; the message panel and Copy Message as
-  JSON give the whole message.
-- A live tail's Export and Copy as JSON Lines write previews; a topic tab's export writes whole
-  messages.
+- Every copy gives whole messages. `result.extract` (Copy of cells or rows in any format) swaps the
+  whole cells in for the rows it picked, as the export does; the core result store stays generic,
+  holding previews like any other rows. The message panel shows the focused key or headers cell
+  whole. A live tail's Export and Copy as JSON Lines go through `topics.tailExtract`, which writes
+  the export file itself so the renderer never holds the whole messages, to a `.part-` name beside
+  the target renamed onto it once written (a failed export leaves the target as it was); a message
+  whose file rotated it away, or one past 64 MB of copied text, goes out as its preview and the
+  action says how many did.
+- The Tail pane's 32 MB row budget counts the previews it holds, not the records' size, so a topic of
+  large messages keeps as many rows as small ones would.
 - A preview of a JSON value is plain text, so the grid no longer lays out a cut JSON document.
 - Another streams plugin gets previews by implementing `MessageSpill` in its read; nothing in the
   host branches on the plugin.

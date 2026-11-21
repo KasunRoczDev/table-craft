@@ -200,6 +200,7 @@ const METHODS = [
   "topics.tailClear",
   "topics.tailList",
   "topics.tailMessage",
+  "topics.tailExtract",
   "groups.list",
   "groups.describe",
   "groups.consumersOf",

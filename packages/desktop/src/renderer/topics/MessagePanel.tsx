@@ -3,6 +3,7 @@ import type { SpilledMessage } from "@table-craft/desktop/engine/protocol.js";
 import { REGION_ATTRIBUTE } from "@table-craft/desktop/renderer/actions/context.js";
 import { TOPIC_ACTION_IDS } from "@table-craft/desktop/renderer/actions/topicActions.js";
 import {
+  focusedCellText,
   isPreviewMessage,
   messageOf,
   PREVIEW_ONLY_NOTICE,
@@ -14,6 +15,8 @@ import { rowAt } from "@table-craft/desktop/renderer/state/resultTab.js";
 import { useTopicTabs, type TopicTab } from "@table-craft/desktop/renderer/state/topicTabs.js";
 import { ActionButton } from "@table-craft/desktop/renderer/ui/ActionButton.js";
 import { WarningIcon } from "@table-craft/desktop/renderer/ui/icons.js";
+
+const WHOLE_TEXT = "font-grid whitespace-pre-wrap break-all select-text";
 
 function Section({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
@@ -113,6 +116,8 @@ export function MessagePanel({
   const preview = result === null || row === undefined ? null : messageOf(result.columns, row);
   const whole = useWholeMessage(tabId, result?.handle ?? null, preview);
   const message = whole.message ?? preview;
+  const focused = result === null || focus === null ? null : (result.columns[focus.column]?.name ?? null);
+  const cell = message === null ? null : focusedCellText(message, focused);
   return (
     <aside
       aria-label="Message"
@@ -140,8 +145,15 @@ export function MessagePanel({
               {PREVIEW_ONLY_NOTICE}
             </p>
           ) : null}
+          {cell === null ? null : (
+            <Section title={cell.title}>
+              <pre data-testid="message-focused-cell" className={WHOLE_TEXT}>
+                {cell.text}
+              </pre>
+            </Section>
+          )}
           <Section title="Value">
-            <pre data-testid="message-value" className="font-grid whitespace-pre-wrap break-all select-text">
+            <pre data-testid="message-value" className={WHOLE_TEXT}>
               {message.value === null ? "null" : message.valueJson ? prettyJson(message.value) : message.value}
             </pre>
           </Section>

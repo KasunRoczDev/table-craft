@@ -51,5 +51,6 @@ export function topicsRoutes(connection: ConnectionContext): RoutesFor<"topics">
     },
     "topics.tailList": () => Promise.resolve(tails().list()),
     "topics.tailMessage": ({ tailId, sequence }) => tails().message(tailId, sequence),
+    "topics.tailExtract": (request) => tails().extract(request),
   };
 }

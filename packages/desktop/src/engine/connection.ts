@@ -329,12 +329,6 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
     });
   }
 
-  /**
-   * Where a result's export reads from (decision 040): its statement again on a session of the
-   * export's own when it is a read that sees what any session sees; else, when a row limit cut it
-   * short, its statement again without the limit on the console's own session (decision 162); else
-   * the rows held when the cursor is done; else the console's own cursor, drained.
-   */
   /** A datasource without SQL, such as a topic read's (plan 164), exports every format but SQL INSERT. */
   function encoderOf(handle: string): ExportEncoderOptions {
     const dialect = datasourcePlugin().language;
@@ -360,6 +354,12 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
     };
   }
 
+  /**
+   * Where a result's export reads from (decision 040): its statement again on a session of the
+   * export's own when it is a read that sees what any session sees; else, when a row limit cut it
+   * short, its statement again without the limit on the console's own session (decision 162); else
+   * the rows held when the cursor is done; else the console's own cursor, drained.
+   */
   function resultJob(
     source: { handle: string; columns: readonly number[]; shownOnly?: boolean },
     format: ExportFormat,

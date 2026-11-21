@@ -105,6 +105,20 @@ export function isPreviewMessage(message: {
   );
 }
 
+/**
+ * The whole text of the key or headers cell the grid has focused, which the message panel shows
+ * in full instead of in its one-line facts; null for any other column.
+ */
+export function focusedCellText(
+  message: TopicMessage,
+  column: string | null,
+): { readonly title: string; readonly text: string } | null {
+  if (column === "key") return { title: "Key", text: message.key ?? "null" };
+  if (column === "headers" && message.headers.length > 0)
+    return { title: "Headers", text: message.headers.map((header) => `${header.name}: ${header.value}`).join("\n") };
+  return null;
+}
+
 /** Shown when a large message's whole text is gone and only its preview is left. */
 export const PREVIEW_ONLY_NOTICE = "Only the first 1 KB is kept; the full message is no longer available.";
 

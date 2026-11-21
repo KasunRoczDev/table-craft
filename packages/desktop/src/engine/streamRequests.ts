@@ -6,6 +6,7 @@ import {
   SCHEMA_TEXT_MAX_LENGTH,
   STREAM_NAME_MAX_LENGTH,
   TOPIC_NAME_MAX_LENGTH,
+  TOPIC_TAIL_MAX_EXTRACT_ROWS,
   TOPIC_TAIL_MAX_MESSAGES,
   TOPIC_TAIL_MAX_RING_BYTES,
   TOPIC_TAIL_MAX_WINDOW,
@@ -139,6 +140,15 @@ export const STREAM_REQUESTS = [
     spill: z.boolean().optional(),
   }),
   z.strictObject({ id: requestId, type: z.literal("topics.tailMessage"), tailId, sequence: offset }),
+  z.strictObject({
+    id: requestId,
+    type: z.literal("topics.tailExtract"),
+    tailId,
+    rows: z
+      .array(z.union([z.strictObject({ sequence: offset }), z.strictObject({ dropped: offset })]))
+      .max(TOPIC_TAIL_MAX_EXTRACT_ROWS),
+    path: z.string().min(1).nullable(),
+  }),
   z.strictObject({
     id: requestId,
     type: z.literal("topics.tailWindow"),

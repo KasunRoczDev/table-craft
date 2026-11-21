@@ -4,10 +4,12 @@ import {
   MESSAGE_PREVIEW_CHARS,
   TOPIC_TAIL_SPILL_BYTES,
   type RequestOf,
+  type TopicTailExtract,
   type TopicTailRow,
   type TopicTailSummary,
   type TopicTailWindow,
 } from "@table-craft/desktop/engine/protocol.js";
+import { extractTail } from "@table-craft/desktop/engine/tailExtract.js";
 import { serviceOf } from "@table-craft/desktop/engine/services.js";
 import {
   type KeyOperationScope,
@@ -310,6 +312,18 @@ export class TopicTails {
     if (held === null) return null;
     if (!held.spilled) return held.message;
     return (await open.spill?.get(sequence)) ?? null;
+  }
+
+  /** The pane's rows as JSON Lines with each large message whole, to a file or as text. */
+  extract(request: RequestOf<"topics.tailExtract">): Promise<TopicTailExtract> {
+    const open = this.find(request.tailId);
+    return extractTail(
+      {
+        find: (sequence) => open.ring.find(sequence),
+        whole: async (sequence) => (await open.spill?.get(sequence).catch(() => null)) ?? null,
+      },
+      request,
+    );
   }
 
   /** Empties the ring and deletes its spill; a running tail spills into a new one. */

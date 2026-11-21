@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TailMessage, TopicTailSummary, TopicTailWindow } from "@table-craft/desktop/engine/protocol.js";
-import type { EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
+import {
+  MESSAGE_PREVIEW_CHARS,
+  type TailMessage,
+  type TopicTailSummary,
+  type TopicTailWindow,
+} from "@table-craft/desktop/engine/protocol.js";
+import { EngineRequestError, type EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
 import {
   appendTailWindow,
   createTailStore,
+  heldBytes,
+  TAIL_DISPLAY_BYTES,
+  TAIL_DISPLAY_ROWS,
   tailJsonLines,
   tailRowMatches,
   type TailRow,
@@ -62,9 +70,26 @@ describe("tail windows", () => {
   });
 
   it("givenByteBudget_whenLargeMessagesAppended_thenNewestWithinItKept", () => {
-    const rows = appendTailWindow([], window([1, 2, 3, 4]), 100, 25);
+    const rows = appendTailWindow([], window([1, 2, 3, 4]), 100, heldBytes(message(1)) * 2);
     expect(rows.map((row) => row.sequence)).toEqual(["3", "4"]);
     expect(appendTailWindow([], window([5]), 100, 1).map((row) => row.sequence)).toEqual(["5"]);
+  });
+
+  it("givenLargeRecordsAsPreviews_whenAppended_thenTheBudgetCountsThePreviewsHeld", () => {
+    const largeRecord = 262_144;
+    const preview = (sequence: number) => ({
+      sequence: String(sequence),
+      message: { ...message(sequence), value: `${"x".repeat(MESSAGE_PREVIEW_CHARS)}…`, size: largeRecord },
+    });
+    const sequences = Array.from({ length: 1_000 }, (_, index) => index + 1);
+    const rows = appendTailWindow(
+      [],
+      { ...window([]), rows: sequences.map(preview), through: "1000" },
+      TAIL_DISPLAY_ROWS,
+    );
+    expect(sequences.length * largeRecord).toBeGreaterThan(TAIL_DISPLAY_BYTES);
+    expect(rows).toHaveLength(sequences.length);
+    expect(heldBytes(preview(1).message)).toBeLessThan(largeRecord / 64);
   });
 
   it("givenFilter_whenMatched_thenKeyValueOrHeadersAndGapsKept", () => {
@@ -137,5 +162,70 @@ describe("tail windows", () => {
     expect(await store.getState().message("t1", "1")).toBeNull();
     await store.getState().stop("t1", true);
     expect(connect).toHaveBeenCalledTimes(before);
+  });
+});
+
+describe("tail copy and export", () => {
+  const PREVIEW = `${"v".repeat(MESSAGE_PREVIEW_CHARS)}…`;
+
+  async function heldTail(extract: (params: unknown) => Promise<unknown>) {
+    const windows = [
+      {
+        ...window([1, 2], "3"),
+        rows: [
+          { sequence: "1", message: { ...message(1), value: PREVIEW } },
+          { sequence: "2", message: message(2) },
+        ],
+      },
+    ];
+    const call = vi.fn((type: string, params: unknown): Promise<unknown> => {
+      if (type === "topics.tailStart") return Promise.resolve(SUMMARY);
+      if (type === "topics.tailExtract") return extract(params);
+      return Promise.resolve(windows.shift() ?? window([]));
+    });
+    const store = createTailStore(() => Promise.resolve({ call } as unknown as EngineClient));
+    await store.getState().start("kafka", REQUEST);
+    return { store, call };
+  }
+
+  it("givenEngineHoldsTheRows_whenExtracted_thenItsWholeMessagesAndCutReturned", async () => {
+    const { store, call } = await heldTail(() => Promise.resolve({ text: "whole", messages: 2, cut: 0, missing: 0 }));
+
+    const copied = await store.getState().extract("t1", null);
+    const exported = await store.getState().extract("t1", "/out/tail.jsonl");
+
+    expect(call).toHaveBeenCalledWith("topics.tailExtract", {
+      tailId: "t1",
+      rows: [{ dropped: "3" }, { sequence: "1" }, { sequence: "2" }],
+      path: null,
+    });
+    expect(call).toHaveBeenCalledWith("topics.tailExtract", expect.objectContaining({ path: "/out/tail.jsonl" }));
+    expect(copied).toEqual({ text: "whole", messages: 2, cut: 0 });
+    expect(exported.text).toBe("whole");
+  });
+
+  it("givenEngineMissesRows_whenExtracted_thenThePaneRowsWithTheirPreviewsCounted", async () => {
+    const { store } = await heldTail(() => Promise.resolve({ text: null, messages: 0, cut: 0, missing: 1 }));
+    const entry = store.getState().entries.t1;
+
+    const extracted = await store.getState().extract("t1", "/out/tail.jsonl");
+
+    expect(extracted).toEqual({ text: tailJsonLines(entry?.retained ?? []), messages: 2, cut: 1 });
+  });
+
+  it("givenWriteFailed_whenExported_thenTheFailureReachesTheAction", async () => {
+    const failure = new EngineRequestError({ code: "exportFailed", message: "disk full", hint: "Choose another." });
+    const { store } = await heldTail(() => Promise.reject(failure));
+
+    await expect(store.getState().extract("t1", "/out/tail.jsonl")).rejects.toBe(failure);
+  });
+
+  it("givenDetachedTail_whenCopied_thenThePaneRowsWithoutReconnecting", async () => {
+    const extract = vi.fn(() => Promise.resolve({}));
+    const { store } = await heldTail(extract);
+    store.getState().detach("kafka");
+
+    expect((await store.getState().extract("t1", null)).cut).toBe(1);
+    expect(extract).not.toHaveBeenCalled();
   });
 });

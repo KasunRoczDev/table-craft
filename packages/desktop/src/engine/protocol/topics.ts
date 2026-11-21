@@ -227,6 +227,10 @@ export const TOPIC_TAIL_MAX_MESSAGES = 100_000;
 export const TOPIC_TAIL_MAX_RING_BYTES = 67_108_864;
 /** What a tail's file of large messages holds on disk; past it the oldest are deleted (decision 172). */
 export const TOPIC_TAIL_SPILL_BYTES = 536_870_912;
+/** The text `topics.tailExtract` copies; past it a large message is copied as its preview. */
+export const TOPIC_TAIL_COPY_MAX_BYTES = 67_108_864;
+/** The most rows one `topics.tailExtract` names: the ring's messages and a gap between each two. */
+export const TOPIC_TAIL_MAX_EXTRACT_ROWS = TOPIC_TAIL_MAX_MESSAGES * 2;
 /** The most messages and bytes one `topics.tailWindow` answers with. */
 export const TOPIC_TAIL_MAX_WINDOW = 1_000;
 export const TOPIC_TAIL_MAX_WINDOW_BYTES = 4_194_304;
@@ -245,6 +249,20 @@ export interface TopicTailRow {
   /** The engine's own order of arrival, a decimal string; never the Kafka offset. */
   readonly sequence: string;
   readonly message: TailMessage;
+}
+
+/** A row of the pane `topics.tailExtract` writes: a held message by sequence, or a gap row. */
+export type TopicTailExtractRow = { readonly sequence: string } | { readonly dropped: string };
+
+/** What `topics.tailExtract` wrote, as JSON Lines. */
+export interface TopicTailExtract {
+  /** The lines, when no path was given; null when they went to the file, or when `missing` is not 0. */
+  readonly text: string | null;
+  readonly messages: number;
+  /** Large messages written as their preview: their file rotated them away, or the copy grew too large. */
+  readonly cut: number;
+  /** Rows the ring no longer holds; nothing was written when this is not 0. */
+  readonly missing: number;
 }
 
 export interface TopicTailWindow extends TopicTailSummary {

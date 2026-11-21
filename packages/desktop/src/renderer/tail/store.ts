@@ -7,7 +7,8 @@ import {
   type TopicTailSummary,
   type TopicTailWindow,
 } from "@table-craft/desktop/engine/protocol.js";
-import type { EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
+import { EngineRequestError, type EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
+import { isPreviewMessage } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import { useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
 import { currentSpill } from "@table-craft/desktop/renderer/state/settings.js";
 
@@ -18,6 +19,9 @@ export const TAIL_WINDOW_BYTES = 1_048_576;
 export const TAIL_DISPLAY_ROWS = 10_000;
 /** And at most this much message data, so a topic of large messages cannot fill the window's memory. */
 export const TAIL_DISPLAY_BYTES = 33_554_432;
+const UTF16_BYTES = 2;
+/** A row's own fields: partition, offset, timestamp, sequence and the object around them. */
+const HELD_ROW_BYTES = 256;
 
 /** A received message, or the gap row that stands where the ring dropped some before they were read. */
 export type TailRow =
@@ -63,13 +67,24 @@ export function appendTailWindow(
   return added.length === 0 ? rows : newest([...rows, ...added], limit, maxBytes);
 }
 
-/** The newest rows within `limit` rows and `maxBytes` of message size; the newest row is always kept. */
+/**
+ * About what a received message takes in the pane: its text as UTF-16 plus the row around it. It
+ * counts the preview the engine sent, not `size`, the record's size on the broker, so a topic of
+ * large messages keeps as many rows as their previews fit (decision 172).
+ */
+export function heldBytes(message: TailMessage): number {
+  let chars = (message.key?.length ?? 0) + (message.value?.length ?? 0);
+  for (const header of message.headers) chars += header.name.length + (header.value?.length ?? 0);
+  return chars * UTF16_BYTES + HELD_ROW_BYTES;
+}
+
+/** The newest rows within `limit` rows and `maxBytes` held; the newest row is always kept. */
 function newest(rows: readonly TailRow[], limit: number, maxBytes: number): readonly TailRow[] {
   let bytes = 0;
   let start = rows.length;
   while (start > 0 && rows.length - start < limit) {
     const row = rows[start - 1];
-    const size = row?.kind === "message" ? row.message.size : 0;
+    const size = row?.kind === "message" ? heldBytes(row.message) : 0;
     if (start < rows.length && bytes + size > maxBytes) break;
     bytes += size;
     start -= 1;
@@ -168,6 +183,25 @@ interface TailState {
   readonly detach: (datasourceId: string) => void;
   /** The whole message behind a row's preview (decision 172); null once the tail no longer keeps it. */
   readonly message: (id: string, sequence: string) => Promise<TailMessage | null>;
+  /**
+   * The held rows as JSON Lines, each large message whole from the engine's file (decision 172),
+   * written by the engine to `path`, or returned as text when it is null.
+   */
+  readonly extract: (id: string, path: string | null) => Promise<TailExtract>;
+}
+
+/** What a copy or export of a tail took; `text` is null when the engine wrote the file itself. */
+export interface TailExtract {
+  readonly text: string | null;
+  readonly messages: number;
+  /** Large messages written as their first 1 KB only. */
+  readonly cut: number;
+}
+
+/** The pane's own rows, previews as they are: what a tail the engine no longer holds can still give. */
+function localExtract(rows: readonly TailRow[]): TailExtract {
+  const messages = rows.flatMap((row) => (row.kind === "message" ? [row.message] : []));
+  return { text: tailJsonLines(rows), messages: messages.length, cut: messages.filter(isPreviewMessage).length };
 }
 
 /** `spill` is `data.spillMessages`, read at each start. */
@@ -293,6 +327,25 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>, 
         const entry = get().entries[id];
         if (entry === undefined || detached.has(id)) return null;
         return (await connect(entry.datasourceId)).call("topics.tailMessage", { tailId: id, sequence });
+      },
+
+      async extract(id, path) {
+        const entry = get().entries[id];
+        if (entry === undefined) return { text: "", messages: 0, cut: 0 };
+        if (detached.has(id)) return localExtract(entry.retained);
+        const rows = entry.retained.map((row) =>
+          row.kind === "gap" ? { dropped: row.dropped } : { sequence: row.sequence },
+        );
+        const extracted = await (
+          await connect(entry.datasourceId)
+        )
+          .call("topics.tailExtract", { tailId: id, rows, path })
+          .catch((cause: unknown) => {
+            if (cause instanceof EngineRequestError && cause.code === "exportFailed") throw cause;
+            return null;
+          });
+        if (extracted === null || extracted.missing > 0) return localExtract(entry.retained);
+        return { text: extracted.text, messages: extracted.messages, cut: extracted.cut };
       },
     };
   });

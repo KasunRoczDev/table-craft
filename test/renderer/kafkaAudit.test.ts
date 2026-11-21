@@ -23,6 +23,7 @@ import {
   messageOf,
   PREVIEW_ONLY_NOTICE,
   withFullCells,
+  focusedCellText,
 } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import {
   filteredPartition,
@@ -186,6 +187,20 @@ describe("message panel", () => {
     expect(whole).toMatchObject({ value: `"${long}"`, valueJson: true, headers: [], offset: "1204331" });
     expect(isPreviewMessage(whole)).toBe(false);
     expect(PREVIEW_ONLY_NOTICE).toContain("first 1 KB");
+  });
+
+  it("givenKeyOrHeadersCellFocused_whenPanelShown_thenItsWholeTextShownApart", () => {
+    const longKey = "k".repeat(MESSAGE_PREVIEW_CHARS * 2);
+    const whole = withFullCells(messageOf(COLUMNS, row), {
+      key: longKey,
+      value: "v",
+      headers: { kind: "json", text: JSON.stringify([{ name: "trace", value: "t".repeat(2_000) }]) },
+    });
+
+    expect(focusedCellText(whole, "key")).toEqual({ title: "Key", text: longKey });
+    expect(focusedCellText(whole, "headers")).toEqual({ title: "Headers", text: `trace: ${"t".repeat(2_000)}` });
+    expect(focusedCellText(whole, "value")).toBeNull();
+    expect(focusedCellText({ ...whole, headers: [] }, "headers")).toBeNull();
   });
 });
 

@@ -69,24 +69,20 @@ export class MessageSpills {
       return;
     }
     const places = this.#places(handle);
-    for await (const row of rows) {
-      const partition = Number(cellText(row[places.partition]));
-      const offset = cellText(row[places.offset]);
-      const spilled = offset === null ? null : await file.get(spillId(partition, offset));
-      if (spilled === null) {
-        yield row;
-        continue;
-      }
-      const full = [...row];
-      for (const name of SPILLED_COLUMNS) {
-        const index = places[name];
-        if (index >= 0) full[index] = spilled[name];
-      }
-      yield full;
-    }
+    for await (const row of rows) yield await whole(file, places, row);
   }
 
-  #places(handle: string) {
+  /** `fullRows` for rows already in hand, such as the ones a copy picked. */
+  async fullRowsOf(handle: string, rows: readonly Row[]): Promise<readonly Row[]> {
+    const file = this.#files.get(handle);
+    if (file === undefined) return rows;
+    const places = this.#places(handle);
+    const full: Row[] = [];
+    for (const row of rows) full.push(await whole(file, places, row));
+    return full;
+  }
+
+  #places(handle: string): Places {
     const names = this.results.columns(handle).map((column) => column.name);
     return {
       partition: names.indexOf("partition"),
@@ -96,6 +92,21 @@ export class MessageSpills {
       headers: names.indexOf("headers"),
     };
   }
+}
+
+type Places = Record<"partition" | "offset" | (typeof SPILLED_COLUMNS)[number], number>;
+
+async function whole(file: SpillFile<SpilledMessage>, places: Places, row: Row): Promise<Row> {
+  const partition = Number(cellText(row[places.partition]));
+  const offset = cellText(row[places.offset]);
+  const spilled = offset === null ? null : await file.get(spillId(partition, offset));
+  if (spilled === null) return row;
+  const full = [...row];
+  for (const name of SPILLED_COLUMNS) {
+    const index = places[name];
+    if (index >= 0) full[index] = spilled[name];
+  }
+  return full;
 }
 
 function cellText(cell: Row[number] | undefined): string | null {

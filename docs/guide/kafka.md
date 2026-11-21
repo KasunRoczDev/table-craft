@@ -43,7 +43,8 @@ subjects whose names match; a console command or a tab opened by name still reac
   When the read started from a group, the message at that group's committed offset says so.
 - **Large messages.** A message whose key, value or headers run past 1 KB shows its first 1 KB in
   the grid, ending in `…`; the whole message waits in a temporary file on your disk, and the
-  message details, Copy Message as JSON, Produce Again and Export read it from there. A read keeps
+  message details, Copy (of cells or rows, in any format), Copy Message as JSON, Produce Again and
+  Export read it from there, so they always give the whole message. A read keeps
   up to 64 MB of these previews, and all temporary files together up to 2 GB, always leaving 1 GB of
   the disk free; past either, the read stops with a warning and **Scan Further** carries on. The
   files are plain text, readable only by you, and deleted when the rows are released or the tab
@@ -88,7 +89,8 @@ subjects whose names match; a console command or a tab opened by name still reac
   writes the held messages to a JSON Lines file, and **Copy as JSON Lines** copies them. A large
   message shows its first 1 KB; selecting it reads the whole one from the tail's temporary file,
   which keeps the newest 512 MB of them, so an older one may say only its first 1 KB is kept.
-  Export and Copy write the previews; read the topic in a tab to export whole messages.
+  Export and Copy write whole messages from that file; one it no longer holds, or one past 64 MB of
+  copied text, goes out as its first 1 KB, and they say how many did.
 - **Schema Registry.** Double-click a subject for its tab: its versions, each version's schema, the
   compatibility level, **Check Compatibility…** for a new schema and **Register New Version…**.
   Double-click a broker for its information.

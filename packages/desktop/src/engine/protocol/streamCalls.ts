@@ -12,6 +12,8 @@ import type {
   TopicDescription,
   TopicReadRequest,
   TopicSummary,
+  TopicTailExtract,
+  TopicTailExtractRow,
   TopicTailRequest,
   TopicTailSummary,
   TopicTailWindow,
@@ -112,6 +114,14 @@ export interface StreamCalls {
   "topics.tailMessage": {
     params: { readonly tailId: string; readonly sequence: string };
     result: TailMessage | null;
+  };
+  /**
+   * The rows as JSON Lines with each large message whole from the tail's file (decision 172),
+   * written to `path`, or returned as text when it is null.
+   */
+  "topics.tailExtract": {
+    params: { readonly tailId: string; readonly rows: readonly TopicTailExtractRow[]; readonly path: string | null };
+    result: TopicTailExtract;
   };
   /** The held messages after sequence `after` (null: from the oldest held), and the gap before them. */
   "topics.tailWindow": {
