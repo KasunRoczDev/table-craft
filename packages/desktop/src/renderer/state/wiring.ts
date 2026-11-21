@@ -120,6 +120,7 @@ export function wireStores({
     keyTabs?.getState().detach(id, error);
     topicTabs?.getState().detach(id, error);
     groupTabs?.getState().detach(id);
+    useSubjectTabs.getState().detach(id);
     catalog?.getState().clear(id);
     keys?.getState().clear(id);
     streams?.getState().clear(id);

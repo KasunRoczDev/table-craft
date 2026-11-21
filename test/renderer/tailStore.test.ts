@@ -9,6 +9,7 @@ import { EngineRequestError, type EngineClient } from "@table-craft/desktop/rend
 import {
   appendTailWindow,
   createTailStore,
+  drawnTailRows,
   heldBytes,
   TAIL_DISPLAY_BYTES,
   TAIL_DISPLAY_ROWS,
@@ -162,6 +163,43 @@ describe("tail windows", () => {
     expect(await store.getState().message("t1", "1")).toBeNull();
     await store.getState().stop("t1", true);
     expect(connect).toHaveBeenCalledTimes(before);
+  });
+
+  it("givenPollInFlight_whenDetached_thenTailStaysStoppedAndClearStaysLocal", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const call = vi.fn((type: string): Promise<unknown> => {
+      if (type === "topics.tailStart") return Promise.resolve(SUMMARY);
+      if (type === "topics.tailWindow") return new Promise((resolve) => (answer = resolve));
+      return Promise.resolve(null);
+    });
+    const connect = vi.fn(() => Promise.resolve({ call } as unknown as EngineClient));
+    const store = createTailStore(connect);
+    const started = store.getState().start("kafka", REQUEST);
+    await vi.waitFor(() => expect(call).toHaveBeenCalledWith("topics.tailWindow", expect.anything()));
+    store.getState().detach("kafka");
+    answer(window([1]));
+    await started;
+    const before = connect.mock.calls.length;
+
+    await store.getState().poll("t1");
+    await store.getState().clear("t1");
+
+    expect(store.getState().entries.t1?.summary.state).toBe("stopped");
+    expect(store.getState().entries.t1?.error).toMatch(/Disconnected/);
+    expect(connect).toHaveBeenCalledTimes(before);
+    expect(call).not.toHaveBeenCalledWith("topics.tailClear", expect.anything());
+  });
+
+  it("givenSkippedWithoutRowsTwice_whenAppended_thenEachGapHasItsOwnKey", () => {
+    const empty = { rows: [], skipped: "4", through: null };
+    const rows = appendTailWindow(appendTailWindow([], empty, 100), empty, 100);
+    expect(new Set(rows.map((row) => row.sequence)).size).toBe(2);
+  });
+
+  it("givenGlobalOrStickyFlag_whenFiltered_thenEveryMatchingRowShows", () => {
+    const rows = appendTailWindow([], window([41, 42, 43]), 100);
+    expect(drawnTailRows(rows, "/cust/g").rows).toHaveLength(3);
+    expect(drawnTailRows(rows, "/cust/y").rows).toHaveLength(3);
   });
 });
 

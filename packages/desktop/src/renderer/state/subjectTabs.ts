@@ -28,6 +28,8 @@ export interface SubjectTabsState {
   readonly refresh: (id: string) => Promise<void>;
   readonly select: (id: string, version: number) => Promise<void>;
   readonly close: (id: string) => void;
+  /** Drops the reads in flight on a datasource whose engine went away; the tabs keep what they show. */
+  readonly detach: (datasourceId: string) => void;
 }
 
 export function createSubjectTabsStore(connect: (datasourceId: string) => Promise<EngineClient>) {
@@ -82,6 +84,13 @@ export function createSubjectTabsStore(connect: (datasourceId: string) => Promis
         reads.delete(id);
         const { [id]: _gone, ...tabs } = get().tabs;
         set({ tabs });
+      },
+      detach(datasourceId) {
+        for (const [id, tab] of Object.entries(get().tabs)) {
+          if (tab.datasourceId !== datasourceId) continue;
+          reads.delete(id);
+          patch(id, { loading: false });
+        }
       },
     };
   });

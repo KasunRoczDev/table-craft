@@ -33,6 +33,8 @@ export interface GroupTabsState {
 
 export interface GroupTabsDependencies {
   readonly connect: (datasourceId: string) => Promise<EngineClient>;
+  /** Whether the datasource is connected now; the timer's refresh never connects one. */
+  readonly connected: (datasourceId: string) => boolean;
   readonly clock?: () => number;
 }
 
@@ -53,7 +55,7 @@ export function createGroupTabsStore(dependencies: GroupTabsDependencies) {
 
     async function refresh(id: string, quiet = false): Promise<void> {
       const tab = get().tabs[id];
-      if (tab === undefined || (quiet && tab.loading)) return;
+      if (tab === undefined || (quiet && (tab.loading || !dependencies.connected(tab.datasourceId)))) return;
       const token = ++readCount;
       reads.set(id, token);
       if (!quiet) patch(id, { loading: true });
@@ -100,7 +102,10 @@ export function createGroupTabsStore(dependencies: GroupTabsDependencies) {
 
 export type GroupTabsStore = ReturnType<typeof createGroupTabsStore>;
 
-export const useGroupTabs = createGroupTabsStore({ connect: (id) => useDatasources.getState().connect(id) });
+export const useGroupTabs = createGroupTabsStore({
+  connect: (id) => useDatasources.getState().connect(id),
+  connected: (id) => useDatasources.getState().connections[id]?.status === "connected",
+});
 
 /** The group tabs open on a datasource, by tab id. */
 export function groupTabsOf(tabs: GroupTabsState["tabs"], datasourceId: string): readonly string[] {

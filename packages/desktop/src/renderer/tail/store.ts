@@ -56,8 +56,8 @@ export function appendTailWindow(
   const seen = new Set(rows.filter((row) => row.kind === "message").map((row) => row.sequence));
   const added: TailRow[] = [];
   if (/^\d+$/.test(window.skipped) && BigInt(window.skipped) > 0n) {
-    const before = window.rows[0]?.sequence ?? window.through ?? "";
-    added.push({ kind: "gap", sequence: `gap-${before}`, dropped: window.skipped });
+    const before = window.rows[0]?.sequence ?? window.through ?? `after-${rows.at(-1)?.sequence ?? "start"}`;
+    added.push({ kind: "gap", sequence: unusedKey(`gap-${before}`, rows), dropped: window.skipped });
   }
   for (const row of window.rows) {
     if (seen.has(row.sequence)) continue;
@@ -65,6 +65,14 @@ export function appendTailWindow(
     added.push({ kind: "message", sequence: row.sequence, message: row.message });
   }
   return added.length === 0 ? rows : newest([...rows, ...added], limit, maxBytes);
+}
+
+/** `key`, suffixed until no held row has it: a row's sequence is also its React key. */
+function unusedKey(key: string, rows: readonly TailRow[]): string {
+  const held = new Set(rows.map((row) => row.sequence));
+  let unused = key;
+  for (let copy = 1; held.has(unused); copy += 1) unused = `${key}-${copy}`;
+  return unused;
 }
 
 /**
@@ -105,18 +113,23 @@ export function tailMatcher(filter: string): ((text: string) => boolean) | null 
     return (text) => text.toLowerCase().includes(needle);
   }
   try {
-    const pattern = new RegExp(regex[1] ?? "", regex[2]);
+    // `g` and `y` make `test` resume from the last match, so the next row would be tested from there.
+    const pattern = new RegExp(regex[1] ?? "", (regex[2] ?? "").replace(STATEFUL_FLAGS, ""));
     return (text) => pattern.test(text);
   } catch {
     return null;
   }
 }
 
+const STATEFUL_FLAGS = /[gy]/g;
+
 /** Whether a row matches the pane's filter in its key, value or headers; gaps always show. */
 export function tailRowMatches(row: TailRow, filter: string): boolean {
-  if (filter === "" || row.kind === "gap") return true;
-  const matches = tailMatcher(filter);
-  if (matches === null) return true;
+  return filter === "" || rowMatches(row, tailMatcher(filter));
+}
+
+function rowMatches(row: TailRow, matches: ((text: string) => boolean) | null): boolean {
+  if (matches === null || row.kind === "gap") return true;
   const { key, value, headers } = row.message;
   return (
     matches(key ?? "") ||
@@ -133,7 +146,8 @@ export function drawnTailRows(
   rows: readonly TailRow[],
   filter: string,
 ): { readonly rows: readonly TailRow[]; readonly hidden: number } {
-  const matching = filter === "" ? rows : rows.filter((row) => tailRowMatches(row, filter));
+  const matches = tailMatcher(filter);
+  const matching = filter === "" ? rows : rows.filter((row) => rowMatches(row, matches));
   const hidden = Math.max(0, matching.length - TAIL_DRAWN_ROWS);
   return { rows: hidden === 0 ? matching : matching.slice(hidden), hidden };
 }
@@ -194,7 +208,7 @@ interface TailState {
 export interface TailExtract {
   readonly text: string | null;
   readonly messages: number;
-  /** Large messages written as their first 1 KB only. */
+  /** Large messages written as their first 1,024 characters only. */
   readonly cut: number;
 }
 
@@ -249,7 +263,7 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>, 
 
       async poll(id) {
         const entry = get().entries[id];
-        if (entry === undefined || busy.has(id)) return;
+        if (entry === undefined || busy.has(id) || detached.has(id)) return;
         busy.add(id);
         const epoch = epochs.get(id) ?? 0;
         try {
@@ -261,7 +275,7 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>, 
             maxBytes: TAIL_WINDOW_BYTES,
           });
           const current = get().entries[id];
-          if (current === undefined || (epochs.get(id) ?? 0) !== epoch) return;
+          if (current === undefined || detached.has(id) || (epochs.get(id) ?? 0) !== epoch) return;
           const retained = appendTailWindow(current.retained, window, TAIL_DISPLAY_ROWS);
           const { rows: _rows, skipped: _skipped, through, ...summary } = window;
           patch(id, {
@@ -273,7 +287,7 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>, 
             error: summary.error,
           });
         } catch (cause) {
-          patch(id, { error: cause instanceof Error ? cause.message : String(cause) });
+          if (!detached.has(id)) patch(id, { error: cause instanceof Error ? cause.message : String(cause) });
         } finally {
           busy.delete(id);
         }
@@ -289,7 +303,8 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>, 
       async clear(id) {
         const entry = get().entries[id];
         if (entry === undefined) return;
-        await (await connect(entry.datasourceId)).call("topics.tailClear", { tailId: id });
+        // A detached tail went with its engine: there is nothing there to clear, and connecting would reconnect.
+        if (!detached.has(id)) await (await connect(entry.datasourceId)).call("topics.tailClear", { tailId: id });
         epochs.set(id, (epochs.get(id) ?? 0) + 1);
         patch(id, { rows: [], retained: [], pending: 0 });
       },
