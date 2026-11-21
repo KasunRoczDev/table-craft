@@ -37,6 +37,7 @@ function hit(index: number) {
     _id: `d${String(index)}`,
     _index: FAMILY[0],
     _source: { "@timestamp": new Date(index * 1000).toISOString(), message: MESSAGE },
+    sort: [index],
   };
 }
 
@@ -47,7 +48,7 @@ function fakeCluster(): { client: ElasticTransport; sent: Sent[] } {
   const page = (size: number) => {
     const hits = Array.from({ length: Math.min(size, TOTAL - served) }, (_, offset) => hit(served + offset));
     served += hits.length;
-    return { _scroll_id: "scroll-1", took: 1, _shards: { total: 1, successful: 1 }, hits: { total: TOTAL, hits } };
+    return { pit_id: "pit-1", took: 1, _shards: { total: 1, successful: 1 }, hits: { total: TOTAL, hits } };
   };
   const answer = (method: HttpMethod, path: string, options: { body?: unknown }): Promise<unknown> => {
     if (method === "DELETE") return Promise.resolve({});
@@ -57,13 +58,13 @@ function fakeCluster(): { client: ElasticTransport; sent: Sent[] } {
       return Promise.resolve(Object.fromEntries(names.map((name) => [name, MAPPING])));
     }
     if (path.endsWith("/_settings")) return Promise.resolve({});
-    if (path.includes("/_search?scroll=")) {
+    if (path === "/logs/_pit?keep_alive=5m") return Promise.resolve({ id: "pit-1" });
+    if (path.endsWith("/_search")) {
       const size = (options.body as { size: number }).size;
       if (size > READABLE_PAGE) return Promise.reject(new ReplyTooLargeError(64 * MIB));
-      served = 0;
+      if (path !== "/_search") served = 0;
       return Promise.resolve(page(size));
     }
-    if (path === "/_search/scroll") return Promise.resolve(page(READABLE_PAGE));
     return Promise.reject(new Error(`unexpected ${method} ${path}`));
   };
   const request = async (method: HttpMethod, path: string, options: { body?: unknown } = {}): Promise<Reply> => {
@@ -100,15 +101,15 @@ describe("elasticsearch memory guards", () => {
     expect(await rowsOf(outcome.result.rows)).toHaveLength(TOTAL);
   });
 
-  it("givenRowsPastTheMemoryBudget_whenPaged_thenPagingStopsAndTheScrollIsCleared", async () => {
+  it("givenRowsPastTheMemoryBudget_whenPaged_thenPagingStopsAndNoCursorIsLeft", async () => {
     const { client, sent } = fakeCluster();
     const indices = new ElasticIndices(client, dialect, "", undefined, 10_000);
     const outcome = await indices.search(REQUEST);
     const rows = await rowsOf(outcome.result.rows);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThan(READABLE_PAGE);
-    expect(sent.some((request) => request.method === "DELETE" && request.path === "/_search/scroll")).toBe(true);
-    expect(indices.openScrolls).toBe(0);
+    expect(sent.some((request) => request.path.includes("_pit"))).toBe(false);
+    expect(indices.openCursors).toBe(0);
   });
 
   it("givenLargeFamily_whenDescribed_thenOnlyTheLastIndicesMappingsAreRead", async () => {

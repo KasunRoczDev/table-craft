@@ -28,7 +28,6 @@ type Answer = (method: HttpMethod, path: string, body: unknown) => Reply;
 const ADDRESS = "gateway.example:443";
 const TIME_FIELD = "@timestamp";
 const TARGET = "logs-checkout";
-const SCROLL_ID = "scroll-1";
 
 function json(body: unknown, status = 200): Reply {
   return { status, body, text: JSON.stringify(body) };
@@ -42,21 +41,9 @@ function errorReply(status: number, reason: string): Reply {
 class FakeTransport implements ElasticTransport {
   readonly address = ADDRESS;
   readonly sent: Sent[] = [];
-  readonly released: string[][] = [];
   closed = false;
-  releaseCursors?: (ids: readonly string[]) => Promise<void>;
 
-  constructor(
-    readonly answer: Answer,
-    releases: boolean,
-  ) {
-    if (releases) {
-      this.releaseCursors = (ids) => {
-        this.released.push([...ids]);
-        return Promise.resolve();
-      };
-    }
-  }
+  constructor(readonly answer: Answer) {}
 
   request(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<Reply> {
     this.sent.push({ method, path, body: options.body });
@@ -76,26 +63,17 @@ function hit(id: number) {
   return { _id: `e-${String(id)}`, _index: TARGET, _source: { message: `m${String(id)}` } };
 }
 
-/** A small log index: two pages of one hit each, then nothing. */
+/** A small log index of one hit; every search answers it, with the histogram's one bucket. */
 function logsCluster(options: { timedOut?: boolean } = {}): Answer {
-  return (method, path) => {
+  return (_method, path) => {
     if (path.startsWith("/_cat/indices/")) return json([{ index: TARGET }]);
     if (path.endsWith("/_mapping")) return json(MAPPING);
-    if (path.includes("/_search?scroll=")) {
+    if (path.endsWith("/_search")) {
       return json({
-        _scroll_id: SCROLL_ID,
         took: 3,
         timed_out: options.timedOut === true,
         _shards: { total: 1, successful: 1, skipped: 0, failed: 0 },
         hits: { total: { value: 2, relation: "eq" }, hits: [hit(1)] },
-      });
-    }
-    if (path === "/_search/scroll" && method === "POST") return json({ _scroll_id: SCROLL_ID, hits: { hits: [] } });
-    if (path === "/_search/scroll" && method === "DELETE") return json({ succeeded: true });
-    if (path.endsWith("/_search")) {
-      return json({
-        timed_out: options.timedOut === true,
-        hits: { total: { value: 2, relation: "eq" }, hits: [] },
         aggregations: { over_time: { buckets: [{ key: 0, doc_count: 2 }] } },
       });
     }
@@ -116,12 +94,6 @@ function searchRequest(overrides: Partial<SearchRequest> = {}): SearchRequest {
   };
 }
 
-async function drain(rows: AsyncIterable<unknown>): Promise<number> {
-  let count = 0;
-  for await (const _row of rows) count += 1;
-  return count;
-}
-
 async function failure(pending: Promise<unknown>): Promise<unknown> {
   try {
     await pending;
@@ -134,51 +106,27 @@ async function failure(pending: Promise<unknown>): Promise<unknown> {
 const ELASTIC_8 = dialectOf("elasticsearch", "8.19.7");
 
 describe("elasticsearch transport seam", () => {
-  it("givenTransportThatReleasesCursors_whenRowsRunOut_thenScrollFreedThroughIt", async () => {
-    const transport = new FakeTransport(logsCluster(), true);
-    const indices = new ElasticIndices(transport, ELASTIC_8, "");
-    const outcome = await indices.search(searchRequest());
-    expect(await drain(outcome.result.rows)).toBe(1);
-    expect(transport.released).toEqual([[SCROLL_ID]]);
-    expect(transport.sent.some((sent) => sent.method === "DELETE")).toBe(false);
-    expect(indices.openScrolls).toBe(0);
-  });
-
-  it("givenPlainTransport_whenSessionClosesWithAScrollOpen_thenDeleteScrollSent", async () => {
-    const transport = new FakeTransport(logsCluster(), false);
-    const indices = new ElasticIndices(transport, ELASTIC_8, "");
-    await indices.search(searchRequest());
-    expect(indices.openScrolls).toBe(1);
-    await indices.close();
-    expect(transport.sent.at(-1)).toEqual({
-      method: "DELETE",
-      path: "/_search/scroll",
-      body: { scroll_id: [SCROLL_ID] },
-    });
-  });
-
   it("givenSearchCountAndHistogram_whenSent_thenEveryBodyCarriesTheTimeout", async () => {
-    const transport = new FakeTransport(logsCluster(), true);
+    const transport = new FakeTransport(logsCluster());
     const indices = new ElasticIndices(transport, ELASTIC_8, "");
     const outcome = await indices.search(searchRequest());
     await indices.count(searchRequest());
     await indices.histogram(searchRequest(), 60);
     const searches = transport.sent.filter((sent) => sent.path.includes("/_search") && sent.method === "POST");
-    const firstPages = searches.filter((sent) => sent.path !== "/_search/scroll");
-    expect(firstPages).toHaveLength(3);
-    for (const sent of firstPages) expect(sent.body).toMatchObject({ timeout: SEARCH_TIMEOUT });
+    expect(searches).toHaveLength(3);
+    for (const sent of searches) expect(sent.body).toMatchObject({ timeout: SEARCH_TIMEOUT });
     expect(outcome.request).toContain(`"timeout": "${SEARCH_TIMEOUT}"`);
   });
 
   it("givenCount_whenCounted_thenExactTotalOfASizeZeroSearch", async () => {
-    const transport = new FakeTransport(logsCluster(), true);
+    const transport = new FakeTransport(logsCluster());
     const count = await new ElasticIndices(transport, ELASTIC_8, "").count(searchRequest());
     expect(count).toBe("2");
     expect(transport.sent.at(-1)?.body).toMatchObject({ size: 0, track_total_hits: true });
   });
 
   it("givenSearchTimedOutOnTheServer_whenSearched_thenPartialHitsWithAWarning", async () => {
-    const transport = new FakeTransport(logsCluster({ timedOut: true }), true);
+    const transport = new FakeTransport(logsCluster({ timedOut: true }));
     const indices = new ElasticIndices(transport, ELASTIC_8, "");
     const outcome = await indices.search(searchRequest());
     expect(outcome.warnings.join(" ")).toMatch(/timed out on the server/);
@@ -187,14 +135,14 @@ describe("elasticsearch transport seam", () => {
   });
 
   it("givenCountTimedOutOnTheServer_whenCounted_thenStatementFailedNotAWrongNumber", async () => {
-    const transport = new FakeTransport(logsCluster({ timedOut: true }), true);
+    const transport = new FakeTransport(logsCluster({ timedOut: true }));
     const error = await failure(new ElasticIndices(transport, ELASTIC_8, "").count(searchRequest()));
     expect(isPluginError(error) && error.code === "statementFailed").toBe(true);
     expect(String((error as Error).message)).toContain(SEARCH_TIMEOUT);
   });
 
   it("givenConsoleRequest_whenRunOverATransport_thenSentThroughIt", async () => {
-    const transport = new FakeTransport(() => json([{ index: TARGET, health: "green" }]), false);
+    const transport = new FakeTransport(() => json([{ index: TARGET, health: "green" }]));
     const result = await runRequest(
       { transport, dialect: ELASTIC_8, readOnly: true, signal: new AbortController().signal },
       "GET _cat/indices",
@@ -204,7 +152,7 @@ describe("elasticsearch transport seam", () => {
   });
 
   it("givenNodesRefused_whenListed_thenTheTransportsAddressStandsIn", async () => {
-    const transport = new FakeTransport(() => errorReply(403, "no monitor privilege"), false);
+    const transport = new FakeTransport(() => errorReply(403, "no monitor privilege"));
     const nodes = await nodeList(transport);
     expect(nodes.map((node) => node.address)).toEqual([ADDRESS]);
   });
@@ -242,19 +190,19 @@ describe("elasticsearch per-index permissions", () => {
 
   for (const [view, run] of Object.entries(views)) {
     it(`givenForbidden${view}_whenRun_thenStatementFailureNamingThePrivilege`, async () => {
-      const indices = new ElasticIndices(new FakeTransport(guardedCluster(), true), ELASTIC_8, "");
+      const indices = new ElasticIndices(new FakeTransport(guardedCluster()), ELASTIC_8, "");
       const error = await failure(run(indices));
       expect(isPluginError(error) && error.code === "statementFailed").toBe(true);
       expect(isForbidden(error)).toBe(true);
       expect((error as Error).message).toMatch(
         /^This user lacks the privilege for indices:(data\/read\/search|admin\/analyze)/,
       );
-      expect(indices.openScrolls).toBe(0);
+      expect(indices.openCursors).toBe(0);
     });
   }
 
   it("givenSearchRefused_whenTheMappingIsRead_thenItStillAnswers", async () => {
-    const indices = new ElasticIndices(new FakeTransport(guardedCluster(), true), ELASTIC_8, "");
+    const indices = new ElasticIndices(new FakeTransport(guardedCluster()), ELASTIC_8, "");
     await failure(indices.search(searchRequest()));
     const description = await indices.describe(TARGET);
     expect(description.fields.map((field) => field.path)).toContain(TIME_FIELD);
@@ -305,7 +253,7 @@ describe("elasticsearch error seam", () => {
 
 /** A cluster whose probes answer as `answers` says, by path; anything else is a 404. */
 function probing(answers: Readonly<Record<string, Reply>>): FakeTransport {
-  return new FakeTransport((_method, path) => answers[path] ?? errorReply(404, `no ${path}`), false);
+  return new FakeTransport((_method, path) => answers[path] ?? errorReply(404, `no ${path}`));
 }
 
 const ROOT = "/";
@@ -360,7 +308,7 @@ describe("elasticsearch probe", () => {
       if (path === ROOT) throw timedOut;
       if (path === CAT_NODES) return json([{ version: "7.17.25" }]);
       return errorReply(403, "denied");
-    }, false);
+    });
     const found = await probe(transport);
     expect([found.dialect.distribution, found.dialect.versionText]).toEqual(["elasticsearch", "7.17.25"]);
   });

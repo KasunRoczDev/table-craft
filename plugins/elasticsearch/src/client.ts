@@ -81,9 +81,18 @@ export interface ElasticTransport {
    * `connectionLost` when unreachable, `cancelled` when the signal aborts.
    */
   request(method: HttpMethod, path: string, options?: RequestOptions): Promise<Reply>;
-  /** Frees scroll cursors; without it the plugin sends `DELETE _search/scroll` itself. */
-  releaseCursors?(scrollIds: readonly string[]): Promise<void>;
+  /**
+   * Frees search cursors; without it the plugin sends `DELETE _search/scroll`, `DELETE _pit` or
+   * `DELETE _search/point_in_time` itself.
+   */
+  releaseCursors?(cursors: CursorIds): Promise<void>;
   close(): void;
+}
+
+/** Search cursors to free: scroll ids, point in time ids, or both. */
+export interface CursorIds {
+  readonly scrollIds?: readonly string[];
+  readonly pitIds?: readonly string[];
 }
 
 /**

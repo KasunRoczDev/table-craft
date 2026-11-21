@@ -35,6 +35,58 @@ export interface Dialect {
   readonly pplPath: string | null;
   /** `expand_wildcards` on `_cat/indices` and `_cat/aliases` (Elasticsearch 7.7+), which 6.x rejects. */
   readonly catExpandWildcards: boolean;
+  /** `track_total_hits` takes a number (Elasticsearch 7.0+, OpenSearch); 6.x counts every hit anyway. */
+  readonly trackTotalHitsUpTo: boolean;
+  /** How pages past the first are read in one point in time; null pages by scroll. */
+  readonly pointInTime: PointInTime | null;
+}
+
+/** One sort field after the user's, and a value that sorts before any it holds. */
+export interface Tiebreaker {
+  readonly field: string;
+  readonly first: string | number;
+}
+
+/** Point in time paging: Elasticsearch 7.10+ and OpenSearch 2.4+ name it differently. */
+export interface PointInTime {
+  /** What follows `/<target>/` to open one. */
+  readonly open: string;
+  /** The path that frees them. */
+  readonly close: string;
+  /** OpenSearch frees a list under `pit_id`; Elasticsearch one `id` per request. */
+  readonly closesMany: boolean;
+  /** Sort fields that order every hit exactly once, so `search_after` neither repeats nor skips one. */
+  readonly tiebreakers: readonly Tiebreaker[];
+}
+
+/** Elasticsearch 7.12+: `_shard_doc`, which every hit of a point in time has and which costs nothing. */
+const SHARD_DOC: readonly Tiebreaker[] = [{ field: "_shard_doc", first: -1 }];
+/**
+ * Without `_shard_doc` (OpenSearch, Elasticsearch 7.10 and 7.11) only `_index` and `_id` tell every
+ * hit apart: `_doc` repeats across shards, so paging by it skips hits.
+ */
+const INDEX_AND_ID: readonly Tiebreaker[] = [
+  { field: "_index", first: "" },
+  { field: "_id", first: "" },
+];
+
+function pointInTimeOf(opensearch: boolean, version: Version): PointInTime | null {
+  if (opensearch) {
+    if (!atLeast(version, 2, 4)) return null;
+    return {
+      open: "_search/point_in_time",
+      close: "/_search/point_in_time",
+      closesMany: true,
+      tiebreakers: INDEX_AND_ID,
+    };
+  }
+  if (!atLeast(version, 7, 10)) return null;
+  return {
+    open: "_pit",
+    close: "/_pit",
+    closesMany: false,
+    tiebreakers: atLeast(version, 7, 12) ? SHARD_DOC : INDEX_AND_ID,
+  };
 }
 
 const MIN_MAJOR = 6;
@@ -89,11 +141,13 @@ export function dialectOf(distribution: Distribution, versionText: string): Dial
     sqlPath: opensearch ? "/_plugins/_sql" : version.major >= 7 ? "/_sql?format=json" : "/_xpack/sql?format=json",
     pplPath: opensearch ? "/_plugins/_ppl" : null,
     catExpandWildcards: opensearch || atLeast(version, 7, 7),
+    trackTotalHitsUpTo: opensearch || version.major >= 7,
+    pointInTime: pointInTimeOf(opensearch, version),
   };
 }
 
-/** How long a scroll is kept between two pages. */
-export const SCROLL_KEEP_ALIVE = "5m";
+/** How long a point in time or a scroll is kept between two pages. */
+export const CURSOR_KEEP_ALIVE = "5m";
 
 /** What `GET /` answers. */
 export interface RootInfo {
