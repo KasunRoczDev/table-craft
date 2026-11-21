@@ -47,6 +47,8 @@ request or a tab opened by name still reaches any of them.
   _Last 15 minutes_ by default, sorts newest first and draws a histogram of the hits over the
   range above the grid, with the hits per bar its height stands for and the time, in UTC, under
   every quarter; a bar the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
+  An [agent](agents.md) can open the view with a query, a sort and a range of its own; a range
+  with fixed ends shows in the menu as its dates, in UTC, until you pick another.
 - **Paging.** The first page is a plain search that leaves nothing open on the cluster. Scrolling
   the grid past it opens a point in time (Elasticsearch 7.10+, OpenSearch 2.4+) and reads on from
   the last row shown, so no row repeats or goes missing; older servers use a scroll. Either is
