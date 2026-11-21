@@ -27,10 +27,12 @@ subjects whose names match; a console command or a tab opened by name still reac
   offset, from a time, or from a group's committed offsets, for all partitions or the ones you type
   (`0, 3, 7`), up to 50,000 rows. **Read** turns into **Cancel** while it runs; a cancelled read
   keeps the rows of the previous one. **Filter** keeps the messages whose key, value or headers
-  contain the text, or match a `/regex/`. The footer says how many messages were scanned and
-  matched; under Latest N a filter searches only the newest N of each partition, the footer says
-  so, and **Search Earlier** reads the topic from its earliest offset with the same filter. **Scan
-  Further** carries on where a read stopped. A strip above the grid counts the rows read from each
+  contain the text, or match a `/regex/`. The footer counts what the read showed, such as
+  `10 of 91 scanned`; hover the count for how far the read went. Under Latest N a filter searches
+  only the newest N of each partition, and the footer offers **Search Earlier**, which reads the
+  topic from its earliest offset with the same filter; a read that stopped short offers **Scan
+  Further**, which carries on where it stopped. Warnings, such as a value that did not decode,
+  show as a count beside a warning sign; hover it to read them. A strip above the grid counts the rows read from each
   partition: click a partition to show only its rows, click it again to show all, or right-click it
   for **Read Only Partition**. Times you type are read in your local time zone, named beside the
   field with the UTC instant they resolve to; the grid's timestamps are UTC.

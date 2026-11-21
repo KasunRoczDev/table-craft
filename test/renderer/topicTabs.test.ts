@@ -9,11 +9,14 @@ import type { EngineClient } from "@table-craft/desktop/renderer/engine/client.j
 import {
   DEFAULT_DRAFT,
   durationText,
+  footerAction,
   instantOf,
+  NO_GROUP_TEXT,
   parsePartitions,
   partitionCounts,
   readCommandText,
   readRequestOf,
+  scannedScope,
   scannedText,
   toggledPartition,
 } from "@table-craft/desktop/renderer/model/topicRead.js";
@@ -261,9 +264,22 @@ describe("topic read bar", () => {
     expect(partitionCounts(executed.columns, { 0: executed.firstWindow.rows }, 500, 3).complete).toBe(false);
   });
 
-  it("givenCounters_whenFooter_thenScannedAndMatched", () => {
-    expect(scannedText({ scanned: "90411", matched: "191" }, true, 191)).toBe("Scanned 90,411 · 191 matched");
-    expect(scannedText({ scanned: "500", matched: "500" }, false, 500)).toBe("Scanned 500 · 500 rows");
+  it("givenCounters_whenFooter_thenShortCountWithTheScopeInItsTooltip", () => {
+    expect(scannedText({ scanned: "90411", matched: "191" }, true, 191)).toBe("191 of 90,411 scanned");
+    expect(scannedText({ scanned: "500", matched: "500" }, false, 500)).toBe("500 messages");
+    expect(scannedText({ scanned: "1", matched: "1" }, false, 1)).toBe("1 message");
+    expect(scannedText({ scanned: "600", matched: "600" }, false, 500)).toBe("500 of 600 scanned");
+    const head = { scanned: "91", matched: "10", exhausted: true };
+    expect(scannedScope(head, true, null).split("\n")).toEqual([
+      "Scanned 91 messages; 10 matched the filter.",
+      "The read reached the head of every partition.",
+      NO_GROUP_TEXT,
+    ]);
+    expect(footerAction(head, null)).toBeNull();
+    const stopped = { ...head, exhausted: false };
+    expect(scannedScope(stopped, false, null)).toContain("The read stopped after 91 messages; Scan Further reads on.");
+    expect(footerAction(stopped, null)).toBe("scanFurther");
+    expect(footerAction(stopped, 500)).toBe("searchEarlier");
     expect(durationText("259200000")).toBe("3 d");
     expect(durationText("-1")).toBe("unlimited");
   });

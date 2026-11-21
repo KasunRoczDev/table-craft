@@ -9,7 +9,13 @@ import {
   lagWarningOf,
   nounFor,
 } from "@table-craft/desktop/renderer/model/streamTree.js";
-import { scannedText, searchesOnlyNewest, topicFacts } from "@table-craft/desktop/renderer/model/topicRead.js";
+import {
+  footerAction,
+  scannedScope,
+  scannedText,
+  searchesOnlyNewest,
+  topicFacts,
+} from "@table-craft/desktop/renderer/model/topicRead.js";
 import { GROUP_ACTION_IDS } from "@table-craft/desktop/renderer/actions/groupActions.js";
 import { useStreamReasons } from "@table-craft/desktop/renderer/streams/reasons.js";
 import { MessagePanel } from "@table-craft/desktop/renderer/topics/MessagePanel.js";
@@ -41,8 +47,6 @@ const STATUS_TEXT = {
 } as const;
 const STALE_TEXT = "The connection closed; Read reads the topic again.";
 const ERROR_CLASS = "shrink-0 border-b border-line bg-panel px-gap py-1 break-words text-danger";
-/** Decision 4: the footer says so, since a reader would otherwise wonder whether browsing moved a group. */
-const NO_GROUP_TEXT = "No group joined";
 
 function Facts({ tab }: { readonly tab: TopicTabState }) {
   if (tab.description === null)
@@ -81,55 +85,75 @@ function Facts({ tab }: { readonly tab: TopicTabState }) {
   );
 }
 
+const FOOTER_ACTIONS = {
+  searchEarlier: {
+    actionId: TOPIC_ACTION_IDS.searchEarlier,
+    label: "Search Earlier",
+    testId: "topic-search-earlier",
+    title: "Read again from the earliest message of each partition, with the same filter",
+  },
+  scanFurther: {
+    actionId: TOPIC_ACTION_IDS.scanFurther,
+    label: "Scan Further",
+    testId: "topic-scan-further",
+    title: "Read on from where this read stopped",
+  },
+} as const;
+
+function ReadWarnings({ warnings }: { readonly warnings: readonly string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <span
+      data-testid="topic-warnings"
+      className="flex shrink-0 items-center gap-1 text-warning"
+      title={warnings.join("\n")}
+    >
+      <WarningIcon aria-hidden weight="fill" className="size-3" />
+      <span className="tabular-nums">{warnings.length}</span>
+      <span className="sr-only">{warnings.length === 1 ? "warning" : "warnings"}</span>
+    </span>
+  );
+}
+
 function Footer({ tab }: { readonly tab: TopicTabState }) {
   const rows = tab.result?.rowCount ?? 0;
   const newest = searchesOnlyNewest(tab.applied);
+  const filtered = tab.applied?.filter != null;
+  const read = tab.read;
+  const next = read === null ? null : footerAction(read, newest);
+  const action = next === null ? null : FOOTER_ACTIONS[next];
   return (
     <div
       data-testid="topic-footer"
       className="flex h-row shrink-0 items-center gap-gap overflow-hidden border-t border-line bg-panel px-gap whitespace-nowrap text-ink-muted"
     >
-      {tab.read === null ? null : (
-        <span data-testid="topic-scanned" className="text-ink">
-          {scannedText(tab.read, tab.applied?.filter != null, rows, newest)}
+      {read === null ? null : (
+        <span
+          data-testid="topic-scanned"
+          className="shrink-0 text-ink tabular-nums"
+          title={scannedScope(read, filtered, newest)}
+        >
+          {scannedText(read, filtered, rows)}
         </span>
       )}
-      {tab.read === null || newest === null ? null : (
+      {action === null ? null : (
         <button
           type="button"
-          data-testid="topic-search-earlier"
-          className={LINK_BUTTON}
-          title="Read again from the earliest message of each partition, with the same filter"
-          onClick={() => void invoke(TOPIC_ACTION_IDS.searchEarlier)}
+          data-testid={action.testId}
+          className={cn(LINK_BUTTON, "shrink-0")}
+          title={action.title}
+          onClick={() => void invoke(action.actionId)}
         >
-          Search Earlier
+          {action.label}
         </button>
       )}
-      {tab.read === null ? null : tab.read.exhausted ? (
-        <span className="min-w-0 truncate">reached the head of every partition</span>
-      ) : (
-        <button
-          type="button"
-          data-testid="topic-scan-further"
-          className={LINK_BUTTON}
-          onClick={() => void invoke(TOPIC_ACTION_IDS.scanFurther)}
-        >
-          Scan Further
-        </button>
-      )}
-      {tab.read === null || tab.read.warnings.length === 0 ? null : (
-        <span className="truncate text-warning" title={tab.read.warnings.join("\n")}>
-          {tab.read.warnings[0]}
-        </span>
-      )}
+      {read === null ? null : <ReadWarnings warnings={read.warnings} />}
       {tab.notice === null ? null : (
-        <span role="status" data-testid="topic-notice" className="truncate text-warning">
+        <span role="status" data-testid="topic-notice" className="min-w-0 truncate text-warning">
           {tab.notice}
         </span>
       )}
-      <span className="truncate">{STATUS_TEXT[tab.status]}</span>
-      <span className="flex-1" />
-      <span className="shrink-0">{NO_GROUP_TEXT}</span>
+      <span className="min-w-0 truncate">{STATUS_TEXT[tab.status]}</span>
     </div>
   );
 }

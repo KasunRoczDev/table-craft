@@ -75,6 +75,10 @@ const UNREACHABLE_BOOTSTRAP = "127.0.0.1:59095";
 const NARROW_WINDOW = { width: 1024, height: 768 } as const;
 const NARROWER_WINDOW = { width: 900, height: 768 } as const;
 const ROW_EDGE_TOLERANCE_PX = 1;
+/** The topic footer's count once a read answered: `90 messages`, or `10 of 91 scanned` under a filter. */
+const FOOTER_COUNT = /^[\d,]+ (of [\d,]+ scanned|messages?)$/;
+const FILTERED_COUNT = /^[\d,]+ of [\d,]+ scanned$/;
+const NEWEST_SCOPE = "The filter searched only the newest 500 of each partition.";
 /** Before any seeded message, so a read from it matches the hot customer's. */
 const EARLY_TIMESTAMP = "2020-01-01 00:00:00";
 const TAIL_BURST = 2000;
@@ -350,7 +354,7 @@ function groupTab(page: Page): Locator {
 async function openTopic(page: Page, topic: string): Promise<Locator> {
   await openStreamRow(page, "topic", topic);
   const tab = topicTab(page);
-  await text(tab.getByTestId("topic-scanned")).toContain("Scanned");
+  await text(tab.getByTestId("topic-scanned")).toMatch(FOOTER_COUNT);
   return tab;
 }
 
@@ -365,7 +369,7 @@ async function openGroup(page: Page, group: string): Promise<Locator> {
 async function read(tab: Locator): Promise<void> {
   await tab.getByTestId("topic-read").click();
   await shown(tab.getByTestId("topic-read"));
-  await text(tab.getByTestId("topic-scanned")).toContain("Scanned");
+  await text(tab.getByTestId("topic-scanned")).toMatch(FOOTER_COUNT);
 }
 
 async function fillCode(scope: Locator, testId: string, text: string): Promise<void> {
@@ -459,13 +463,16 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       const page = await launch(liveDatasource(liveConfig(kafka)));
       const tab = await openTopic(page, kafka.orders);
       const all = ORDERS_PARTITIONS * ORDERS_PER_PARTITION;
-      await text(tab.getByTestId("topic-scanned")).toContain(`${String(all)} rows`);
+      await text(tab.getByTestId("topic-scanned")).toBe(`${String(all)} messages`);
       expect((await gridText(page)).cells.join(" ")).toContain('"customer"');
       await count(tab.getByTestId("partition-cell")).toBe(ORDERS_PARTITIONS);
 
       await tab.getByTestId("read-filter").fill(HOT_CUSTOMER);
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("matched in the newest 500 of each partition");
+      await text(tab.getByTestId("topic-scanned")).toMatch(FILTERED_COUNT);
+      await attr(tab.getByTestId("topic-scanned"), "title").toContain(NEWEST_SCOPE);
+      await count(tab.getByTestId("topic-search-earlier")).toBe(1);
+      await count(tab.getByTestId("topic-scan-further")).toBe(0);
       const hot = (await gridText(page)).cells.filter((cell) => cell === HOT_CUSTOMER).length;
       expect(hot).toBeGreaterThan(0);
 
@@ -474,7 +481,10 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       const half = all / 2;
       await tab.getByTestId("read-timestamp").fill(orderInstant(kafka, half));
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain(`${String(all - half)} rows`);
+      await text(tab.getByTestId("topic-scanned")).toBe(`${String(all - half)} messages`);
+      await text(tab.getByTestId("topic-footer")).toBe(`${String(all - half)} messages`);
+      await attr(tab.getByTestId("topic-scanned"), "title").toContain("reached the head of every partition");
+      await inViewport(tab.getByTestId("topic-scanned"));
       await tab.locator('[data-testid="partition-cell"][data-partition="1"]').click();
       await attr(tab.locator('[data-testid="partition-cell"][data-partition="1"]'), "aria-pressed").toBe("true");
       await capture(page, "03-messages");
@@ -557,7 +567,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await count(produce).toBe(0);
       await tab.getByTestId("read-filter").fill("cust-live");
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("1 matched");
+      await text(tab.getByTestId("topic-scanned")).toMatch(/^1 of [\d,]+ scanned$/);
       expect((await gridText(page)).cells.join(" ")).toContain("o-live");
     },
     SCENARIO_TIMEOUT_MS,
@@ -785,9 +795,11 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       const tab = await openTopic(page, kafka.history);
       await tab.getByTestId("read-filter").fill(EARLY_KEY);
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("0 matched in the newest 500 of each partition");
+      await text(tab.getByTestId("topic-scanned")).toMatch(/^0 of [\d,]+ scanned$/);
+      await attr(tab.getByTestId("topic-scanned"), "title").toContain(NEWEST_SCOPE);
+      await text(tab.getByTestId("topic-footer")).not.toContain("No group");
       await tab.getByTestId("topic-search-earlier").click();
-      await text(tab.getByTestId("topic-scanned")).toContain("1 matched");
+      await text(tab.getByTestId("topic-scanned")).toMatch(/^1 of [\d,]+ scanned$/);
       expect((await gridText(page)).cells).toContain(EARLY_KEY);
       await capture(page, "13-search-earlier");
     },
@@ -931,7 +943,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await readBarRowsFull(tab);
       await tab.getByTestId("read-filter").fill(HOT_CUSTOMER);
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("matched");
+      await text(tab.getByTestId("topic-scanned")).toMatch(FILTERED_COUNT);
       await capture(page, "19-narrow");
 
       await setWindowSize(runningApp(), NARROWER_WINDOW);
@@ -941,7 +953,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await inViewport(tab.getByTestId("topic-read"));
       await readBarRowsFull(tab);
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("matched");
+      await text(tab.getByTestId("topic-scanned")).toMatch(FILTERED_COUNT);
       await capture(page, "19-narrow-timestamp");
     },
     SCENARIO_TIMEOUT_MS,
@@ -1004,7 +1016,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await count(records).toBe(0);
       await tab.getByTestId("view-messages").click();
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain("0 rows");
+      await text(tab.getByTestId("topic-scanned")).toBe("0 messages");
     },
     SCENARIO_TIMEOUT_MS,
   );
@@ -1060,7 +1072,7 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       const tab = await openTopic(page, kafka.large);
       await chooseOption(tab.getByTestId("read-from"), "earliest");
       await read(tab);
-      await text(tab.getByTestId("topic-scanned")).toContain(`${String(LARGE_MESSAGES)} rows`);
+      await text(tab.getByTestId("topic-scanned")).toBe(`${String(LARGE_MESSAGES)} messages`);
       const preview = tab.getByRole("gridcell").filter({ hasText: "xxxxxxxx" }).first();
       await text(preview).toContain("…");
       expect((await preview.textContent())?.length ?? 0).toBeLessThan(LARGE_VALUE_BYTES);

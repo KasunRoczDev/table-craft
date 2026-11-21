@@ -238,22 +238,58 @@ export function partitionCounts(
   return { counts, complete: loaded >= rowCount };
 }
 
-/** The footer's read summary: `Scanned 90,411 · 191 matched`, or `· 500 rows` without a filter. */
-export function scannedText(
-  read: { readonly scanned: string; readonly matched: string },
+interface ReadCounts {
+  readonly scanned: string;
+  readonly matched: string;
+}
+
+interface ReadSummary extends ReadCounts {
+  readonly exhausted: boolean;
+}
+
+/** Decision 170: said once, in the count's tooltip, since a reader may wonder whether browsing moved a group. */
+export const NO_GROUP_TEXT = "No consumer group was joined, and no offset committed.";
+
+function countText(digits: string): string {
+  return BigInt(/^\d+$/.test(digits) ? digits : "0").toLocaleString("en-US");
+}
+
+function messagesText(count: string): string {
+  return `${count} ${count === "1" ? "message" : "messages"}`;
+}
+
+/** The footer's count: `191 of 90,411 scanned`, or `500 messages` when every scanned message is shown. */
+export function scannedText(read: ReadCounts, filtered: boolean, rows: number): string {
+  const scanned = countText(read.scanned);
+  const shown = filtered ? countText(read.matched) : rows.toLocaleString("en-US");
+  return !filtered && shown === scanned ? messagesText(scanned) : `${shown} of ${scanned} scanned`;
+}
+
+/** The count's tooltip: what the read covered, which the footer itself leaves out. */
+export function scannedScope(
+  read: ReadSummary,
   filtered: boolean,
-  rows: number,
   /** The read's Latest N: a filter then searched only the newest N of each partition (audit M4). */
-  latest: number | null = null,
+  latest: number | null,
 ): string {
-  const scanned = BigInt(/^\d+$/.test(read.scanned) ? read.scanned : "0").toLocaleString("en-US");
-  if (filtered) {
-    const matched = BigInt(/^\d+$/.test(read.matched) ? read.matched : "0").toLocaleString("en-US");
-    if (latest !== null)
-      return `Scanned ${scanned} · ${matched} matched in the newest ${latest.toLocaleString("en-US")} of each partition`;
-    return `Scanned ${scanned} · ${matched} matched`;
-  }
-  return `Scanned ${scanned} · ${rows.toLocaleString("en-US")} ${rows === 1 ? "row" : "rows"}`;
+  const scanned = messagesText(countText(read.scanned));
+  const lines = [
+    filtered ? `Scanned ${scanned}; ${countText(read.matched)} matched the filter.` : `Scanned ${scanned}.`,
+  ];
+  if (latest !== null)
+    lines.push(`The filter searched only the newest ${latest.toLocaleString("en-US")} of each partition.`);
+  else if (read.exhausted) lines.push("The read reached the head of every partition.");
+  else lines.push(`The read stopped after ${scanned}; Scan Further reads on.`);
+  lines.push(NO_GROUP_TEXT);
+  return lines.join("\n");
+}
+
+export type FooterAction = "searchEarlier" | "scanFurther";
+
+/** The one thing the footer offers next, or nothing when the read covered what it was asked. */
+export function footerAction(read: ReadSummary, latest: number | null): FooterAction | null {
+  if (latest !== null) return "searchEarlier";
+  return read.exhausted ? null : "scanFurther";
 }
 
 const DURATION_UNITS: readonly (readonly [string, number])[] = [

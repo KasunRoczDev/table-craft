@@ -28,6 +28,8 @@ import {
 } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import {
   filteredPartition,
+  footerAction,
+  scannedScope,
   scannedText,
   searchesOnlyNewest,
   stripSummary,
@@ -150,9 +152,10 @@ describe("read footer", () => {
     expect(searchesOnlyNewest(request)).toBe(500);
     expect(searchesOnlyNewest({ ...request, filter: null })).toBeNull();
     expect(searchesOnlyNewest({ ...request, from: { kind: "earliest" } })).toBeNull();
-    expect(scannedText({ scanned: "6000", matched: "0" }, true, 0, 500)).toBe(
-      "Scanned 6,000 · 0 matched in the newest 500 of each partition",
-    );
+    const read = { scanned: "6000", matched: "0", exhausted: true };
+    expect(scannedText(read, true, 0)).toBe("0 of 6,000 scanned");
+    expect(scannedScope(read, true, 500)).toContain("The filter searched only the newest 500 of each partition.");
+    expect(footerAction(read, 500)).toBe("searchEarlier");
   });
 });
 
