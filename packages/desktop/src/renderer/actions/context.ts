@@ -176,6 +176,19 @@ export function modalOpen(): boolean {
   );
 }
 
+/** What the window knows now of datasource `id`, for an action whose target is not `context.datasource`. */
+export function datasourceTarget(id: string | null | undefined): DatasourceTarget | null {
+  const datasources = useDatasources.getState();
+  const view = datasourceById(datasources, id);
+  return view === undefined
+    ? null
+    : {
+        view,
+        connection: connectionOf(datasources, view.id),
+        capabilities: capabilitiesOf(datasources.plugins, view.pluginId),
+      };
+}
+
 export function currentContext(tabId?: string): ActionContext {
   const strip = useTabs.getState();
   const active = tabId === undefined ? activeTab(strip) : (strip.tabs.find((tab) => tab.id === tabId) ?? null);
@@ -235,14 +248,7 @@ export function currentContext(tabId?: string): ActionContext {
     selection: datasources.selection,
     items,
     folders: datasources.folders,
-    datasource:
-      target === undefined
-        ? null
-        : {
-            view: target,
-            connection: connectionOf(datasources, target.id),
-            capabilities: capabilitiesOf(datasources.plugins, target.pluginId),
-          },
+    datasource: datasourceTarget(target?.id),
     capabilities:
       tabDatasourceId === undefined
         ? []

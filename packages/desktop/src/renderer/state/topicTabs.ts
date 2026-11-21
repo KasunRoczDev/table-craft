@@ -98,8 +98,8 @@ export interface TopicTabsState {
   readonly open: (id: string, target: TopicTarget, draft?: ReadDraft, group?: string) => Promise<void>;
   /** Stops the running read through the session's `cancel` (audit M5). */
   readonly cancel: (id: string) => Promise<void>;
-  /** Reads `draft` now, as Read from Here and Search Earlier do. */
-  readonly readWith: (id: string, change: Partial<ReadDraft>) => Promise<boolean>;
+  /** Reads `draft` now, as Read from Here and Search Earlier do; `group` marks that group's committed offsets instead. */
+  readonly readWith: (id: string, change: Partial<ReadDraft>, group?: string) => Promise<boolean>;
   readonly close: (id: string) => void;
   readonly detach: (datasourceId: string, error: EngineError | null) => void;
   readonly setDraft: (id: string, change: Partial<ReadDraft>) => void;
@@ -444,9 +444,11 @@ export function createTopicTabsStore(dependencies: TopicTabsDependencies) {
         await client.call("statement.cancel", { sessionId: current.sessionId }).catch(() => undefined);
       },
 
-      readWith(id, change) {
+      readWith(id, change, group) {
         const current = get().tabs[id];
-        return current === undefined ? Promise.resolve(false) : readDraft(id, { ...current.draft, ...change });
+        if (current === undefined) return Promise.resolve(false);
+        if (group !== undefined && current.committed?.group !== group) patch(id, { committed: { group, offsets: {} } });
+        return readDraft(id, { ...current.draft, ...change });
       },
 
       ensureWindow: windows.ensureWindow,

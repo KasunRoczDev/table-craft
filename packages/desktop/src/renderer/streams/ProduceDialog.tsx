@@ -41,6 +41,9 @@ function formatOptions(registry: boolean) {
   );
 }
 
+/** Kafka numbers partitions with an INT32. */
+const MAX_PARTITION = 2_147_483_647;
+
 /** A registry format's subject, `<topic>-value` by default, and its version, latest when blank. */
 function schemaOf(format: MessageFormat, subject: string, version: string): SchemaReference | null | string {
   if (!REGISTRY_FORMATS.has(format)) return null;
@@ -62,7 +65,8 @@ export function produceRecordOf(
   },
 ): ProduceRecord | string {
   const partition = draft.partition.trim();
-  if (partition !== "" && !/^\d+$/.test(partition)) return "Partition is a number, or blank to let the key choose.";
+  if (partition !== "" && !(/^\d+$/.test(partition) && Number(partition) <= MAX_PARTITION))
+    return `Partition is a number from 0 to ${MAX_PARTITION.toLocaleString("en-US")}, or blank to let the key choose.`;
   const keySchema = schemaOf(draft.keyFormat, subjects.key, subjects.keyVersion);
   if (typeof keySchema === "string") return keySchema;
   const valueSchema = schemaOf(draft.valueFormat, subjects.value, subjects.valueVersion);

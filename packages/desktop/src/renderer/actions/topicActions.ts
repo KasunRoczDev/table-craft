@@ -1,14 +1,16 @@
 import type { SchemaType, SubjectSummary } from "@table-craft/desktop/engine/protocol.js";
 import {
+  isPreviewMessage,
   messageCommand,
   messageJson,
   messageOf,
+  PREVIEW_ONLY_NOTICE,
   withFullCells,
   type TopicMessage,
 } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import { toggledPartitionFilter } from "@table-craft/desktop/renderer/model/topicRead.js";
 import { openConsole } from "@table-craft/desktop/renderer/actions/consoleCommands.js";
-import type { ActionContext } from "@table-craft/desktop/renderer/actions/context.js";
+import { datasourceTarget, type ActionContext } from "@table-craft/desktop/renderer/actions/context.js";
 import { defineAction, type AnyAction } from "@table-craft/desktop/renderer/actions/registry.js";
 import { catalogRowOf } from "@table-craft/desktop/renderer/model/explorerTree.js";
 import { DEFAULT_DRAFT, type ReadDraft } from "@table-craft/desktop/renderer/model/topicRead.js";
@@ -69,6 +71,10 @@ export interface TopicOffsetArgs extends TopicTarget {
   /** Marks this group's committed offsets in what the tab reads, as Read from Here does. */
   readonly group?: string;
 }
+
+const PREVIEW_PRODUCE_REFUSED = `${PREVIEW_ONLY_NOTICE} Producing it again would send a cut record; read the topic again to produce it whole.`;
+const PREVIEW_COPIED_TITLE = "Copied the Preview Only";
+const PREVIEW_COPIED_HINT = "Read the topic again to copy the message whole.";
 
 /** Read from Here and Open at This Offset read this many messages (audit M9). */
 const READ_HERE_LIMIT = "50";
@@ -201,6 +207,12 @@ export async function wholeFocusedMessage(context: ActionContext): Promise<Topic
   return full === null ? message : withFullCells(message, full);
 }
 
+/** `message` to produce again; refused when only its preview is left, which would send a cut record. */
+export function producible(message: TopicMessage | null): TopicMessage | null {
+  if (message !== null && isPreviewMessage(message)) throw new Error(PREVIEW_PRODUCE_REFUSED);
+  return message;
+}
+
 /** The focused row of a topic tab, or `message`, as a record to send again (decision 13). */
 export function produceDraftOf(
   tab: TopicTab | null | undefined,
@@ -261,8 +273,28 @@ async function produce(context: ActionContext, initial: ProduceDraft): Promise<v
   if (sent) await refreshTopic(target);
 }
 
-const canWriteTopic = (context: ActionContext) =>
-  streams(context) && !readOnly(context) && connected(context) && topicTarget(context) !== null;
+/**
+ * Whether `datasourceId` takes `capability`'s writes now. It is the target's datasource, which
+ * need not be `context.datasource` when the target came from the tree.
+ */
+export function canWriteStreams(
+  context: ActionContext,
+  datasourceId: string,
+  capability: "topics" | "consumerGroups" = "topics",
+): boolean {
+  const source = context.datasource?.view.id === datasourceId ? context.datasource : datasourceTarget(datasourceId);
+  return (
+    source !== null &&
+    source.capabilities.includes(capability) &&
+    !source.view.readOnly &&
+    source.connection.status === "connected"
+  );
+}
+
+const canWriteTopic = (context: ActionContext) => {
+  const target = topicTarget(context);
+  return target !== null && canWriteStreams(context, target.datasourceId);
+};
 
 const writeTopicAction = { available: streams, when: canWriteTopic } as const;
 
@@ -378,7 +410,7 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     available: streams,
     when: (context) => canWriteTopic(context) && produceDraftOf(context.topicTab) !== null,
     run: guarded("Produce Message", async (context) => {
-      const draft = produceDraftOf(context.topicTab, await wholeFocusedMessage(context));
+      const draft = produceDraftOf(context.topicTab, producible(await wholeFocusedMessage(context)));
       if (draft !== null) await produce(context, draft);
     }),
   }),
@@ -553,7 +585,16 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     when: (context) => focusedMessage(context.topicTab) !== null,
     run: async (context) => {
       const message = await wholeFocusedMessage(context);
-      if (message !== null) await writeClipboard(messageJson(message));
+      if (message === null) return;
+      await writeClipboard(messageJson(message));
+      if (isPreviewMessage(message))
+        await useModal.getState().ask({
+          kind: "notice",
+          tone: "info",
+          title: PREVIEW_COPIED_TITLE,
+          message: PREVIEW_ONLY_NOTICE,
+          hint: PREVIEW_COPIED_HINT,
+        });
     },
   }),
   defineAction({
@@ -604,7 +645,7 @@ export function openTopicAt(args: TopicOffsetArgs): void {
   if (existing !== undefined) {
     useTabs.getState().activate(existing);
     useTopicTabs.getState().setView(existing, "messages");
-    void useTopicTabs.getState().readWith(existing, change);
+    void useTopicTabs.getState().readWith(existing, change, args.group);
     return;
   }
   const tab: Tab = { id: `${TOPIC_TAB_PREFIX}${String(topicTabsOpened++)}`, kind: "topic", title: target.topic };

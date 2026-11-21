@@ -1,6 +1,7 @@
 import type { ActionContext } from "@table-craft/desktop/renderer/actions/context.js";
 import { defineAction, type AnyAction } from "@table-craft/desktop/renderer/actions/registry.js";
 import {
+  canWriteStreams,
   dialogDatasource,
   focusedMessage,
   guarded,
@@ -47,8 +48,6 @@ const GROUP_TAB_PREFIX = "group-";
 let groupTabsOpened = 0;
 
 const groups = (context: ActionContext) => context.datasource?.capabilities.includes("consumerGroups") === true;
-const readOnly = (context: ActionContext) => context.datasource?.view.readOnly === true;
-const connected = (context: ActionContext) => context.datasource?.connection.status === "connected";
 
 function isGroupTarget(args: unknown): args is GroupTarget {
   return typeof args === "object" && args !== null && "datasourceId" in args && "group" in args;
@@ -104,8 +103,10 @@ async function refreshGroup(target: GroupTarget): Promise<void> {
   ]);
 }
 
-const canWriteGroup = (context: ActionContext) =>
-  groups(context) && !readOnly(context) && connected(context) && groupTarget(context) !== null;
+const canWriteGroup = (context: ActionContext) => {
+  const target = groupTarget(context);
+  return target !== null && canWriteStreams(context, target.datasourceId, "consumerGroups");
+};
 
 /** Reset Offsets… (decision 11), opened on the group's topics or on the one `args` names. */
 const resetOffsets = guarded("Reset Offsets", async (context: ActionContext, args: ResetArgs | undefined) => {
@@ -201,12 +202,14 @@ export const GROUP_ACTIONS: readonly AnyAction[] = [
               confirm: "Continue",
             });
       if (topic == null) return;
+      const where = dialogDatasource(context, target.datasourceId);
       const answer = await useModal.getState().ask({
         kind: "confirm",
-        title: "Delete Committed Offsets",
-        message: `Delete ${target.group}'s committed offsets on ${topic}? It then starts from its reset policy the next time it consumes the topic.`,
+        title: `Delete Committed Offsets on ${where.name}`,
+        message: `${isProduction(where) ? `${PRODUCTION_TEXT}. ` : ""}Delete ${target.group}'s committed offsets on ${topic}? It then starts from its reset policy the next time it consumes the topic. This cannot be undone.`,
         confirm: "Delete Offsets",
         destructive: true,
+        typed: target.group,
       });
       if (answer === null) return;
       await client.call("groups.deleteOffsets", { group: target.group, topic });
@@ -259,9 +262,8 @@ export const GROUP_ACTIONS: readonly AnyAction[] = [
     tabKind: "topic",
     available: groups,
     when: (context) =>
-      groups(context) &&
-      !readOnly(context) &&
-      connected(context) &&
+      context.topicTab != null &&
+      canWriteStreams(context, context.topicTab.datasourceId, "consumerGroups") &&
       focusedMessage(context.topicTab) !== null &&
       (context.topicTab?.consumers?.length ?? 0) > 0,
     run: guarded("Skip Record", async (context) => {

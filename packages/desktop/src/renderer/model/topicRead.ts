@@ -77,11 +77,15 @@ function countIn(text: string, what: string): number | string {
   return value;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const LOCAL_MIDNIGHT = "T00:00";
+
 /** `2026-11-21 09:15` as typed, read in local time unless it names its zone; null when unreadable. */
 export function instantOf(text: string): string | null {
   const trimmed = text.trim();
   if (trimmed === "") return null;
-  const time = Date.parse(trimmed.replace(" ", "T"));
+  // `Date.parse` reads a bare date as UTC midnight but a date with a time as local time.
+  const time = Date.parse(DATE_ONLY.test(trimmed) ? `${trimmed}${LOCAL_MIDNIGHT}` : trimmed.replace(" ", "T"));
   return Number.isNaN(time) ? null : new Date(time).toISOString();
 }
 

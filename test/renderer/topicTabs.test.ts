@@ -9,6 +9,7 @@ import type { EngineClient } from "@table-craft/desktop/renderer/engine/client.j
 import {
   DEFAULT_DRAFT,
   durationText,
+  instantOf,
   parsePartitions,
   partitionCounts,
   readCommandText,
@@ -222,6 +223,12 @@ describe("topic read bar", () => {
     expect(of({ from: "group", group: "" })).toHaveProperty("problem", expect.stringMatching(/consumer group/));
     expect(of({ limit: "50001" })).toHaveProperty("problem", expect.stringMatching(/50,000/));
     expect(of({ filter: "  cust-42 " })).toMatchObject({ request: { filter: "cust-42" } });
+  });
+
+  it("givenDateWithoutTime_whenRead_thenLocalMidnightAsTheHintSays", () => {
+    expect(instantOf("2026-11-21")).toBe(new Date(2026, 10, 21).toISOString());
+    expect(instantOf("2026-11-21 09:15")).toBe(new Date(2026, 10, 21, 9, 15).toISOString());
+    expect(instantOf("2026-11-21T00:00:00Z")).toBe("2026-11-21T00:00:00.000Z");
   });
 
   it("givenRequest_whenNamed_thenConsoleCommand", () => {

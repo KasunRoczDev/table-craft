@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { DeleteRecordsPreview } from "@table-craft/desktop/engine/protocol.js";
 import {
   Button,
@@ -73,7 +73,11 @@ function useWrite() {
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // `busy` is state, so a second Enter before the next render would still read false.
+  const running = useRef(false);
   async function attempt(run: () => Promise<void>, validated: string | null): Promise<boolean> {
+    if (running.current) return false;
+    running.current = true;
     setBusy(true);
     setProblem(null);
     setNote(null);
@@ -85,6 +89,7 @@ function useWrite() {
       setProblem(failureText(cause));
       return false;
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }
@@ -507,6 +512,8 @@ export function DeleteRecordsDialog({ request }: { readonly request: RequestOf<"
   const [preview, setPreview] = useState<DeleteRecordsPreview | null>(null);
   const [typed, setTyped] = useState("");
   const write = useWrite();
+  /** Bumped by each preview asked and each edit, so an answer to an older one is dropped. */
+  const asked = useRef(0);
   const prepare = () => {
     const chosen = parsePartitions(partitions, request.partitions);
     if (typeof chosen === "string") {
@@ -518,12 +525,17 @@ export function DeleteRecordsDialog({ request }: { readonly request: RequestOf<"
       write.setProblem(before);
       return;
     }
-    void write.attempt(async () => setPreview(await request.prepare(chosen, before)), null);
+    const ask = ++asked.current;
+    void write.attempt(async () => {
+      const answer = await request.prepare(chosen, before);
+      if (asked.current === ask) setPreview(answer);
+    }, null);
   };
   const removed = preview === null ? null : grouped(preview.removed);
   const needsName = preview !== null && deleteRecordsNeedsName(preview.removed);
   const named = typedMatches(typed, request.topic);
   const stale = () => {
+    asked.current += 1;
     setPreview(null);
     setTyped("");
   };
