@@ -259,9 +259,16 @@ export class TopicTails {
       while (!open.closed) {
         const batch = await open.tail.next({ count: PULL_MESSAGES, maxBytes: PULL_BYTES, timeoutMs: PULL_TIMEOUT_MS });
         if (open.closed) break;
-        for (const message of batch.messages) this.hold(open, message);
+        const spilling: Promise<void>[] = [];
+        for (const message of batch.messages) {
+          const put = this.hold(open, message);
+          if (put !== null) spilling.push(put);
+        }
         open.state = batch.state;
         open.error = batch.error;
+        // The spill writes in order; waiting for it before the next pull keeps a slow disk from
+        // queueing every large message in memory.
+        await Promise.allSettled(spilling);
         if (batch.state === "stopped") break;
         if (batch.messages.length === 0) await new Promise<void>((resolve) => setTimeout(resolve, IDLE_PAUSE_MS));
       }
@@ -272,15 +279,18 @@ export class TopicTails {
     }
   }
 
-  /** A spill the disk refused leaves the preview alone; `topics.tailMessage` then answers null. */
-  private hold(open: RunningTail, message: TailMessage): void {
+  /**
+   * Holds the message, its preview when it is large; the returned write puts the whole one in the
+   * spill. A write the disk refused leaves the preview alone, and `topics.tailMessage` answers null.
+   */
+  private hold(open: RunningTail, message: TailMessage): Promise<void> | null {
     const preview = open.spill === null ? null : tailPreview(message);
-    if (preview === null) {
+    if (preview === null || open.spill === null) {
       open.ring.append(message);
-      return;
+      return null;
     }
     const sequence = open.ring.append(preview, true);
-    open.spill?.put(String(sequence), message).catch(() => undefined);
+    return open.spill.put(String(sequence), message).catch(() => undefined);
   }
 
   private stopOpen(open: RunningTail): Promise<void> {

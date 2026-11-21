@@ -59,6 +59,8 @@ const log = createLogger({
 
 /** Node's own exit code for an uncaught exception; the engine still dies of one, it is only logged first. */
 const UNCAUGHT_EXIT_CODE = 1;
+/** 128 plus the signal's number, as a shell reports a process SIGTERM ended. */
+const SIGTERM_EXIT_CODE = 143;
 
 function crash(msg: string, cause: unknown): void {
   log.error(msg, { err: cause });
@@ -77,6 +79,8 @@ process.on("exit", () => {
     // The OS temporary folder's own cleanup and the next engine's sweep remove what is left.
   }
 });
+// Node ends on SIGTERM without running `exit` handlers; exiting by hand runs the one above.
+process.once("SIGTERM", () => process.exit(SIGTERM_EXIT_CODE));
 let booted: Promise<EngineConnectionFactory> | null = null;
 let engine: Engine | null = null;
 const connections = new Set<Promise<EngineConnection>>();

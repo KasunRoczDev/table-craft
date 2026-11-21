@@ -644,6 +644,80 @@ describe("kafka large messages on disk", () => {
   });
 });
 
+describe("kafka tail spill pressure", () => {
+  const TAIL_START = {
+    type: "topics.tailStart",
+    topic: "orders",
+    partitions: null,
+    from: { kind: "latest" },
+    keyFormat: "auto",
+    valueFormat: "auto",
+    maxMessages: 10,
+    maxBytes: 1_000_000,
+  } as const;
+  const large = (offset: number): TailMessage => ({ ...message(offset), value: FULL_VALUE });
+
+  function endlessTail() {
+    const next = vi.fn(
+      () =>
+        new Promise<TopicTailBatch>((resolve) =>
+          setTimeout(() => resolve({ messages: [large(next.mock.calls.length)], state: "live", error: null })),
+        ),
+    );
+    const tail: TopicTail = { next, close: vi.fn().mockResolvedValue(undefined) };
+    return { tail, next };
+  }
+
+  it("givenSlowSpillDisk_whenLargeMessagesArrive_thenTheTailWaitsForTheWriteBeforeItPullsAgain", async () => {
+    let freeDisk = (): void => undefined;
+    const disk = new Promise<number>((resolve) => {
+      freeDisk = () => resolve(Number.MAX_SAFE_INTEGER);
+    });
+    const { tail, next } = endlessTail();
+    const engine = setup(
+      () => Promise.resolve(session({ topics: { tail: () => Promise.resolve(tail) } as unknown as TopicBrowser })),
+      false,
+      new SpillBudget({ minFreeBytes: 0, freeSpace: () => disk }),
+    );
+    const connection = engine.connect();
+    result<TopicTailSummary>(await connection.handle({ id: 1, ...TAIL_START }));
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, SPILL_WAIT_MS));
+    expect(next).toHaveBeenCalledTimes(1);
+    freeDisk();
+
+    await vi.waitFor(() => expect(next.mock.calls.length).toBeGreaterThan(1));
+    await engine.close();
+  });
+
+  it("givenSpillDiskFails_whenLargeMessagesArrive_thenTheTailKeepsPreviewsAndRuns", async () => {
+    const { tail, next } = endlessTail();
+    const engine = setup(
+      () => Promise.resolve(session({ topics: { tail: () => Promise.resolve(tail) } as unknown as TopicBrowser })),
+      false,
+      new SpillBudget({ minFreeBytes: 0, freeSpace: () => Promise.reject(new Error("ENOSPC: no space left")) }),
+    );
+    const connection = engine.connect();
+    const { tailId } = result<TopicTailSummary>(await connection.handle({ id: 1, ...TAIL_START }));
+
+    await vi.waitFor(() => expect(next.mock.calls.length).toBeGreaterThan(2));
+    const window = result<TopicTailWindow>(
+      await connection.handle({ id: 2, type: "topics.tailWindow", tailId, after: null, count: 1, maxBytes: 1_000_000 }),
+    );
+    const whole = result<TailMessage | null>(
+      await connection.handle({ id: 3, type: "topics.tailMessage", tailId, sequence: "1" }),
+    );
+
+    expect(window.state).toBe("live");
+    expect(window.rows[0]?.message.value).toBe(PREVIEW_VALUE);
+    expect(whole).toBeNull();
+    await engine.close();
+  });
+});
+
+const SPILL_WAIT_MS = 100;
+
 describe("topic tail ring", () => {
   it("givenReaderBehind_whenRingDropsBetweenWindows_thenSkippedCountsOnlyWhatItMissed", () => {
     const ring = new TopicTailRing(2, 1_000_000);
