@@ -18,6 +18,10 @@ const CARRIAGE_RETURN = 0x0d;
 const FIRST_PRINTABLE = 0x20;
 const DELETE = 0x7f;
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+const INT32_MIN = -2_147_483_648;
+const INT32_MAX = 2_147_483_647;
 
 /** The formats each schema type decodes under. */
 const REGISTRY_FORMATS: Readonly<Record<SchemaType, MessageFormat>> = {
@@ -34,6 +38,8 @@ export interface SchemaCodec {
   readonly label: string;
   /** The value of `payload`, the bytes after the 5-byte header; throws when they do not fit. */
   decode(payload: Buffer): unknown;
+  /** The payload as display text, for a codec whose payload already is JSON. */
+  decodeText?(payload: Buffer): string;
 }
 
 /** Schemas already fetched, looked up without waiting; a read fetches every id it meets first. */
@@ -65,14 +71,27 @@ export function schemaIdOf(bytes: Uint8Array | null): number | null {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).readInt32BE(1);
 }
 
-/** JSON text of a decoded value, bytes as base64 and 64-bit integers as decimal strings. */
+/**
+ * A decoded value as plain JSON data. This walk runs before `JSON.stringify`, because a Buffer's
+ * own `toJSON` would turn it into `{"type":"Buffer",…}` before a replacer saw it.
+ */
+function plainJson(value: unknown): unknown {
+  if (typeof value === "bigint") {
+    return value >= MIN_SAFE && value <= MAX_SAFE ? Number(value) : value.toString();
+  }
+  if (value instanceof Uint8Array)
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString("base64");
+  if (Array.isArray(value)) return value.map(plainJson);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, plainJson(item)]));
+}
+
+/**
+ * JSON text of a decoded value: bytes as base64, 64-bit integers as numbers where JavaScript holds
+ * them exactly and as decimal strings past that.
+ */
 export function jsonText(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) => {
-    if (typeof item === "bigint") return item.toString();
-    if (Buffer.isBuffer(item)) return item.toString("base64");
-    if (item instanceof Uint8Array) return Buffer.from(item).toString("base64");
-    return item;
-  });
+  return JSON.stringify(plainJson(value));
 }
 
 /** The bytes as text when they are valid UTF-8 without control characters but tab and line breaks. */
@@ -133,7 +152,8 @@ function registryDecoded(bytes: Buffer, format: MessageFormat, options: DecodeOp
     return asBytes(bytes, options, `names schema id ${String(id)}, a ${codec.type} schema, not ${format}`);
   }
   try {
-    const text = jsonText(codec.decode(bytes.subarray(CONFLUENT_HEADER_BYTES)));
+    const payload = bytes.subarray(CONFLUENT_HEADER_BYTES);
+    const text = codec.decodeText?.(payload) ?? jsonText(codec.decode(payload));
     return shownAs({ kind: "json", text }, text, codec.label);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -210,6 +230,13 @@ function utf8OrNull(bytes: Uint8Array): string | null {
   }
 }
 
+/** A number's text without surrounding space; empty text is refused rather than read as 0. */
+function numeral(text: string, format: MessageFormat): string {
+  const trimmed = text.trim();
+  if (trimmed === "") throw new Error(`${format} takes a number; the text is empty`);
+  return trimmed;
+}
+
 /** Text in `format` as the bytes a producer sends; the registry formats go through `produce.ts`. */
 export function encodePlain(text: string, format: MessageFormat): Buffer {
   switch (format) {
@@ -227,20 +254,23 @@ export function encodePlain(text: string, format: MessageFormat): Buffer {
     case "base64":
       return Buffer.from(text.trim(), "base64");
     case "int32": {
-      const value = Number(text.trim());
-      if (!Number.isInteger(value)) throw new Error(`${text} is not a whole number`);
+      const value = Number(numeral(text, format));
+      if (!Number.isInteger(value) || value < INT32_MIN || value > INT32_MAX) {
+        throw new Error(`${text} is not a whole number from ${String(INT32_MIN)} to ${String(INT32_MAX)}`);
+      }
       const bytes = Buffer.alloc(INT32_BYTES);
       bytes.writeInt32BE(value, 0);
       return bytes;
     }
     case "int64": {
       const bytes = Buffer.alloc(INT64_BYTES);
-      bytes.writeBigInt64BE(BigInt(text.trim()), 0);
+      bytes.writeBigInt64BE(BigInt(numeral(text, format)), 0);
       return bytes;
     }
     case "double": {
-      const value = Number(text.trim());
-      if (Number.isNaN(value) && text.trim() !== "NaN") throw new Error(`${text} is not a number`);
+      const trimmed = numeral(text, format);
+      const value = Number(trimmed);
+      if (Number.isNaN(value) && trimmed !== "NaN") throw new Error(`${text} is not a number`);
       const bytes = Buffer.alloc(DOUBLE_BYTES);
       bytes.writeDoubleBE(value, 0);
       return bytes;

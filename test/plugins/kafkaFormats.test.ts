@@ -110,3 +110,101 @@ describe("kafka formats", () => {
     expect(jsonSchemaCodec(2, '{"type":"object"}').validate({})).toEqual([]);
   });
 });
+
+const LIST_SCHEMA = JSON.stringify({
+  type: "record",
+  name: "Batch",
+  fields: [
+    { name: "items", type: { type: "array", items: "null" } },
+    { name: "tags", type: { type: "map", values: "null" } },
+  ],
+});
+const WIDE_SCHEMA = JSON.stringify({
+  type: "record",
+  name: "Wide",
+  fields: [
+    { name: "big", type: "long" },
+    { name: "either", type: ["null", "int", "long"] },
+    { name: "raw", type: "bytes" },
+    { name: "hash", type: { type: "fixed", name: "Hash", size: 2 } },
+  ],
+});
+const CUSTOMER_PROTO = `syntax = "proto3";
+package shop;
+message Customer { string name = 1; }`;
+const ORDER_PROTO = `syntax = "proto3";
+package shop;
+import "customer.proto";
+import "google/protobuf/timestamp.proto";
+message Order { string id = 1; Customer customer = 2; google.protobuf.Timestamp placed = 3; }`;
+const DECODE_BUDGET_MS = 500;
+
+function registryBytes(codec: RegistryCodec, payload: Buffer): Buffer {
+  return Buffer.concat([confluentHeader(codec.id), payload]);
+}
+
+describe("kafka formats against hostile or wide payloads", () => {
+  it("givenAvroBlockCountBeyondPayload_whenDecoded_thenBytesWithWarningAtOnce", () => {
+    const codec = avroCodec(4, LIST_SCHEMA, []);
+    const started = performance.now();
+    // Zig-zag 0x80 0x80 0x80 0x80 0x08 is 2^31 items of a zero-width type in a 5-byte payload.
+    const decoded = decode(registryBytes(codec, Buffer.from([0x80, 0x80, 0x80, 0x80, 0x08])), "auto", {
+      lookup: lookupOf(codec),
+      fullBytes: false,
+    });
+    expect(performance.now() - started).toBeLessThan(DECODE_BUDGET_MS);
+    expect(decoded.cell).toMatchObject({ kind: "bytes" });
+    expect(decoded.warning).not.toBeNull();
+  });
+
+  it("givenLongAboveTwoToThe53AndBytes_whenRoundTripped_thenExactAndBase64", () => {
+    const codec = avroCodec(5, WIDE_SCHEMA, []);
+    const value = { big: "9007199254740993", either: { long: 7 }, raw: "AAE=", hash: "AQI=" };
+    const written = JSON.parse(
+      `{"big":9007199254740993,"either":{"long":7},"raw":"${value.raw}","hash":"${value.hash}"}`,
+    ) as unknown;
+    expect(codec.validate({ ...(written as object), big: 9007199254740993n })).toEqual([]);
+    const payload = codec.encode({ ...(written as object), big: 9007199254740993n });
+    const decoded = decode(registryBytes(codec, payload), "avro", { lookup: lookupOf(codec), fullBytes: false });
+    expect(decoded.warning).toBeNull();
+    expect(decoded.cell).toEqual({
+      kind: "json",
+      text: '{"big":"9007199254740993","either":{"long":7},"raw":"AAE=","hash":"AQI="}',
+    });
+    expect(codec.validate({ big: 1.5, either: null, raw: "", hash: "AQI=" }).join()).toContain("big: 1.5 is not long");
+  });
+
+  it("givenProtobufReferenceInSamePackage_whenEncodedAndDecoded_thenMainMessage", () => {
+    const codec = protobufCodec(6, ORDER_PROTO, [{ name: "customer.proto", schema: CUSTOMER_PROTO }]);
+    const value = { id: "o-1", customer: { name: "Ann" }, placed: { seconds: "5", nanos: 0 } };
+    expect(codec.validate(value)).toEqual([]);
+    const payload = codec.encode(value);
+    expect(payload[0]).toBe(0);
+    const decoded = decode(registryBytes(codec, payload), "protobuf", { lookup: lookupOf(codec), fullBytes: false });
+    expect(decoded.warning).toBeNull();
+    expect(JSON.parse((decoded.cell as { text: string }).text)).toMatchObject({ id: "o-1", customer: { name: "Ann" } });
+  });
+
+  it("givenProtobufValueWithUnknownField_whenValidated_thenNamesThePath", () => {
+    const codec = protobufCodec(6, ORDER_PROTO, [{ name: "customer.proto", schema: CUSTOMER_PROTO }]);
+    expect(codec.validate({ id: "o-1", customer: { nmae: "Ann" } })).toEqual([
+      "customer.nmae: Customer has no field nmae",
+    ]);
+  });
+
+  it("givenPlainNumbers_whenEncoded_thenEmptyAndOutOfRangeRefused", () => {
+    expect(() => encodePlain("", "int32")).toThrow(/the text is empty/);
+    expect(() => encodePlain("  ", "int64")).toThrow(/the text is empty/);
+    expect(() => encodePlain("2147483648", "int32")).toThrow(/-2147483648 to 2147483647/);
+    expect(encodePlain("-2147483648", "int32")).toEqual(Buffer.from([0x80, 0, 0, 0]));
+  });
+
+  it("givenJsonSchemaIntegerAboveTwoToThe53_whenProducedAndRead_thenDigitsKept", () => {
+    const codec = jsonSchemaCodec(8, '{"type":"object","properties":{"id":{"type":"integer"}}}');
+    const text = '{"id":9007199254740993}';
+    const payload = codec.encodeText?.(text, JSON.parse(text)) ?? Buffer.alloc(0);
+    expect(payload.toString("utf8")).toBe(text);
+    const decoded = decode(registryBytes(codec, payload), "auto", { lookup: lookupOf(codec), fullBytes: false });
+    expect(decoded.cell).toEqual({ kind: "json", text });
+  });
+});

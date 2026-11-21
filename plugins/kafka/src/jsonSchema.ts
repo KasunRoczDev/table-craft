@@ -114,7 +114,13 @@ export function jsonSchemaCodec(id: number, schema: string): RegistryCodec {
     type: "JSON",
     label: labelOf("JSON", id),
     decode: (payload) => JSON.parse(payload.toString("utf8")) as unknown,
+    decodeText: (payload) => {
+      const text = payload.toString("utf8");
+      JSON.parse(text);
+      return text;
+    },
     validate: (value) => jsonSchemaProblems(schema, value),
     encode: (value) => Buffer.from(JSON.stringify(value), "utf8"),
+    encodeText: (text) => Buffer.from(text.trim(), "utf8"),
   };
 }
