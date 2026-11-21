@@ -70,9 +70,16 @@ const INTERVALS: readonly (readonly [number, string])[] = [
   [30 * DAY, "30d"],
 ];
 
-/** The smallest round width that splits `spanMs` into at most `buckets` buckets. */
+/**
+ * How far a span may run over `width * buckets` and still take that width. An open range ends at the
+ * plugin's own clock, a few milliseconds after the renderer started it, so "last hour" spans a hair
+ * over an hour; without slack it would drop from 60 one-minute buckets to 12 five-minute ones.
+ */
+const INTERVAL_SLACK = 1.05;
+
+/** The smallest round width that splits `spanMs` into about `buckets` buckets, never many more. */
 export function histogramInterval(spanMs: number, buckets: number): string {
   const wanted = spanMs / Math.max(1, buckets);
-  for (const [width, text] of INTERVALS) if (width >= wanted) return text;
+  for (const [width, text] of INTERVALS) if (width * INTERVAL_SLACK >= wanted) return text;
   return INTERVALS.at(-1)?.[1] ?? "30d";
 }

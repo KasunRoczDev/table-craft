@@ -123,6 +123,11 @@ describe("elasticsearch query", () => {
     expect(histogramInterval(60 * 60 * 1000, 60)).toBe("1m");
     expect(histogramInterval(15 * 60 * 1000, 60)).toBe("30s");
   });
+
+  it("givenAnOpenHourEndingAFewMillisecondsLate_whenInterval_thenStillOneMinute", () => {
+    expect(histogramInterval(60 * 60 * 1000 + 250, 60)).toBe("1m");
+    expect(histogramInterval(2 * 60 * 60 * 1000, 60)).toBe("5m");
+  });
 });
 
 describe("elasticsearch replies", () => {
