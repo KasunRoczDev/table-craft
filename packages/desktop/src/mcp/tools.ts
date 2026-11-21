@@ -18,9 +18,9 @@ import {
   openInConsole,
   readConsole,
 } from "@table-craft/desktop/mcp/consoleTools.js";
-import { openTableFor, revealInExplorer } from "@table-craft/desktop/mcp/windowTools.js";
-import type { AgentEdit } from "@table-craft/desktop/settings/mcp.js";
-import { CATALOG_SEARCH_SCOPES, KEY_TYPES } from "@table-craft/desktop/engine/protocol.js";
+import { openIndexFor, openTableFor, revealInExplorer } from "@table-craft/desktop/mcp/windowTools.js";
+import { MCP_INDEX_RANGES, type AgentEdit } from "@table-craft/desktop/settings/mcp.js";
+import { CATALOG_SEARCH_SCOPES, KEY_TYPES, SEARCH_QUERY_LANGUAGES } from "@table-craft/desktop/engine/protocol.js";
 import {
   ToolFailure,
   type Caller,
@@ -159,6 +159,43 @@ const TOOL_ARGUMENTS = {
       focus,
     })
     .refine((args) => args.column === undefined || args.table !== undefined, { message: "A column needs its table." }),
+  open_index: z
+    .strictObject({
+      datasource,
+      index: z.string().min(1).describe("The index, alias, data stream or pattern to search, such as logs-*."),
+      query: z
+        .string()
+        .max(SQL_CHARS)
+        .optional()
+        .describe(
+          'The query bar\'s text: a Lucene query string, or with language dsl a Query DSL query object such as {"match":{"message":"timeout"}}. Empty matches every document.',
+        ),
+      language: z
+        .enum(SEARCH_QUERY_LANGUAGES)
+        .optional()
+        .describe("How query reads; the tab's current language when absent."),
+      sort: z
+        .strictObject({ field: z.string().min(1), order: z.enum(["asc", "desc"]).optional() })
+        .nullable()
+        .optional()
+        .describe("A sortable field and its order, desc when absent; null orders by score."),
+      range: z.enum(MCP_INDEX_RANGES).optional().describe("A time range back from now on the index's time field."),
+      from: z.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe("Start of a fixed time range, ISO 8601, instead of range."),
+      to: z.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe("End of a fixed time range, ISO 8601; open when absent."),
+      focus,
+    })
+    .refine((args) => args.range === undefined || (args.from === undefined && args.to === undefined), {
+      message: "Give either range or from and to.",
+    })
+    .refine((args) => args.from === undefined || args.to === undefined || Date.parse(args.from) < Date.parse(args.to), {
+      message: "from must be before to.",
+    }),
 } as const;
 
 export type ToolName = keyof typeof TOOL_ARGUMENTS;
@@ -273,6 +310,12 @@ const TOOL_SPECS: Readonly<Record<ToolName, ToolSpec>> = {
       "Selects a schema, table, view or column in the user's Database pane, to point the user at it. Answers found: false when there is no such object.",
     readOnly: true,
   },
+  open_index: {
+    title: "Open index",
+    description:
+      "Opens an index, alias or data stream of a search datasource such as Elasticsearch or OpenSearch in the user's index tab, with query, language, sort and time range in its query bar, and searches. The tab already open on that index is reused, so call it again to change the request; fields you leave out keep what the tab holds. The hits are read in the user's session and are not returned; use run_query to read them yourself. On an ask-before-reads datasource the query bar is only filled in, and the user runs it.",
+    readOnly: true,
+  },
 };
 
 export interface ToolDefinition {
@@ -316,7 +359,7 @@ function datasourceOf(args: unknown): string | null {
 /** What Agent Activity names a call by: its statement, its key, its search, or its table. */
 function targetOf(args: unknown): string | null {
   const given = (args ?? {}) as Readonly<Record<string, unknown>>;
-  for (const key of ["sql", "key", "handle", "console", "query"] as const) {
+  for (const key of ["sql", "key", "handle", "console", "index", "query"] as const) {
     const value = given[key];
     if (typeof value === "string") return value;
   }
@@ -424,6 +467,8 @@ export function createTools(context: ToolContext): Tools {
         return openTableFor(context, TOOL_ARGUMENTS.open_table.parse(args));
       case "reveal_in_explorer":
         return revealInExplorer(context, TOOL_ARGUMENTS.reveal_in_explorer.parse(args));
+      case "open_index":
+        return openIndexFor(context, TOOL_ARGUMENTS.open_index.parse(args));
     }
   }
 

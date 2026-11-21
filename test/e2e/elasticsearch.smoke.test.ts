@@ -18,6 +18,7 @@ import {
   DATABASES_ENABLED,
   EVIDENCE_WINDOW,
   evidenceFor,
+  findAction,
   gridText,
   LAUNCH_TIMEOUT_MS,
   launchApp,
@@ -27,11 +28,14 @@ import {
   runStatement,
   SCENARIO_TIMEOUT_MS,
   seedDatasources,
+  seedSettings,
   setWindowSize,
   sqlEditor,
   waitUntilReady,
   type RunningApp,
+  type SavedDatasource,
 } from "./harness.js";
+import { AgentClient, freePort } from "./mcpAgent.js";
 import {
   COFFEE_QUERY,
   dropLiveElasticsearch,
@@ -71,6 +75,14 @@ const DIALOG_SETTLED = `(() => {
   return open !== null && getComputedStyle(open).opacity === '1';
 })()`;
 
+const ASK_ID = "elasticsearch-ask";
+const ASK_NAME = "Shop search (agent asks)";
+const AGENT_CLIENT = "Claude Code";
+const TOKEN_PATTERN = /Bearer (tc_[\w-]+)/;
+/** The agent's fixed window, well inside the newer log index's last hour. */
+const WINDOW_END_AGO_MS = 10 * 60_000;
+const WINDOW_SPAN_MS = 30 * 60_000;
+
 const OPENSEARCH_ID = "opensearch-live";
 const OPENSEARCH_NAME = "Shop search on OpenSearch";
 const STATUS_PPL = `source=${LIVE_ORDERS} | stats count() as orders by status`;
@@ -98,6 +110,32 @@ async function launchSaved(name: string, readOnly = false, server: LiveElasticse
   await openConsoleOn(running.page, name);
   await waitUntilReady(running.page);
   return running.page;
+}
+
+/** Launches with the MCP server on, as plan 156's live test does, and signs an agent in. */
+async function launchServing(datasources: readonly SavedDatasource[]): Promise<{ page: Page; agent: AgentClient }> {
+  const port = await freePort();
+  const userDataDir = newProfile();
+  seedDatasources(userDataDir, datasources);
+  seedSettings(userDataDir, {
+    version: 1,
+    appearance: { motion: "off" },
+    mcp: { enabled: true, port, rowCap: 100, clients: [{ name: AGENT_CLIENT, allowed: true }] },
+  });
+  running = await launchApp(null, { userDataDir });
+  await setWindowSize(running.app, EVIDENCE_WINDOW);
+  const { page, app } = running;
+  await expect.poll(() => page.getByTestId("status-mcp").isVisible(), { timeout: LAUNCH_TIMEOUT_MS }).toBe(true);
+  await findAction(page, "MCP Server Settings");
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByTestId("mcp-copy-config").click();
+  await expect.poll(() => settings.getByTestId("mcp-copy-config").textContent()).toBe("Copied");
+  const token = TOKEN_PATTERN.exec(await app.evaluate(({ clipboard }) => clipboard.readText()))?.[1];
+  if (token === undefined) throw new Error("The copied config holds no token.");
+  await page.keyboard.press("Escape");
+  const agent = new AgentClient(port, token);
+  await agent.initialize(AGENT_CLIENT);
+  return { page, agent };
 }
 
 function treeTarget(page: Page, kind: "index" | "alias", name: string): Locator {
@@ -278,6 +316,81 @@ describe.runIf(DATABASES_ENABLED && !WITHOUT_ELASTICSEARCH)("Elasticsearch live 
     },
     LAUNCH_TIMEOUT_MS + SCENARIO_TIMEOUT_MS,
   );
+  it(
+    "givenAgent_whenOpenIndexThenCalledAgain_thenTheTabSearchesAndTheRequestChanges",
+    async () => {
+      const server = seeded();
+      const { page, agent } = await launchServing([
+        { id: LIVE_ID, name: LIVE_NAME, pluginId: "elasticsearch", agentAccess: "read", config: liveConfig(server) },
+        { id: ASK_ID, name: ASK_NAME, pluginId: "elasticsearch", agentAccess: "askReads", config: liveConfig(server) },
+      ]);
+
+      const opened = await agent.tool("open_index", {
+        datasource: LIVE_ID,
+        index: LIVE_LOG_ALIAS,
+        query: "log.level:error",
+        sort: { field: "@timestamp" },
+        range: "1h",
+      });
+      expect(opened.isError).toBe(false);
+      expect(opened.structured?.["searched"]).toBe(true);
+      const tab = page.getByTestId("index-tab");
+      await expect.poll(() => tab.getByTestId("index-header").textContent(), WAIT).toContain(LIVE_LOG_ALIAS);
+      await expect.poll(() => tab.getByTestId("index-query").inputValue(), WAIT).toBe("log.level:error");
+      await hits(tab).toMatch(/of [\d,]+ hits/);
+      await expect
+        .poll(async () => {
+          const cells = (await gridText(page)).cells;
+          return cells.includes("error") && !cells.includes("info");
+        }, WAIT)
+        .toBe(true);
+      expect(await tab.getByTestId("index-range").textContent()).toContain("Last hour");
+      await tab.getByTestId("index-header").hover();
+      await captureWindow(page, "16-agent-open-index");
+
+      const to = new Date(Date.now() - WINDOW_END_AGO_MS);
+      const from = new Date(to.getTime() - WINDOW_SPAN_MS);
+      const edited = await agent.tool("open_index", {
+        datasource: LIVE_ID,
+        index: LIVE_LOG_ALIAS,
+        query: "log.level:warn",
+        from: from.toISOString(),
+        to: to.toISOString(),
+      });
+      expect(edited.isError).toBe(false);
+      expect(await page.getByTestId("index-tab").count()).toBe(1);
+      await expect.poll(() => tab.getByTestId("index-query").inputValue(), WAIT).toBe("log.level:warn");
+      await expect.poll(() => tab.getByTestId("index-range").textContent(), WAIT).toContain("UTC");
+      await expect
+        .poll(async () => {
+          const cells = (await gridText(page)).cells;
+          return cells.includes("warn") && !cells.includes("error");
+        }, WAIT)
+        .toBe(true);
+      await tab.getByTestId("index-request").click();
+      const request = page.getByTestId("index-request-text");
+      await expect.poll(() => request.textContent(), WAIT).toContain(to.toISOString());
+      await captureWindow(page, "17-agent-edits-request");
+      await page.keyboard.press("Escape");
+
+      const drafted = await agent.tool("open_index", { datasource: ASK_ID, index: LIVE_PRODUCTS, query: COFFEE_QUERY });
+      expect(drafted.isError).toBe(false);
+      expect(drafted.structured?.["searched"]).toBe(false);
+      await expect.poll(() => page.getByTestId("index-header").last().textContent(), WAIT).toContain(LIVE_PRODUCTS);
+      const askTab = page.getByTestId("index-tab").last();
+      await expect.poll(() => askTab.getByTestId("index-query").inputValue(), WAIT).toBe(COFFEE_QUERY);
+      await captureWindow(page, "18-agent-draft-only");
+
+      const refused = await agent.tool("open_index", {
+        datasource: LIVE_ID,
+        index: LIVE_PRODUCTS,
+        sort: { field: "name" },
+      });
+      expect(refused.isError).toBe(true);
+    },
+    LAUNCH_TIMEOUT_MS + SCENARIO_TIMEOUT_MS,
+  );
+
   it(
     "givenOpenSearch_whenConnected_thenTheTreeDocumentsAndPplRead",
     async () => {

@@ -123,6 +123,7 @@ export function fakeWindow(): FakeWindow {
         return { kind: "done" };
       case "openTable":
       case "reveal":
+      case "openIndex":
         return { kind: "done" };
     }
   }

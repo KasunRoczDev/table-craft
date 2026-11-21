@@ -236,6 +236,20 @@ export interface McpConsoleView {
 /** How a requested schema landed in a new console. */
 export type McpSchemaOutcome = "applied" | "unsupported" | "unknown";
 
+/** The preset time ranges `open_index` takes; the index tab's range picker offers the same keys. */
+export const MCP_INDEX_RANGES = ["15m", "1h", "24h", "7d", "30d", "all"] as const;
+
+/** What `open_index` changes in an index tab's query bar; an absent field keeps what the tab holds. */
+export interface McpIndexSearch {
+  readonly language?: "lucene" | "dsl";
+  readonly query?: string;
+  /** Null orders by score. */
+  readonly sort?: { readonly field: string; readonly order: "asc" | "desc" } | null;
+  readonly range?: (typeof MCP_INDEX_RANGES)[number];
+  /** A range between fixed ISO 8601 times instead of a preset; a null end is open. */
+  readonly window?: { readonly from: string | null; readonly to: string | null };
+}
+
 /**
  * What the MCP host asks a window to do (plan 156). `focus` is already false when the user does not
  * let agents bring the window forward; main raises the window for a request that carries it.
@@ -279,6 +293,15 @@ export type McpUiRequest =
       readonly path: readonly string[];
       readonly relation: { readonly name: string; readonly kind: "table" | "view" | "materializedView" } | null;
       readonly column: string | null;
+      readonly focus: boolean;
+    }
+  | {
+      readonly kind: "openIndex";
+      readonly datasourceId: string;
+      readonly target: string;
+      readonly search: McpIndexSearch;
+      /** Fill the query bar and leave searching to the user, on an ask-before-reads datasource. */
+      readonly draftOnly: boolean;
       readonly focus: boolean;
     };
 
