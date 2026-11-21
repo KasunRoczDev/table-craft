@@ -7,10 +7,11 @@ import {
   type TopicReadRequest,
 } from "@table-craft/plugin-api";
 import { isInternalTopic, type KafkaAdmin } from "./admin.js";
-import { fetchRound, FETCH_ERRORS, type FetchSizes, type PartitionFetch } from "./fetch.js";
+import { fetchRound, FETCH_ERRORS, recoveredPosition, type FetchSizes, type PartitionFetch } from "./fetch.js";
 import { decode, schemaIdOf, type DecodeOptions } from "./formats.js";
 import { refused, statementFailure } from "./failures.js";
 import {
+  checkStart,
   clampLimit,
   messageFilter,
   newestAcross,
@@ -42,7 +43,8 @@ const FOLLOW_END = 2n ** 63n - 1n;
 const FOLLOW_WAIT_MS = 500;
 /** Rounds in a row in which a partition may answer nothing new before the read gives up on it. */
 const MAX_IDLE_ROUNDS = 3;
-const MAX_LEADER_REFRESHES = 3;
+/** Fetch rounds in a row that may fail outright before the read gives up. */
+const MAX_FAILED_ROUNDS = 3;
 const CANCELLED = "Cancelled: the read stopped fetching.";
 /**
  * The record bytes one read may keep. The row limit alone does not bound memory: 50,000 rows of
@@ -74,8 +76,38 @@ interface TopicLayout {
 }
 
 /**
+ * Runs `work` with `topic` tracked by `consumer`, which a Fetch by topic name needs, and untracks
+ * it after: every metadata request carries each tracked topic, so one left tracked fails every
+ * later read once it is deleted. The consumer's metadata cache drops internal topics and then
+ * fails every Fetch while one is tracked, so an internal topic is never tracked.
+ */
+export async function whileTracked<T>(consumer: Consumer, topic: string, work: () => Promise<T>): Promise<T> {
+  if (isInternalTopic(topic)) return work();
+  consumer.topics.track(topic);
+  try {
+    return await work();
+  } finally {
+    consumer.topics.untrack(topic);
+  }
+}
+
+/** Waits `ms`, or less when `signal` aborts first. */
+export function pause(ms: number, signal: AbortSignal | null): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
+      resolve();
+    };
+    const timer = setTimeout(stop, ms);
+    signal?.addEventListener("abort", stop, { once: true });
+  });
+}
+
+/**
  * The topic's id and partition leaders as the fetching consumer sees them; for a topic its
- * metadata cache leaves out, such as an internal one, as the admin reads it.
+ * metadata cache leaves out, such as an internal one, as the admin reads it. The consumer must
+ * track the topic (`whileTracked`).
  */
 export async function layoutOf(
   consumer: Consumer,
@@ -84,10 +116,7 @@ export async function layoutOf(
   wanted: readonly number[] | null,
 ): Promise<TopicLayout> {
   let info: { readonly id: string; readonly partitions: readonly { readonly leader: number }[] } | undefined;
-  // The consumer's metadata cache drops internal topics and then fails every Fetch while one is
-  // tracked, so an internal topic is never tracked and its layout comes from the admin.
   if (!isInternalTopic(topic)) {
-    consumer.topics.track(topic);
     try {
       info = (await consumer.metadata({ topics: [topic], forceUpdate: true })).topics.get(topic);
     } catch (cause) {
@@ -116,17 +145,16 @@ async function startCursors(
   request: TopicReadRequest,
   partitions: readonly number[],
 ): Promise<PartitionCursor[]> {
+  const from = request.from;
+  checkStart(from);
   const marks = await host.admin.topicWatermarks(request.topic, partitions);
   let resolved = new Map<number, bigint>();
-  const from = request.from;
   if (from.kind === "timestamp") {
     const millis = timestampMillis(from.timestamp);
     resolved =
       (await host.admin.offsetsAt(new Map([[request.topic, partitions]]), millis)).get(request.topic) ?? resolved;
   } else if (from.kind === "group") {
     resolved = await host.committed(from.group, request.topic, partitions);
-  } else if (from.kind === "offset" && !/^\d+$/.test(from.offset)) {
-    throw refused(`The start offset ${from.offset} is not a whole number.`);
   }
   return partitions.flatMap((partition) => {
     const mark = marks.get(partition);
@@ -134,6 +162,9 @@ async function startCursors(
     return [{ partition, position: startOffset(from, mark, resolved.get(partition)), end: mark.high, matched: 0 }];
   });
 }
+
+/** The formats that look a schema up in the registry. */
+const SCHEMA_FORMATS: ReadonlySet<MessageFormat> = new Set(["auto", "avro", "protobuf", "jsonSchema"]);
 
 /** Every schema id a batch of messages names, so the cache fetches them before decoding. */
 function schemaIds(
@@ -143,11 +174,11 @@ function schemaIds(
 ): number[] {
   const ids: number[] = [];
   for (const message of messages) {
-    if (keyFormat !== "hex" && keyFormat !== "base64") {
+    if (SCHEMA_FORMATS.has(keyFormat)) {
       const id = schemaIdOf(message.key);
       if (id !== null) ids.push(id);
     }
-    if (valueFormat !== "hex" && valueFormat !== "base64") {
+    if (SCHEMA_FORMATS.has(valueFormat)) {
       const id = schemaIdOf(message.value);
       if (id !== null) ids.push(id);
     }
@@ -188,8 +219,8 @@ async function keep(
 ): Promise<{ readonly kept: KeptMessage; readonly bytes: number }> {
   const cells = messageCells(message);
   const place = { partition: message.partition, offset: message.offset, timestamp: message.timestamp };
-  if (spill === undefined) return { kept: { ...place, row: messageRow(message, cells) }, bytes: message.size };
-  if (!isLarge(cells)) return { kept: { ...place, row: messageRow(message, cells) }, bytes: keptCellBytes(cells) };
+  if (spill === undefined || !isLarge(cells))
+    return { kept: { ...place, row: messageRow(message, cells) }, bytes: keptCellBytes(cells) };
   try {
     await spill.put(message.partition, message.offset.toString(), cells);
   } catch (cause) {
@@ -197,6 +228,11 @@ async function keep(
   }
   const preview = previewCells(cells);
   return { kept: { ...place, row: messageRow(message, preview) }, bytes: keptCellBytes(preview) };
+}
+
+/** Where the scan of one partition's answer left off, and whether the read must stop there. */
+interface Taken {
+  readonly stop: "spill" | "memory" | null;
 }
 
 /**
@@ -214,6 +250,16 @@ export async function readTopic(
   spill?: MessageSpill,
 ): Promise<TopicRead> {
   const consumer = host.fetcher();
+  return whileTracked(consumer, request.topic, () => scanTopic(host, consumer, request, followMs, spill));
+}
+
+async function scanTopic(
+  host: ReadHost,
+  consumer: Consumer,
+  request: TopicReadRequest,
+  followMs: number | null,
+  spill: MessageSpill | undefined,
+): Promise<TopicRead> {
   const filter = messageFilter(request.filter);
   const limit = clampLimit(request.limit);
   const maxScan = request.maxScan ?? host.maxScan;
@@ -227,12 +273,14 @@ export async function readTopic(
   const perPartition = latest === null ? limit : Number.MAX_SAFE_INTEGER;
   const kept: KeptMessage[] = [];
   const keptCap = spill === undefined ? READ_KEPT_BYTES : READ_PREVIEW_BYTES;
-  let spillStopped: string | null = null;
+  let spillStopped = null as string | null;
   const warnings = new Set<string>();
   const idle = new Map<number, number>();
+  /** Partitions whose leader did not answer the last time they were asked. */
+  const unreachable = new Set<number>();
   let scanned = 0;
   let keptBytes = 0;
-  let refreshes = 0;
+  let failedRounds = 0;
   const active = (): PartitionCursor[] =>
     cursors.filter(
       (cursor) =>
@@ -240,6 +288,50 @@ export async function readTopic(
         cursor.matched < perPartition &&
         (idle.get(cursor.partition) ?? 0) < MAX_IDLE_ROUNDS,
     );
+  // A followed read waits for new messages, so only a forward read counts a partition as idle.
+  const noteIdle = (cursor: PartitionCursor, before: bigint): void => {
+    if (deadline !== null) return;
+    idle.set(cursor.partition, cursor.position === before ? (idle.get(cursor.partition) ?? 0) + 1 : 0);
+  };
+
+  const scanAnswer = async (cursor: PartitionCursor, answer: PartitionFetch): Promise<Taken> => {
+    const inRange = answer.messages.filter((message) => message.offset < cursor.end);
+    const taken = inRange.slice(0, maxScan - scanned);
+    scanned += taken.length;
+    const decoded = await decodeAll(taken, request, host.registry, host.fullBytes);
+    for (const [index, message] of decoded.entries()) {
+      for (const decodedPart of [message.decodedKey, message.decodedValue]) {
+        if (decodedPart.warning !== null)
+          warnings.add(`Some messages ${decodedPart.warning}; they are shown as bytes.`);
+      }
+      const matches =
+        filter === null || filter([message.decodedKey.text, message.decodedValue.text, ...headerTexts(message)]);
+      if (!matches || cursor.matched >= perPartition) continue;
+      try {
+        const { kept: row, bytes } = await keep(message, spill);
+        kept.push(row);
+        keptBytes += bytes;
+      } catch (cause) {
+        if (!(cause instanceof SpillRefused)) throw cause;
+        spillStopped = cause.message;
+        // Scan Further starts again at the message the spill refused.
+        cursor.position = message.offset;
+        scanned -= decoded.length - index;
+        return { stop: "spill" };
+      }
+      cursor.matched += 1;
+      if (keptBytes >= keptCap) {
+        cursor.position = message.offset + 1n;
+        scanned -= decoded.length - index - 1;
+        return { stop: "memory" };
+      }
+    }
+    const last = taken.at(-1);
+    if (taken.length < inRange.length && last !== undefined) cursor.position = last.offset + 1n;
+    else if (answer.next !== null) cursor.position = answer.next > cursor.end ? cursor.end : answer.next;
+    return { stop: null };
+  };
+
   while (
     spillStopped === null &&
     scanned < maxScan &&
@@ -257,71 +349,50 @@ export async function readTopic(
     try {
       fetched = await fetchRound(consumer, layout.id, layout.leaders, targets, sizes);
     } catch (cause) {
-      if (refreshes >= MAX_LEADER_REFRESHES) throw statementFailure(cause, `Cannot fetch from ${request.topic}: `);
-      refreshes += 1;
+      if (failedRounds >= MAX_FAILED_ROUNDS) throw statementFailure(cause, `Cannot fetch from ${request.topic}: `);
+      failedRounds += 1;
+      await pause(sizes.maxWaitMs, host.signal);
+      checkCancelled(host.signal);
       layout = await layoutOf(consumer, host.admin, request.topic, request.partitions);
       continue;
     }
+    failedRounds = 0;
     checkCancelled(host.signal);
+    const answered = new Set<number>();
     let stale = false;
+    let fetchedAny = false;
     for (const answer of fetched) {
       const cursor = cursors.find((candidate) => candidate.partition === answer.partition);
       if (cursor === undefined) continue;
+      answered.add(answer.partition);
+      const before = cursor.position;
       if (answer.errorCode === FETCH_ERRORS.offsetOutOfRange) {
-        if (cursor.position < answer.logStartOffset) cursor.position = answer.logStartOffset;
-        else cursor.position = cursor.end;
+        fetchedAny = true;
+        unreachable.delete(cursor.partition);
+        cursor.position = recoveredPosition(cursor.position, answer, cursor.end);
         continue;
       }
       if (answer.errorCode !== FETCH_ERRORS.none) {
         stale = true;
+        unreachable.add(cursor.partition);
+        noteIdle(cursor, before);
         continue;
       }
-      const inRange = answer.messages.filter((message) => message.offset < cursor.end);
-      const room = maxScan - scanned;
-      const taken = inRange.slice(0, room);
-      scanned += taken.length;
-      const decoded = await decodeAll(taken, request, host.registry, host.fullBytes);
-      let refusedAt: bigint | null = null;
-      for (const [index, message] of decoded.entries()) {
-        for (const decodedPart of [message.decodedKey, message.decodedValue]) {
-          if (decodedPart.warning !== null)
-            warnings.add(`Some messages ${decodedPart.warning}; they are shown as bytes.`);
-        }
-        const matches =
-          filter === null || filter([message.decodedKey.text, message.decodedValue.text, ...headerTexts(message)]);
-        if (!matches || cursor.matched >= perPartition) continue;
-        try {
-          const { kept: row, bytes } = await keep(message, spill);
-          kept.push(row);
-          keptBytes += bytes;
-        } catch (cause) {
-          if (!(cause instanceof SpillRefused)) throw cause;
-          spillStopped = cause.message;
-          refusedAt = message.offset;
-          scanned -= decoded.length - index;
-          break;
-        }
-        cursor.matched += 1;
-      }
-      if (refusedAt !== null) {
-        // Scan Further starts again at the message the spill refused.
-        cursor.position = refusedAt;
-        break;
-      }
-      const last = taken.at(-1);
-      const before = cursor.position;
-      if (taken.length < inRange.length && last !== undefined) cursor.position = last.offset + 1n;
-      else if (answer.next !== null) cursor.position = answer.next > cursor.end ? cursor.end : answer.next;
-      if (deadline === null) {
-        idle.set(cursor.partition, cursor.position === before ? (idle.get(cursor.partition) ?? 0) + 1 : 0);
-      }
+      fetchedAny = true;
+      unreachable.delete(cursor.partition);
+      const { stop } = await scanAnswer(cursor, answer);
+      if (stop !== null) break;
+      noteIdle(cursor, before);
     }
-    if (stale) {
-      if (refreshes >= MAX_LEADER_REFRESHES)
-        throw refused(`The leaders of ${request.topic} keep moving; read it again in a moment.`);
-      refreshes += 1;
-      layout = await layoutOf(consumer, host.admin, request.topic, request.partitions);
+    // A fetch session leaves out the partitions that had nothing new.
+    for (const target of targets) {
+      const cursor = cursors.find((candidate) => candidate.partition === target.partition);
+      if (cursor !== undefined && !answered.has(target.partition)) noteIdle(cursor, cursor.position);
     }
+    // Without a leader no request went out, so nothing waited: wait here, so a cancel can land
+    // and a leader can be elected, instead of spinning.
+    if (!fetchedAny && fetched.length > 0) await pause(sizes.maxWaitMs, host.signal);
+    if (stale) layout = await layoutOf(consumer, host.admin, request.topic, request.partitions);
   }
   if (spillStopped !== null) {
     warnings.add(`The read stopped: ${spillStopped}; lower the limit or narrow the filter.`);
@@ -334,9 +405,17 @@ export async function readTopic(
     (cursor) => cursor.position < cursor.end && (idle.get(cursor.partition) ?? 0) >= MAX_IDLE_ROUNDS,
   );
   for (const cursor of stuck) {
+    const at = cursor.position.toString();
     warnings.add(
-      `Partition ${String(cursor.partition)} returned nothing past offset ${cursor.position.toString()}; it was left there.`,
+      unreachable.has(cursor.partition)
+        ? `Partition ${String(cursor.partition)} has no leader that answers; it was left at offset ${at}.`
+        : `Partition ${String(cursor.partition)} returned nothing past offset ${at}; it was left there.`,
     );
+  }
+  if (deadline !== null) {
+    for (const partition of unreachable) {
+      warnings.add(`Partition ${String(partition)} had no leader that answers while the read followed it.`);
+    }
   }
   const rows = latest === null ? oldestAcross(kept, limit) : newestAcross(kept, Math.min(limit, latest));
   const exhausted = deadline !== null || cursors.every((cursor) => cursor.position >= cursor.end);

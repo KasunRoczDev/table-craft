@@ -1,10 +1,10 @@
 import { Consumer, type BaseOptions } from "@platformatic/kafka";
 import type { TailMessage, TopicTail, TopicTailBatch, TopicTailRequest, TopicTailState } from "@table-craft/plugin-api";
-import type { KafkaAdmin } from "./admin.js";
+import { isInternalTopic, type KafkaAdmin } from "./admin.js";
 import { errorText } from "./failures.js";
-import { fetchRound, FETCH_ERRORS, UNJOINED_GROUP_ID, type FetchSizes } from "./fetch.js";
+import { fetchRound, FETCH_ERRORS, recoveredPosition, UNJOINED_GROUP_ID, type FetchSizes } from "./fetch.js";
 import { decodeAll, layoutOf } from "./read.js";
-import { compareMessages, startOffset, timestampMillis } from "./readPlan.js";
+import { checkStart, compareMessages, startOffset, timestampMillis } from "./readPlan.js";
 import type { SchemaCache } from "./schemaCache.js";
 import { headersOf, isoOf, type DecodedMessage } from "./results.js";
 
@@ -13,6 +13,13 @@ const MAX_WAIT_MS = 1000;
 const TAIL_SIZES: Omit<FetchSizes, "maxWaitMs"> = { maxBytes: 4 * 1024 * 1024, partitionMaxBytes: 1024 * 1024 };
 /** Messages held between two `next` calls; past it the tail stops fetching until the engine drains it. */
 const MAX_BUFFERED = 10_000;
+/**
+ * The decoded text held between two `next` calls. A count alone does not bound it: a hex value
+ * is about four bytes of UTF-16 per raw byte, so 500 messages of 1 MB would hold 2 GB.
+ */
+export const MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
+const MESSAGE_OVERHEAD_BYTES = 256;
+const UTF16_BYTES = 2;
 
 function tailMessage(message: DecodedMessage): TailMessage {
   return {
@@ -28,6 +35,12 @@ function tailMessage(message: DecodedMessage): TailMessage {
   };
 }
 
+/** About the memory a buffered message takes: its text as UTF-16, and the rest. */
+export function tailMessageBytes(message: TailMessage): number {
+  const headers = message.headers.reduce((sum, header) => sum + header.name.length + (header.value?.length ?? 0), 0);
+  return MESSAGE_OVERHEAD_BYTES + UTF16_BYTES * ((message.key?.length ?? 0) + (message.value?.length ?? 0) + headers);
+}
+
 /**
  * A live read on its own consumer (decision 14 of plan 164): group-less like every read, it
  * fetches from each partition's position, decodes and hands over batches; it never commits.
@@ -40,6 +53,7 @@ class KafkaTail implements TopicTail {
   readonly #positions: Map<number, bigint>;
   #layout: Awaited<ReturnType<typeof layoutOf>>;
   #buffer: TailMessage[] = [];
+  #bufferedBytes = 0;
   #state: TopicTailState = "live";
   #error: string | null = null;
   #closed = false;
@@ -69,7 +83,9 @@ class KafkaTail implements TopicTail {
       bytes += size;
       taken += 1;
     }
-    return this.#buffer.splice(0, taken);
+    const messages = this.#buffer.splice(0, taken);
+    this.#bufferedBytes -= messages.reduce((sum, message) => sum + tailMessageBytes(message), 0);
+    return messages;
   }
 
   #batch(messages: TailMessage[]): TopicTailBatch {
@@ -87,8 +103,10 @@ class KafkaTail implements TopicTail {
     const fetched = [];
     let stale = false;
     for (const answer of answers) {
+      const position = this.#positions.get(answer.partition);
+      if (position === undefined) continue;
       if (answer.errorCode === FETCH_ERRORS.offsetOutOfRange) {
-        this.#positions.set(answer.partition, answer.logStartOffset);
+        this.#positions.set(answer.partition, recoveredPosition(position, answer));
         continue;
       }
       if (answer.errorCode !== FETCH_ERRORS.none) {
@@ -99,9 +117,15 @@ class KafkaTail implements TopicTail {
       if (answer.next !== null) this.#positions.set(answer.partition, answer.next);
     }
     const decoded = await decodeAll(fetched.sort(compareMessages), this.#request, this.#registry, false);
-    this.#buffer.push(...decoded.map(tailMessage));
+    for (const message of decoded) {
+      const tailed = tailMessage(message);
+      this.#buffer.push(tailed);
+      this.#bufferedBytes += tailMessageBytes(tailed);
+    }
     this.#state = stale ? "reconnecting" : "live";
-    this.#error = stale ? "A partition leader moved; the tail looks it up again." : null;
+    this.#error = stale ? "A partition leader moved or did not answer; the tail looks it up again." : null;
+    // Without a leader nothing waited on the broker, so wait here rather than spin.
+    if (stale && fetched.length === 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
 
   async next(request: {
@@ -110,7 +134,11 @@ class KafkaTail implements TopicTail {
     readonly timeoutMs: number;
   }): Promise<TopicTailBatch> {
     if (this.#closed) return this.#batch([]);
-    if (this.#buffer.length < request.count && this.#buffer.length < MAX_BUFFERED) {
+    if (
+      this.#buffer.length < request.count &&
+      this.#buffer.length < MAX_BUFFERED &&
+      this.#bufferedBytes < MAX_BUFFERED_BYTES
+    ) {
       try {
         await this.#fetch(Math.max(0, Math.min(request.timeoutMs, MAX_WAIT_MS)));
       } catch (cause) {
@@ -125,6 +153,7 @@ class KafkaTail implements TopicTail {
     if (this.#closed) return;
     this.#closed = true;
     this.#buffer = [];
+    this.#bufferedBytes = 0;
     await this.#consumer.close().catch(() => undefined);
   }
 }
@@ -136,11 +165,14 @@ export async function openTail(
   registry: SchemaCache | null,
   request: TopicTailRequest,
 ): Promise<TopicTail> {
+  const from = request.from;
+  checkStart(from);
   const consumer = new Consumer({ ...options, groupId: UNJOINED_GROUP_ID });
   try {
+    // The tail's consumer is its own, so the topic stays tracked until it closes.
+    if (!isInternalTopic(request.topic)) consumer.topics.track(request.topic);
     const layout = await layoutOf(consumer, admin, request.topic, request.partitions);
     const marks = await admin.topicWatermarks(request.topic, layout.partitions);
-    const from = request.from;
     let resolved = new Map<number, bigint>();
     if (from.kind === "timestamp") {
       resolved =

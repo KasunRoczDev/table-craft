@@ -7,9 +7,10 @@ import {
   type TopicReadRequest,
 } from "@table-craft/plugin-api";
 import type * as FetchModule from "@table-craft/plugin-kafka/fetch";
-import { fetchRound } from "@table-craft/plugin-kafka/fetch";
+import { FETCH_ERRORS, fetchRound, type PartitionFetch } from "@table-craft/plugin-kafka/fetch";
 import { readTopic, type ReadHost } from "@table-craft/plugin-kafka/read";
-import { describe, expect, it, vi } from "vitest";
+import { isoOf } from "@table-craft/plugin-kafka/results";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clampLimit,
   compareMessages,
@@ -100,6 +101,9 @@ vi.mock("@table-craft/plugin-kafka/fetch", async (importOriginal) => ({
 const SPILL_TOPIC = "orders";
 const LARGE_VALUE_CHARS = 5_000;
 const SPILL_FULL = "the temporary disk space for large messages is full (2 GB)";
+const FOLLOW_MS = 250;
+const CANCEL_AFTER_MS = 150;
+const OFFSET_COLUMN = 1;
 
 function largeMessages(count: number): FetchedMessage[] {
   return Array.from({ length: count }, (_, index) => {
@@ -108,13 +112,28 @@ function largeMessages(count: number): FetchedMessage[] {
   });
 }
 
-function readHost(): ReadHost {
+interface HostOptions {
+  readonly leader?: number;
+  readonly high?: bigint;
+  readonly signal?: AbortSignal;
+  readonly tracked?: Map<string, number>;
+}
+
+function readHost(options: HostOptions = {}): ReadHost {
+  const tracked = options.tracked ?? new Map<string, number>();
   const consumer = {
-    topics: { track: () => undefined },
-    metadata: () => Promise.resolve({ topics: new Map([[SPILL_TOPIC, { id: "t", partitions: [{ leader: 1 }] }]]) }),
+    topics: {
+      track: (topic: string) => tracked.set(topic, (tracked.get(topic) ?? 0) + 1),
+      untrack: (topic: string) => tracked.set(topic, (tracked.get(topic) ?? 0) - 1),
+    },
+    metadata: () =>
+      Promise.resolve({
+        topics: new Map([[SPILL_TOPIC, { id: "t", partitions: [{ leader: options.leader ?? 1 }] }]]),
+      }),
   };
+  const high = options.high ?? 3n;
   const admin = {
-    topicWatermarks: () => Promise.resolve(new Map([[0, { low: 0n, high: 3n }]])),
+    topicWatermarks: () => Promise.resolve(new Map([[0, { low: 0n, high }]])),
   };
   return {
     admin: admin as unknown as ReadHost["admin"],
@@ -122,10 +141,19 @@ function readHost(): ReadHost {
     registry: null,
     maxScan: 100,
     fullBytes: false,
-    signal: null,
+    signal: options.signal ?? null,
     committed: () => Promise.resolve(new Map()),
   };
 }
+
+const LEADERLESS: PartitionFetch = {
+  partition: 0,
+  errorCode: FETCH_ERRORS.leaderNotAvailable,
+  highWatermark: -1n,
+  logStartOffset: -1n,
+  messages: [],
+  next: null,
+};
 
 const spillRequest: TopicReadRequest = {
   topic: SPILL_TOPIC,
@@ -193,5 +221,90 @@ describe("kafka read with a spill", () => {
     ]);
     const rows = await rowsOf(await readTopic(readHost(), spillRequest));
     expect(rows[2]?.[VALUE_COLUMN]).toBe("2".repeat(LARGE_VALUE_CHARS));
+  });
+});
+
+describe("kafka read without a leader", () => {
+  afterEach(() => {
+    vi.mocked(fetchRound).mockReset();
+  });
+
+  it("givenLeaderlessPartition_whenRead_thenStopsWithWarningAndResumeToken", async () => {
+    vi.mocked(fetchRound).mockResolvedValue([LEADERLESS]);
+    const read = await readTopic(readHost({ leader: -1 }), spillRequest);
+    expect(await rowsOf(read)).toEqual([]);
+    expect(read.warnings).toContain("Partition 0 has no leader that answers; it was left at offset 0.");
+    expect(read.exhausted).toBe(false);
+    expect(parseResume(read.resume ?? "", SPILL_TOPIC).cursors[0]?.position).toBe(0n);
+  });
+
+  it("givenFetchSessionLeavesPartitionOut_whenRead_thenIdleAndStops", async () => {
+    vi.mocked(fetchRound).mockResolvedValue([]);
+    const read = await readTopic(readHost(), spillRequest);
+    expect(read.warnings).toContain("Partition 0 returned nothing past offset 0; it was left there.");
+  });
+
+  it("givenLeaderlessFollowRead_whenDeadlinePasses_thenReturnsWithWarning", async () => {
+    vi.mocked(fetchRound).mockResolvedValue([LEADERLESS]);
+    const read = await readTopic(readHost({ leader: -1 }), spillRequest, FOLLOW_MS);
+    expect(read.warnings).toContain("Partition 0 had no leader that answers while the read followed it.");
+  });
+
+  it("givenLeaderlessRead_whenCancelled_thenRejectsCancelled", async () => {
+    vi.mocked(fetchRound).mockResolvedValue([LEADERLESS]);
+    const controller = new AbortController();
+    const pending = readTopic(readHost({ leader: -1, high: 1_000n, signal: controller.signal }), {
+      ...spillRequest,
+      maxScan: null,
+    });
+    setTimeout(() => controller.abort(), CANCEL_AFTER_MS);
+    await expect(pending).rejects.toMatchObject({ code: "cancelled" });
+  });
+
+  it("givenFetchFailsEveryRound_whenRead_thenStatementFailedAfterRetries", async () => {
+    vi.mocked(fetchRound).mockRejectedValue(new Error("broker gone"));
+    await expect(readTopic(readHost(), spillRequest)).rejects.toThrow(/Cannot fetch from orders: broker gone/);
+    expect(vi.mocked(fetchRound).mock.calls.length).toBe(4);
+  });
+
+  it("givenRead_whenDoneOrFailed_thenTopicUntracked", async () => {
+    const tracked = new Map<string, number>();
+    vi.mocked(fetchRound).mockResolvedValueOnce([
+      { partition: 0, errorCode: 0, highWatermark: 3n, logStartOffset: 0n, messages: largeMessages(3), next: 3n },
+    ]);
+    await rowsOf(await readTopic(readHost({ tracked }), spillRequest));
+    expect(tracked.get(SPILL_TOPIC)).toBe(0);
+    vi.mocked(fetchRound).mockRejectedValue(new Error("broker gone"));
+    await expect(readTopic(readHost({ tracked }), spillRequest)).rejects.toThrow();
+    expect(tracked.get(SPILL_TOPIC)).toBe(0);
+  });
+
+  it("givenOffsetAboveTwoToThe53_whenRead_thenOffsetCellExact", async () => {
+    const offset = 2n ** 60n + 1n;
+    const entry = { ...message(0, 0, 1_000), offset, value: Buffer.from("v"), size: 1 };
+    vi.mocked(fetchRound).mockResolvedValueOnce([
+      {
+        partition: 0,
+        errorCode: 0,
+        highWatermark: offset + 1n,
+        logStartOffset: 0n,
+        messages: [entry],
+        next: offset + 1n,
+      },
+    ]);
+    const read = await readTopic(readHost({ high: offset + 1n }), {
+      ...spillRequest,
+      from: { kind: "offset", offset: offset.toString() },
+    });
+    const rows = await rowsOf(read);
+    expect(rows[0]?.[OFFSET_COLUMN]).toEqual({ kind: "bigint", value: offset.toString() });
+  });
+});
+
+describe("kafka message timestamps", () => {
+  it("givenTimestampPastWhatADateHolds_whenShown_thenNullNotARangeError", () => {
+    expect(isoOf(0n)).toBe("1970-01-01T00:00:00.000Z");
+    expect(isoOf(9_000_000_000_000_000n)).toBeNull();
+    expect(isoOf(-9_000_000_000_000_000n)).toBeNull();
   });
 });

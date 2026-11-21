@@ -89,6 +89,17 @@ export function startOffset(from: TopicStart, mark: Watermark, resolved: bigint 
   }
 }
 
+/** Refuses a start a read or tail cannot resolve, before any request names it. */
+export function checkStart(from: TopicStart): void {
+  if (from.kind === "offset" && !/^\d+$/.test(from.offset)) {
+    throw refused(`The start offset ${from.offset} is not a whole number.`);
+  }
+  if (from.kind === "latestN" && (!Number.isSafeInteger(from.count) || from.count < 0)) {
+    throw refused(`Latest ${String(from.count)} is not a count of messages; give a whole number.`);
+  }
+  if (from.kind === "timestamp") timestampMillis(from.timestamp);
+}
+
 /** Milliseconds of an ISO 8601 timestamp, refused with the expected form when it is not one. */
 export function timestampMillis(text: string): bigint {
   const millis = Date.parse(text);

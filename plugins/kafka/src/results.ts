@@ -41,8 +41,13 @@ export const MESSAGE_COLUMNS: readonly Column[] = TOPIC_MESSAGE_COLUMNS.map((nam
   ...COLUMN_TYPES[name],
 }));
 
+/** The largest distance from the epoch a JavaScript `Date` holds, in milliseconds (ECMA-262 21.4.1.1). */
+const MAX_DATE_MILLIS = 8_640_000_000_000_000n;
+
+/** A timestamp as ISO text; null when there is none or a `Date` cannot hold it. */
 export function isoOf(timestamp: bigint | null): string | null {
-  return timestamp === null ? null : new Date(Number(timestamp)).toISOString();
+  if (timestamp === null || timestamp > MAX_DATE_MILLIS || timestamp < -MAX_DATE_MILLIS) return null;
+  return new Date(Number(timestamp)).toISOString();
 }
 
 /** Header values as text where they read as text, else hex. */
@@ -69,10 +74,11 @@ export function messageCells(message: DecodedMessage): SpilledMessage {
 }
 
 export function messageRow(message: DecodedMessage, cells: SpilledMessage = messageCells(message)): Row {
+  const iso = isoOf(message.timestamp);
   return [
     message.partition,
     { kind: "bigint", value: message.offset.toString() },
-    message.timestamp === null ? null : { kind: "date", iso: isoOf(message.timestamp) ?? "" },
+    iso === null ? null : { kind: "date", iso },
     cells.key,
     cells.value,
     cells.headers,
