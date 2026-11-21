@@ -1,10 +1,21 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   SpillBudget,
+  SpillFailed,
   SpillFile,
   SpillFull,
   removeSpillDirectory,
@@ -17,6 +28,8 @@ const SMALL_SEGMENT = 1_000;
 const RECORD_TEXT = "x".repeat(400);
 const OWNER_ONLY_FILE = 0o600;
 const PERMISSION_BITS = 0o777;
+const OWNER_ONLY_FOLDER = 0o700;
+const GROUP_READABLE_FOLDER = 0o750;
 
 let root: string;
 const budget = (options: { totalBytes?: number; free?: number } = {}): SpillBudget =>
@@ -107,6 +120,43 @@ describe("SpillFile", () => {
 
     expect(paths.some((path) => existsSync(path))).toBe(false);
     await expect(spill.get("1")).resolves.toBeNull();
+    expect(spill.closed).toBe(true);
+  });
+
+  it.skipIf(process.getuid === undefined)(
+    "givenFolderOpenToOtherUsers_whenASegmentOpens_thenRejectsWithSpillFailed",
+    async () => {
+      const shared = join(root, "s");
+      mkdirSync(shared);
+      chmodSync(shared, GROUP_READABLE_FOLDER);
+      const spill = new SpillFile<string>({ budget: budget(), directory: shared });
+
+      await expect(spill.put("a", RECORD_TEXT)).rejects.toBeInstanceOf(SpillFailed);
+      expect(readdirSync(shared)).toEqual([]);
+      await spill.close();
+    },
+  );
+
+  it("givenLinkInPlaceOfTheFolder_whenASegmentOpens_thenRejectsWithSpillFailedAndWritesNothing", async () => {
+    const target = join(root, "elsewhere");
+    mkdirSync(target, { mode: OWNER_ONLY_FOLDER });
+    symlinkSync(target, join(root, "s"));
+    const spill = new SpillFile<string>({ budget: budget(), directory: join(root, "s") });
+
+    await expect(spill.put("a", RECORD_TEXT)).rejects.toBeInstanceOf(SpillFailed);
+    await expect(spill.put("b", RECORD_TEXT)).rejects.toBeInstanceOf(SpillFailed);
+    expect(readdirSync(target)).toEqual([]);
+    await spill.close();
+  });
+
+  it("givenFolderThatIsAFile_whenPut_thenRejectsWithSpillFailedAndGivesTheBudgetBack", async () => {
+    const shared = budget();
+    writeFileSync(join(root, "s"), "");
+    const spill = new SpillFile<string>({ budget: shared, directory: join(root, "s") });
+
+    await expect(spill.put("a", RECORD_TEXT)).rejects.toBeInstanceOf(SpillFailed);
+    expect(shared.used).toBe(0);
+    await spill.close();
   });
 });
 
@@ -125,5 +175,18 @@ describe("sweepSpills", () => {
     expect([liveFolder, ownFolder, other].every((folder) => existsSync(folder))).toBe(true);
     removeSpillDirectory(ownFolder);
     expect(existsSync(ownFolder)).toBe(false);
+  });
+
+  it("givenLinkNamedLikeADeadSpill_whenSwept_thenLeavesItAndItsTargetAlone", async () => {
+    const dead = spawnSync(process.execPath, ["-e", "process.pid"]).pid ?? 0;
+    const target = join(root, "kept");
+    mkdirSync(target);
+    writeFileSync(join(target, "data"), "kept");
+    symlinkSync(target, spillDirectory(root, dead));
+
+    const swept = await sweepSpills(root);
+
+    expect(swept).toEqual([]);
+    expect(existsSync(join(target, "data"))).toBe(true);
   });
 });

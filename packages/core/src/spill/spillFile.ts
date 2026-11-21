@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, rm, statfs, unlink, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rm, statfs, unlink, type FileHandle } from "node:fs/promises";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,9 @@ const SPILL_DIRECTORY_PATTERN = /^table-craft-spill-(\d+)$/;
 const SPILL_SUFFIX = ".spill";
 const OWNER_ONLY_DIRECTORY = 0o700;
 const OWNER_ONLY_FILE = 0o600;
+const GROUP_OR_OTHER_BITS = 0o077;
+/** Creates the segment and fails when the path exists, so a planted file or symlink is never followed. */
+const CREATE_NEW_FILE = "wx+";
 const BYTES_PER_GB = 1_073_741_824;
 const FULL_HINT = "Lower the limit or narrow the filter, or close results that hold large messages.";
 const FAILED_HINT = "Check that the temporary folder is writable and has free space, then run it again.";
@@ -99,6 +102,28 @@ export class SpillBudget {
 export const spillDirectory = (root: string = tmpdir(), pid: number = process.pid): string =>
   join(root, `${SPILL_DIRECTORY_PREFIX}${String(pid)}`);
 
+const currentUser = (): number | undefined => process.getuid?.();
+
+/** A real folder, not a link, owned by this user where the platform has owners. */
+async function ownFolder(path: string): Promise<{ readonly own: boolean; readonly mode: number }> {
+  const stats = await lstat(path);
+  const user = currentUser();
+  return { own: stats.isDirectory() && (user === undefined || stats.uid === user), mode: stats.mode };
+}
+
+/**
+ * The folder's name is predictable, so another local user may have made it first: only a folder
+ * this user owns and no one else may enter is written into.
+ */
+export async function ensureSpillDirectory(directory: string): Promise<void> {
+  await mkdir(directory, { recursive: true, mode: OWNER_ONLY_DIRECTORY });
+  const folder = await ownFolder(directory);
+  if (!folder.own) throw new Error(`${directory} is not a folder of this user`);
+  if (currentUser() !== undefined && (folder.mode & GROUP_OR_OTHER_BITS) !== 0) {
+    throw new Error(`${directory} is open to other users`);
+  }
+}
+
 const alive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
@@ -116,6 +141,8 @@ export const sweepSpills = async (root: string = tmpdir()): Promise<string[]> =>
     const pid = SPILL_DIRECTORY_PATTERN.exec(entry)?.[1];
     if (pid === undefined || Number(pid) === process.pid || alive(Number(pid))) continue;
     const path = join(root, entry);
+    const folder = await ownFolder(path).catch(() => null);
+    if (folder?.own !== true) continue;
     await rm(path, { recursive: true, force: true }).catch(() => undefined);
     swept.push(path);
   }
@@ -187,6 +214,11 @@ export class SpillFile<T> {
 
   get size(): number {
     return this.#index.size;
+  }
+
+  /** Closed files answer every get with null. */
+  get closed(): boolean {
+    return this.#closed;
   }
 
   /** The segment files, oldest first; for tests and diagnostics. */
@@ -272,11 +304,11 @@ export class SpillFile<T> {
     const current = this.#segments.at(-1);
     if (current !== undefined && (current.size === 0 || current.size + length <= this.#segmentBytes)) return current;
     if (current !== undefined) await this.#flush(current);
-    await mkdir(this.#directory, { recursive: true, mode: OWNER_ONLY_DIRECTORY });
+    await ensureSpillDirectory(this.#directory);
     await this.#budget.checkFree(this.#directory);
     const number = this.#next++;
     const path = join(this.#directory, `${this.#name}-${String(number)}${SPILL_SUFFIX}`);
-    const handle = await open(path, "w+", OWNER_ONLY_FILE);
+    const handle = await open(path, CREATE_NEW_FILE, OWNER_ONLY_FILE);
     const segment: Segment = { number, path, handle, ids: [], size: 0, flushed: 0, pending: [] };
     this.#segments.push(segment);
     return segment;
@@ -285,7 +317,17 @@ export class SpillFile<T> {
   async #flush(segment: Segment): Promise<void> {
     if (segment.pending.length === 0) return;
     const buffer = Buffer.concat(segment.pending);
-    await segment.handle.write(buffer, 0, buffer.length, segment.flushed);
+    let written = 0;
+    while (written < buffer.length) {
+      const { bytesWritten } = await segment.handle.write(
+        buffer,
+        written,
+        buffer.length - written,
+        segment.flushed + written,
+      );
+      if (bytesWritten === 0) throw new Error(`${segment.path} took no more bytes`);
+      written += bytesWritten;
+    }
     segment.pending = [];
     segment.flushed += buffer.length;
   }
@@ -298,7 +340,10 @@ export class SpillFile<T> {
     try {
       if (place.position + place.length > segment.flushed) await this.#flush(segment);
       const buffer = Buffer.alloc(place.length);
-      await segment.handle.read(buffer, 0, place.length, place.position);
+      const { bytesRead } = await segment.handle.read(buffer, 0, place.length, place.position);
+      if (bytesRead !== place.length) {
+        throw new Error(`${segment.path} ended ${String(place.length - bytesRead)} bytes short of a record`);
+      }
       return JSON.parse(buffer.toString("utf8")) as T;
     } catch (cause) {
       throw this.#fail(cause);
