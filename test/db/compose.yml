@@ -648,6 +648,11 @@ services:
       TABLE_CRAFT_KAFKA_BOOTSTRAP: kafka:19092
       TABLE_CRAFT_KAFKA_SASL_BOOTSTRAP: kafka:19093
       TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP: ${TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP:-}
+      TABLE_CRAFT_ELASTICSEARCH_HOST: elasticsearch
+      TABLE_CRAFT_ELASTICSEARCH_PORT: "9200"
+      TABLE_CRAFT_OPENSEARCH_HOST: opensearch
+      TABLE_CRAFT_OPENSEARCH_PORT: "9200"
+      TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL: ${TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL:-}
       TABLE_CRAFT_DATABASES: ${TABLE_CRAFT_DATABASES:-}
       TABLE_CRAFT_EVIDENCE_DIR: ${TABLE_CRAFT_EVIDENCE_DIR:-}
     volumes:
@@ -665,6 +670,7 @@ services:
       - node-modules-etcd:/work/plugins/etcd/node_modules
       - node-modules-duckdb:/work/plugins/duckdb/node_modules
       - node-modules-kafka:/work/plugins/kafka/node_modules
+      - node-modules-elasticsearch:/work/plugins/elasticsearch/node_modules
       - bun-cache:/root/.bun/install/cache
       - electron-cache:/root/.cache/electron
 
@@ -779,6 +785,7 @@ volumes:
   node-modules-etcd:
   node-modules-duckdb:
   node-modules-kafka:
+  node-modules-elasticsearch:
   # Downloads only, shared by every checkout; node_modules stay per checkout.
   bun-cache:
     name: table-craft-e2e-bun-cache

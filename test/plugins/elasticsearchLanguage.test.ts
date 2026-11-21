@@ -92,7 +92,7 @@ describe("elasticsearch complete", () => {
   });
 
   it("givenMethod_whenCompleted_thenEndpointsAndIndices", async () => {
-    const session = { suggestIndices: async () => ["products", "orders"] };
+    const session = { suggestIndices: () => Promise.resolve(["products", "orders"]) };
     const result = await complete({ text: "GET pro", offset: 7 }, session as never);
     const labels = result.items.map((item) => item.label);
     expect(labels).toContain("products");

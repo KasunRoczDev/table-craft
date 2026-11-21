@@ -124,6 +124,7 @@ describe("plugin service", () => {
       expect.objectContaining({ id: "etcd", installedVersion: null, install: { status: "idle" } }),
       expect.objectContaining({ id: "duckdb", packageName: DUCKDB_PACKAGE, installedVersion: null }),
       expect.objectContaining({ id: "kafka", installedVersion: null, install: { status: "idle" } }),
+      expect.objectContaining({ id: "elasticsearch", installedVersion: null, install: { status: "idle" } }),
     ]);
   });
 

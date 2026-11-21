@@ -1,0 +1,285 @@
+import { describe, expect, it, vi } from "vitest";
+import type {
+  ExecutedStatement,
+  OpenedSearch,
+  OpenedSession,
+  SearchHistogram,
+  SearchTargetDescription,
+} from "@table-craft/desktop/engine/protocol.js";
+import { EngineRequestError, type EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
+import {
+  analyzedFields,
+  DEFAULT_RANGE,
+  defaultDraft,
+  droppedTokens,
+  EMPTY_SEARCH_DRAFT,
+  HISTOGRAM_BUCKETS,
+  hitsText,
+  searchRequestOf,
+  sortableFields,
+} from "@table-craft/desktop/renderer/model/indexSearch.js";
+import { createIndexTabsStore, searchCommandText } from "@table-craft/desktop/renderer/state/indexTabs.js";
+
+const NOW = Date.parse("2026-11-21T09:15:00.000Z");
+const QUARTER_HOUR_AGO = "2026-11-21T09:00:00.000Z";
+
+const TARGET = { datasourceId: "search", target: "logs-checkout" };
+
+function description(timeField: string | null): SearchTargetDescription {
+  return {
+    name: "logs-checkout",
+    kind: "alias",
+    indices: ["logs-checkout-000411", "logs-checkout-000412"],
+    mappingType: null,
+    fields: [
+      { path: "@timestamp", type: "date", multiOf: null, analyzer: null, aggregatable: true },
+      { path: "message", type: "text", multiOf: null, analyzer: "standard", aggregatable: false },
+      { path: "message.keyword", type: "keyword", multiOf: "message", analyzer: null, aggregatable: true },
+      { path: "status", type: "keyword", multiOf: null, analyzer: null, aggregatable: true },
+    ],
+    timeField,
+    mapping: "{}",
+    settings: "{}",
+    warnings: [],
+  };
+}
+
+function statement(handle: string): ExecutedStatement {
+  return {
+    handle,
+    columns: [
+      { name: "_id", type: "keyword" },
+      { name: "status", type: "keyword" },
+    ],
+    typeClasses: ["text", "text"],
+    rowCount: 2,
+    complete: true,
+    cursorOpen: false,
+    rowsAffected: null,
+    firstWindow: {
+      offset: 0,
+      rows: [
+        ["a1", "paid"],
+        ["a2", "failed"],
+      ],
+    },
+    transactionOpen: false,
+  };
+}
+
+const HISTOGRAM: SearchHistogram = {
+  field: "@timestamp",
+  interval: "15s",
+  buckets: [{ at: QUARTER_HOUR_AGO, count: 2 }],
+};
+
+interface EngineOptions {
+  readonly timeField?: string | null;
+  readonly refuse?: boolean;
+}
+
+function searchEngine({ timeField = "@timestamp", refuse = false }: EngineOptions = {}) {
+  let searches = 0;
+  const call = vi.fn((type: string, _params?: unknown): Promise<unknown> => {
+    if (type === "session.open") {
+      const opened: OpenedSession = {
+        sessionId: "s1",
+        pluginName: "Elasticsearch",
+        capabilities: ["commands", "searchIndices"],
+        serverVersion: "8.15.0",
+        serverBrand: null,
+        namespace: null,
+        serverTimeout: null,
+        cancelReach: null,
+      };
+      return Promise.resolve(opened);
+    }
+    if (type === "indices.describe") return Promise.resolve(description(timeField));
+    if (type === "indices.histogram") return Promise.resolve(HISTOGRAM);
+    if (type === "indices.analyze") {
+      return Promise.resolve([
+        { name: "standard", kind: "tokenizer", tokens: [{ token: "The", position: 0 }] },
+        { name: "lowercase", kind: "tokenFilter", tokens: [{ token: "the", position: 0 }] },
+      ]);
+    }
+    if (type === "indices.open") {
+      searches += 1;
+      if (refuse) {
+        return Promise.reject(
+          new EngineRequestError({ code: "statementFailed", message: "Failed to parse query", hint: "Fix it." }),
+        );
+      }
+      const opened: OpenedSearch = {
+        search: {
+          total: { value: "2431", relation: "eq" },
+          tookMs: 6,
+          shards: { total: 5, successful: 5, skipped: 0, failed: 0 },
+          request: 'GET logs-checkout/_search\n{"size": 100}',
+          warnings: [],
+        },
+        statement: statement(`h${String(searches)}`),
+      };
+      return Promise.resolve(opened);
+    }
+    return Promise.resolve(null);
+  });
+  return { client: { call } as unknown as EngineClient, call };
+}
+
+type Engine = ReturnType<typeof searchEngine>;
+
+function callsOf(engine: Engine, type: string): readonly unknown[] {
+  return engine.call.mock.calls.filter(([called]) => called === type).map(([, params]) => params);
+}
+
+function store(engine: Engine) {
+  return createIndexTabsStore({ connect: () => Promise.resolve(engine.client), clock: () => NOW });
+}
+
+function token(text: string, position: number) {
+  return { token: text, position };
+}
+
+describe("index tabs", () => {
+  it("givenTimeField_whenOpened_thenDescribedAndLastQuarterHourSearchedNewestFirstWithHistogram", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    const tab = tabs.getState().tabs["index-0"];
+    expect(tab).toMatchObject({ status: "ready", kind: "alias", queryError: null });
+    expect(tab?.draft).toMatchObject({ sortField: "@timestamp", sortOrder: "desc", range: DEFAULT_RANGE });
+    expect(tab?.result?.windows[0]).toHaveLength(2);
+    expect(tab?.search?.tookMs).toBe(6);
+    expect(tab?.histogram).toEqual(HISTOGRAM);
+    expect(callsOf(engine, "indices.open")[0]).toMatchObject({
+      sessionId: "s1",
+      request: {
+        target: "logs-checkout",
+        language: "lucene",
+        query: "",
+        sort: [{ field: "@timestamp", order: "desc" }],
+        time: { field: "@timestamp", from: QUARTER_HOUR_AGO, to: null },
+      },
+    });
+    expect(callsOf(engine, "indices.histogram")[0]).toMatchObject({ buckets: HISTOGRAM_BUCKETS });
+  });
+
+  it("givenNoTimeField_whenOpened_thenScoreOrderAndNoRangeNorHistogram", async () => {
+    const engine = searchEngine({ timeField: null });
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    expect(tabs.getState().tabs["index-0"]?.draft).toEqual(EMPTY_SEARCH_DRAFT);
+    expect(callsOf(engine, "indices.open")[0]).toMatchObject({ request: { sort: [], time: null } });
+    expect(callsOf(engine, "indices.histogram")).toHaveLength(0);
+    expect(tabs.getState().tabs["index-0"]?.histogram).toBeNull();
+  });
+
+  it("givenDslDraft_whenRun_thenRequestCarriesItAndOldRowsReleased", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    tabs.getState().setDraft("index-0", { language: "dsl", query: ' {"match": {"status": "paid"}} ', range: "all" });
+    expect(await tabs.getState().run("index-0")).toBe(true);
+    expect(callsOf(engine, "indices.open")[1]).toMatchObject({
+      request: { language: "dsl", query: '{"match": {"status": "paid"}}', time: null },
+    });
+    expect(engine.call).toHaveBeenCalledWith("result.release", { handle: "h1" });
+    expect(tabs.getState().tabs["index-0"]?.result?.handle).toBe("h2");
+  });
+
+  it("givenRefusedQuery_whenRun_thenQueryErrorNotConnectionError", async () => {
+    const engine = searchEngine({ refuse: true });
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    const tab = tabs.getState().tabs["index-0"];
+    expect(tab?.queryError?.message).toBe("Failed to parse query");
+    expect(tab).toMatchObject({ error: null, status: "ready", result: null });
+  });
+
+  it("givenAnalyzeDraft_whenAnalyzed_thenStepsKept", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    tabs.getState().setAnalyzeDraft("index-0", { field: "message", text: "The" });
+    await tabs.getState().analyze("index-0");
+    expect(callsOf(engine, "indices.analyze")[0]).toEqual({
+      request: { target: "logs-checkout", field: "message", analyzer: null, text: "The" },
+    });
+    expect(tabs.getState().tabs["index-0"]?.analysis).toHaveLength(2);
+  });
+
+  it("givenDetach_whenEngineGone_thenStaleAndDisconnected", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    tabs.getState().detach("search", null);
+    expect(tabs.getState().tabs["index-0"]).toMatchObject({ status: "disconnected", sessionId: null });
+    expect(tabs.getState().tabs["index-0"]?.result?.stale).toBe(true);
+  });
+
+  it("givenClose_whenClosed_thenSessionClosed", async () => {
+    const engine = searchEngine();
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    tabs.getState().close("index-0");
+    expect(tabs.getState().tabs["index-0"]).toBeUndefined();
+    expect(engine.call).toHaveBeenCalledWith("session.close", { sessionId: "s1" });
+  });
+});
+
+describe("index search bar", () => {
+  it("givenDescription_whenDefaulted_thenTimeFirstOnlyWithTimeField", () => {
+    expect(defaultDraft(null)).toEqual(EMPTY_SEARCH_DRAFT);
+    expect(defaultDraft({ timeField: "@timestamp" })).toMatchObject({ sortField: "@timestamp", range: "15m" });
+  });
+
+  it("givenRangeWithoutTimeField_whenRequested_thenNoTimeAndPageClamped", () => {
+    const draft = { ...EMPTY_SEARCH_DRAFT, range: "7d" as const };
+    expect(searchRequestOf("orders", draft, null, 50_000, NOW)).toMatchObject({ time: null, pageSize: 10_000 });
+    expect(searchRequestOf("orders", draft, "created", 0, NOW)).toMatchObject({
+      time: { field: "created", from: "2026-11-14T09:15:00.000Z", to: null },
+      pageSize: 1,
+    });
+  });
+
+  it("givenRequest_whenNamed_thenServicesText", () => {
+    const request = searchRequestOf("orders", { ...EMPTY_SEARCH_DRAFT, query: "status:paid" }, null, 100, NOW);
+    expect(searchCommandText(request)).toBe("GET orders/_search status:paid");
+    expect(searchCommandText({ ...request, query: "" })).toBe("GET orders/_search");
+  });
+
+  it("givenFields_whenFiltered_thenSortableAndAnalyzed", () => {
+    const fields = description(null).fields;
+    expect(sortableFields(fields).map((field) => field.path)).toEqual(["@timestamp", "message.keyword", "status"]);
+    expect(analyzedFields(fields).map((field) => field.path)).toEqual(["message"]);
+  });
+
+  it("givenTotals_whenFooter_thenHitsText", () => {
+    expect(hitsText(100, { value: "2431", relation: "eq" })).toBe("1–100 of 2,431 hits");
+    expect(hitsText(100, { value: "10000", relation: "gte" })).toBe("1–100 of ≥ 10,000 hits");
+    expect(hitsText(1, { value: "1", relation: "eq" })).toBe("1–1 of 1 hit");
+    expect(hitsText(0, { value: "0", relation: "eq" })).toBe("0 hits");
+    expect(hitsText(0, null)).toBe("0 hits");
+  });
+
+  it("givenAnalysisChain_whenCompared_thenDroppedTokensPerStep", () => {
+    const steps = [
+      { kind: "tokenizer", tokens: [token("The", 0), token("Crème", 1), token("go", 2)] },
+      { kind: "tokenFilter", tokens: [token("the", 0), token("crème", 1), token("go", 2)] },
+      { kind: "tokenFilter", tokens: [token("the", 0), token("creme", 1)] },
+    ];
+    expect(droppedTokens(steps)).toEqual([
+      { kept: ["The", "Crème", "go"], dropped: [] },
+      { kept: ["the", "crème", "go"], dropped: [] },
+      { kept: ["the", "creme"], dropped: ["go"] },
+    ]);
+  });
+
+  it("givenCharFilterFirst_whenCompared_thenTheTokenizerDropsNothing", () => {
+    const steps = [
+      { kind: "charFilter", tokens: [token("<b>Tea</b>", 0)] },
+      { kind: "tokenizer", tokens: [token("Tea", 0), token("cup", 1)] },
+    ];
+    expect(droppedTokens(steps)[1]).toEqual({ kept: ["Tea", "cup"], dropped: [] });
+  });
+});

@@ -49,6 +49,7 @@ import { findPanel, type FindHost } from "@table-craft/desktop/renderer/console/
 import { findScopeField } from "@table-craft/desktop/renderer/console/find/findState.js";
 import { scrubEditorState } from "@table-craft/desktop/renderer/console/editorPrivacy.js";
 import { etcdLanguage } from "@table-craft/desktop/renderer/console/highlighters/etcd.js";
+import { elasticsearchLanguage } from "@table-craft/desktop/renderer/console/highlighters/elasticsearch.js";
 import { kafkaLanguage } from "@table-craft/desktop/renderer/console/highlighters/kafka.js";
 import { redisLanguage } from "@table-craft/desktop/renderer/console/highlighters/redis.js";
 import { connectedSignature } from "@table-craft/desktop/renderer/console/signatureHint.js";
@@ -145,6 +146,7 @@ const COMMAND_HIGHLIGHTERS: Readonly<Record<string, Extension>> = {
   redis: redisLanguage,
   etcd: etcdLanguage,
   kafka: kafkaLanguage,
+  elasticsearch: elasticsearchLanguage,
 };
 
 export function dialectOf(highlight: string | null | undefined): SQLDialect {

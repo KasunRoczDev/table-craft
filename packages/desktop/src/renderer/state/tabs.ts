@@ -5,7 +5,18 @@ import { create } from "zustand";
  * a server's figures (plan 058), or a namespace's ER diagram (plan 152).
  */
 export type TabKind =
-  "console" | "table" | "ddl" | "sessions" | "key" | "server" | "keyAdmin" | "diagram" | "topic" | "group" | "subject";
+  | "console"
+  | "table"
+  | "ddl"
+  | "sessions"
+  | "key"
+  | "server"
+  | "keyAdmin"
+  | "diagram"
+  | "topic"
+  | "group"
+  | "subject"
+  | "index";
 
 export const EDITOR_GROUPS = ["left", "right"] as const;
 export type EditorGroupId = (typeof EDITOR_GROUPS)[number];

@@ -64,6 +64,17 @@ When the git-ignored `.env` names `TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP`, the cont
 the suites use that shared cluster instead (`test/db/stack.ts`). Touch only the `tc_run_*` topics
 and groups the run made; never reset, delete or produce to anything else there.
 
+## Elasticsearch and OpenSearch
+
+The `elasticsearch` profile selects `elasticsearch` (Elasticsearch 8.19, one node, security off) on
+port 59200 and `opensearch` (OpenSearch 2.19, security plugin off) on port 59203. The contract suite
+creates its own `tc_run_*` indices on each (`test/support/elasticsearchFixture.ts`) and deletes them
+after; the live test seeds a small shop (`test/e2e/elasticsearchLive.ts`) into `elasticsearch`.
+
+When the git-ignored `.env` names `TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL` (such as a shared 6.x
+cluster), the contract suite runs against it too, with the index filter `tc_run_*`. Touch only the
+`tc_run_*` indices the run made, and assume nothing about that cluster's health or open contexts.
+
 ## The remote TiDB
 
 When the git-ignored `.env` names a remote TiDB (`TABLE_CRAFT_TIDB_REMOTE_HOST`, `_PORT`, `_USER`,

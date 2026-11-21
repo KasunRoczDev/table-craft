@@ -165,3 +165,5 @@ started, not when it is merged.
 | 170 | [Browsing a topic never joins a consumer group](170-browsing-a-topic-never-joins-a-group.md)                                                                           |
 | 171 | [The Kafka plugin has its own Schema Registry client](171-the-kafka-plugin-has-its-own-schema-registry-client.md)                                                      |
 | 172 | [Large stream messages spill to a temporary file](172-large-stream-messages-spill-to-a-temporary-file.md)                                                              |
+| 173 | [The Elasticsearch plugin speaks REST without a driver](173-the-elasticsearch-plugin-speaks-rest-without-a-driver.md)                                                  |
+| 174 | [Search indices are a capability with their own tree](174-search-indices-are-a-capability-with-their-own-tree.md)                                                      |

@@ -8,8 +8,8 @@ import { shardWarnings } from "./search.js";
 const JSON_INDENT = 2;
 /** A console search shows at most this many source fields as columns, the rest stay in `_source`. */
 const CONSOLE_FIELD_LIMIT = 200;
-const READ_ONLY_ADVICE =
-  "this data source is read-only, so TableCraft sends only requests that read. Turn read-only off in its settings to change data.";
+/** The host's hint says how to turn read-only off; the message only says what was held back. */
+const READ_ONLY_ADVICE = "the data source is read-only.";
 const NDJSON_ENDPOINTS = new Set(["_bulk", "_msearch", "_msearch_template"]);
 
 async function* yieldRows(rows: readonly Row[]): AsyncIterable<Row> {

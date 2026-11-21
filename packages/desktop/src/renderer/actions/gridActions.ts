@@ -14,6 +14,7 @@ import { findsCells, shownRowCount, type ResultSearch } from "@table-craft/deskt
 import { canReload, tableRowCount, useTables } from "@table-craft/desktop/renderer/state/tables.js";
 import { canReloadKey, useKeyTabs } from "@table-craft/desktop/renderer/state/keyTabs.js";
 import { canReadTopic, useTopicTabs } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { canSearchIndex, useIndexTabs } from "@table-craft/desktop/renderer/state/indexTabs.js";
 import { reloadTable, settlePendingEdits } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 import { focusRegion } from "@table-craft/desktop/renderer/shell/focus.js";
 import { useLayout } from "@table-craft/desktop/renderer/state/layout.js";
@@ -151,6 +152,9 @@ export function shown(context: ActionContext): ShownResult | null {
   if (context.topicTab != null) {
     return { ownerId, result: context.result, host: useTopicTabs.getState(), rows: shownRowCount(context.result) };
   }
+  if (context.indexTab != null) {
+    return { ownerId, result: context.result, host: useIndexTabs.getState(), rows: shownRowCount(context.result) };
+  }
   return null;
 }
 
@@ -167,6 +171,7 @@ function canRerun(context: ActionContext): boolean {
   if (context.console !== null) return canRun(context.console.status);
   if (context.keyTab !== null) return canReloadKey(context.keyTab.status);
   if (context.topicTab != null) return canReadTopic(context.topicTab.status);
+  if (context.indexTab != null) return canSearchIndex(context.indexTab.status);
   return context.table !== null && canReload(context.table.status);
 }
 
@@ -321,6 +326,7 @@ export const GRID_ACTIONS: readonly AnyAction[] = [
       if (context.table !== null) await reloadTable(target.ownerId);
       else if (context.keyTab !== null) await useKeyTabs.getState().reload(target.ownerId);
       else if (context.topicTab != null) await useTopicTabs.getState().read(target.ownerId);
+      else if (context.indexTab != null) await useIndexTabs.getState().run(target.ownerId);
       else await useConsoles.getState().rerun(target.ownerId, target.result.id);
     },
   }),

@@ -131,6 +131,7 @@ describe("listPlugins", () => {
 
     expect(plugins.map((plugin) => plugin.id).sort()).toEqual([
       "duckdb",
+      "elasticsearch",
       "etcd",
       "kafka",
       "mssql",

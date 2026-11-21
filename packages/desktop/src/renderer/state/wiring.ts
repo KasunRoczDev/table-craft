@@ -45,6 +45,8 @@ import { groupTabsOf, useGroupTabs, type GroupTabsStore } from "@table-craft/des
 import { useStreams, type StreamsStore } from "@table-craft/desktop/renderer/state/streams.js";
 import { useTail } from "@table-craft/desktop/renderer/tail/store.js";
 import { subjectTabsOf, useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
+import { indexTabsOf, useIndexTabs } from "@table-craft/desktop/renderer/state/indexTabs.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
 import { themeOf, useSettings, type SettingsStore } from "@table-craft/desktop/renderer/state/settings.js";
 import { tablesOf, useTables, type TablesStore } from "@table-craft/desktop/renderer/state/tables.js";
 import { useTabs, type TabsStore } from "@table-craft/desktop/renderer/state/tabs.js";
@@ -121,9 +123,11 @@ export function wireStores({
     topicTabs?.getState().detach(id, error);
     groupTabs?.getState().detach(id);
     useSubjectTabs.getState().detach(id);
+    useIndexTabs.getState().detach(id, error);
     catalog?.getState().clear(id);
     keys?.getState().clear(id);
     streams?.getState().clear(id);
+    useIndices.getState().clear(id);
   });
   const offRemoved = datasources.onRemoved((ids) => {
     for (const id of ids) {
@@ -159,6 +163,10 @@ export function wireStores({
       for (const subjectId of subjectTabsOf(useSubjectTabs.getState().tabs, id)) {
         tabs.getState().close(subjectId);
         useSubjectTabs.getState().close(subjectId);
+      }
+      for (const indexId of indexTabsOf(useIndexTabs.getState().tabs, id)) {
+        tabs.getState().close(indexId);
+        useIndexTabs.getState().close(indexId);
       }
       for (const groupId of groupTabs === undefined ? [] : groupTabsOf(groupTabs.getState().tabs, id)) {
         tabs.getState().close(groupId);
@@ -221,6 +229,7 @@ function followAttaches(
       const capabilities = capabilitiesOf(state.plugins, datasource.pluginId);
       if (capabilities.includes("keyValue")) void keys?.getState().expandDatasource(id);
       if (capabilities.includes("topics")) void streams?.getState().expandDatasource(id);
+      if (capabilities.includes("searchIndices")) void useIndices.getState().expandDatasource(id);
       if (!capabilities.includes("schemaTree")) continue;
       void catalog.getState().expandDatasource(id);
     }

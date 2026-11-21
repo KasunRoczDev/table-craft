@@ -25,11 +25,13 @@ etcd (3.5 and later), about 400 KB, as
 (see [DuckDB](duckdb.md); macOS, Windows and Linux on x64 and arm64), and Apache Kafka, about
 1.2 MB, as
 [`@tablecraft-app/plugin-kafka`](https://www.npmjs.com/package/@tablecraft-app/plugin-kafka)
-(see [Apache Kafka](kafka.md))
+(see [Apache Kafka](kafka.md)), and Elasticsearch and OpenSearch, about 200 KB, as
+[`@tablecraft-app/plugin-elasticsearch`](https://www.npmjs.com/package/@tablecraft-app/plugin-elasticsearch)
+(see [Elasticsearch and OpenSearch](elasticsearch.md))
 ([decision 108](../decisions/108-sqlite-and-mysql-ship-other-plugins-download.md),
 [decision 156](../decisions/156-native-drivers-ship-one-package-per-platform.md)).
 
-- **Data Sources +** lists PostgreSQL, Redis, Oracle, SQL Server, etcd, DuckDB and Apache Kafka with **Download**. Choosing it
+- **Data Sources +** lists PostgreSQL, Redis, Oracle, SQL Server, etcd, DuckDB, Apache Kafka and Elasticsearch with **Download**. Choosing it
   shows the progress, then the connection form.
 - A saved data source whose plugin is missing shows greyed in the Database pane with **Install**.
   After an update from a version that had PostgreSQL built in, TableCraft installs it in the
