@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   isPluginError,
+  MESSAGE_PREVIEW_CHARS,
   type DatasourcePlugin,
   type GroupManager,
   type MessageFormat,
+  type MessageSpill,
+  type SpilledMessage,
   type PluginErrorCode,
   type Row,
   type SchemaRegistry,
@@ -57,6 +60,8 @@ const DEFAULT_PARTITIONS = 3;
 const RANDOM_RADIX = 36;
 const RANDOM_LENGTH = 10;
 const READ_LIMIT = 500;
+/** A large message is this many previews long. */
+const LARGE_MESSAGE_PREVIEWS = 3;
 const PRODUCE_GAP_MS = 5;
 const TAIL_COUNT = 10;
 const TAIL_BYTES = 1 << 20;
@@ -291,6 +296,33 @@ export function runStreamsContract(contract: StreamsContract): void {
           expect(rows.map((row) => row[VALUE_COLUMN])).toEqual(values.slice(2));
           const times = rows.map((row) => isoOf(row[TIMESTAMP_COLUMN]));
           expect(times).toEqual([...times].sort());
+        });
+      });
+    });
+
+    it("givenSpill_whenLargeMessageRead_thenPreviewKeptAndWholeValuePutOrWholeRow", async () => {
+      await withSession(async (session) => {
+        await withTopic(session, async (topic) => {
+          const large = "v".repeat(MESSAGE_PREVIEW_CHARS * LARGE_MESSAGE_PREVIEWS);
+          await produce(session, topic, 0, large);
+          await produce(session, topic, 0, "small");
+          const spilled = new Map<string, SpilledMessage>();
+          const spill: MessageSpill = {
+            put: (partition, offset, message) => {
+              spilled.set(`${String(partition)}:${offset}`, message);
+              return Promise.resolve();
+            },
+          };
+          const rows = await readRows(topicsOf(session).read(request(topic, { kind: "earliest" }), spill));
+          expect(rows.map((row) => row[VALUE_COLUMN])).toHaveLength(2);
+          expect(rows[1]?.[VALUE_COLUMN]).toBe("small");
+          expect(spilled.has("0:1")).toBe(false);
+          const shown = rows[0]?.[VALUE_COLUMN];
+          if (spilled.size === 0) expect(shown).toBe(large);
+          else {
+            expect(typeof shown === "string" && shown.length <= MESSAGE_PREVIEW_CHARS + 1).toBe(true);
+            expect(spilled.get("0:0")?.value).toBe(large);
+          }
         });
       });
     });

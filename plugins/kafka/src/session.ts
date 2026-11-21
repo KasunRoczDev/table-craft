@@ -5,6 +5,7 @@ import {
   type ConnectOptions,
   type ExecuteOptions,
   type ExecuteResult,
+  type MessageSpill,
   type ParameterValue,
   type PluginSession,
   type SchemaRegistry,
@@ -109,7 +110,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     this.#topics = new KafkaTopics(
       this.#admin,
       {
-        read: (request) => this.#read(request),
+        read: (request, spill) => this.#read(request, null, spill),
         produce: (record) => this.#produce.produce(record),
         create: (request, adminOptions) => topicAdmin.create(request, adminOptions),
         alterConfigs: (topic, changes, adminOptions) => topicAdmin.alterConfigs(topic, changes, adminOptions),
@@ -186,7 +187,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
     }
   }
 
-  async #read(request: TopicReadRequest, followMs: number | null = null): Promise<TopicRead> {
+  async #read(request: TopicReadRequest, followMs: number | null = null, spill?: MessageSpill): Promise<TopicRead> {
     const admin = this.#checked();
     const controller = new AbortController();
     this.#running.add(controller);
@@ -203,6 +204,7 @@ export class KafkaSession implements PluginSession<KafkaCapability> {
         },
         request,
         followMs,
+        spill,
       );
     } finally {
       this.#running.delete(controller);

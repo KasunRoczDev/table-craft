@@ -164,3 +164,4 @@ started, not when it is merged.
 | 169 | [Stream services are capabilities with their own tree](169-stream-services-are-capabilities-with-their-own-tree.md)                                                    |
 | 170 | [Browsing a topic never joins a consumer group](170-browsing-a-topic-never-joins-a-group.md)                                                                           |
 | 171 | [The Kafka plugin has its own Schema Registry client](171-the-kafka-plugin-has-its-own-schema-registry-client.md)                                                      |
+| 172 | [Large stream messages spill to a temporary file](172-large-stream-messages-spill-to-a-temporary-file.md)                                                              |

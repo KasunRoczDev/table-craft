@@ -102,9 +102,11 @@ export const STREAM_REQUESTS = [
     type: z.literal("topics.open"),
     sessionId,
     request: readRequest,
+    spill: z.boolean().optional(),
     ...paging,
     ...statementLimit,
   }),
+  z.strictObject({ id: requestId, type: z.literal("topics.message"), handle: z.string().min(1), partition, offset }),
   z.strictObject({ id: requestId, type: z.literal("topics.produce"), record }),
   z.strictObject({ id: requestId, type: z.literal("topics.create"), request: create, validateOnly }),
   z.strictObject({
@@ -134,7 +136,9 @@ export const STREAM_REQUESTS = [
     valueFormat: format,
     maxMessages: z.number().int().min(1).max(TOPIC_TAIL_MAX_MESSAGES),
     maxBytes: z.number().int().min(1).max(TOPIC_TAIL_MAX_RING_BYTES),
+    spill: z.boolean().optional(),
   }),
+  z.strictObject({ id: requestId, type: z.literal("topics.tailMessage"), tailId, sequence: offset }),
   z.strictObject({
     id: requestId,
     type: z.literal("topics.tailWindow"),

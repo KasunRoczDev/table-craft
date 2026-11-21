@@ -7,6 +7,8 @@ export type CoreErrorCode =
   | "editRejected"
   | "statementFailed"
   | "resultChanged"
+  | "spillFull"
+  | "spillFailed"
   | TunnelErrorCode;
 
 /** Why an SSH tunnel (plan 036) could not open or stopped; each says which hop failed. */

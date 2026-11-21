@@ -53,6 +53,7 @@ const CHOSEN: Settings = {
     aggregates: ["sum", "avg"],
     blobLimitMb: 64,
     watchRetention: 10_000,
+    spillMessages: false,
   },
   log: { level: "debug" },
   updates: { checkAutomatically: false, channel: "beta" },
@@ -205,6 +206,7 @@ describe("settings document", () => {
       aggregates: ["count", "max"],
       blobLimitMb: 16,
       watchRetention: 10_000,
+      spillMessages: true,
     });
   });
 

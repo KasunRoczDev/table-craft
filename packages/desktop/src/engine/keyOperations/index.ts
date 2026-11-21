@@ -27,7 +27,7 @@ export function keyOperations(context: EngineContext) {
     watches,
     watchExport: watchExportOperations(watches, tasks, context.options.operationFiles),
     renewals: new KeyRenewals(scope),
-    topicTails: new TopicTails(scope),
+    topicTails: new TopicTails(scope, context.spillBudget),
     maintenance: maintenanceOperations(tasks, context.options.operationFiles),
     transfer: keyTransferOperations(scope, tasks, context.options.operationFiles),
   };

@@ -8,9 +8,9 @@
  * Every topic and group it makes starts `tc_run_` (`kafkaLive.ts`) and is deleted after the run,
  * even when a scenario fails; nothing else on the cluster is written.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { Locator, Page } from "playwright-core";
+import type { ElectronApplication, Locator, Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { KAFKA_SCRATCH_PREFIX, kafkaRemoteBootstrap, WITHOUT_KAFKA } from "../support/databases.js";
 import {
@@ -24,6 +24,7 @@ import {
   datasourceStatus,
   EVIDENCE_WINDOW,
   evidenceFor,
+  evidenceTextFor,
   fillNewDatasource,
   findAction,
   gridText,
@@ -50,6 +51,7 @@ import {
   BILLING_COMMITTED,
   EARLY_KEY,
   HOT_CUSTOMER,
+  LARGE_VALUE_END,
   LIVE_LAG_WARNING,
   ORDER_SCHEMA_BROKEN,
   ORDER_SPACING_S,
@@ -61,6 +63,7 @@ import {
 import { dialog, explorer, treeRows } from "./redisLive.js";
 
 const captureWindow = evidenceFor("164");
+const writeEvidence = evidenceTextFor("164");
 
 const SEED_TIMEOUT_MS = 120_000;
 const LONG_SCENARIO_MS = SCENARIO_TIMEOUT_MS * 3;
@@ -77,6 +80,14 @@ const TAIL_OVERFLOW_BATCH = 2000;
 const MATCHES_NOTHING = "matches-no-message";
 const BULK_RECORDS = 150_000;
 const VIETNAM_ZONE = "Asia/Ho_Chi_Minh";
+const LARGE_MESSAGES = 300;
+const LARGE_VALUE_BYTES = 262_144;
+/** Decision 172: an engine spills into `<tmpdir>/table-craft-spill-<pid>/`, one `.spill` file per segment. */
+const SPILL_FOLDER_PREFIX = "table-craft-spill-";
+const SPILL_FILE_SUFFIX = ".spill";
+const KIB = 1024;
+/** The spill's write buffer (1 MiB): records in it are not on disk yet when the files are measured. */
+const SPILL_WRITE_BUFFER_BYTES = KIB * KIB;
 
 const WAIT = { timeout: READ_TIMEOUT_MS } as const;
 const PROBE = { timeout: 1000 } as const;
@@ -124,6 +135,11 @@ let running: RunningApp | null = null;
 function seeded(): LiveKafka {
   if (live === null) throw new Error("The Kafka seed did not run; see beforeAll.");
   return live;
+}
+
+function runningApp(): ElectronApplication {
+  if (running === null) throw new Error("No app is running; launch one first.");
+  return running.app;
 }
 
 function liveConfig(kafka: LiveKafka): Readonly<Record<string, string | number | boolean>> {
@@ -978,5 +994,77 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
       await capture(page, "24-message-panel");
     },
     SCENARIO_TIMEOUT_MS,
+  );
+
+  it.skipIf(WITHOUT_KAFKA)(
+    "givenLargeMessages_whenRead_thenGridKeepsPreviewsAndThePanelReadsTheWholeValueFromDisk (25)",
+    async () => {
+      const kafka = seeded();
+      await kafka.fillLarge(LARGE_MESSAGES, LARGE_VALUE_BYTES);
+      const page = await launch(liveDatasource(liveConfig(kafka)));
+      const app = runningApp();
+      const tab = await openTopic(page, kafka.large);
+      await chooseOption(tab.getByTestId("read-from"), "earliest");
+      await read(tab);
+      await text(tab.getByTestId("topic-scanned")).toContain(`${String(LARGE_MESSAGES)} rows`);
+      const preview = tab.getByRole("gridcell").filter({ hasText: "xxxxxxxx" }).first();
+      await text(preview).toContain("…");
+      expect((await preview.textContent())?.length ?? 0).toBeLessThan(LARGE_VALUE_BYTES);
+      await capture(page, "25-large-messages");
+
+      const temp = await app.evaluate(({ app: electron }) => electron.getPath("temp"));
+      const metrics = await app.evaluate(({ app: electron }) => electron.getAppMetrics());
+      const pids = new Set(metrics.map((metric) => metric.pid));
+      const spillFiles = () =>
+        readdirSync(temp)
+          .filter(
+            (name) => name.startsWith(SPILL_FOLDER_PREFIX) && pids.has(Number(name.slice(SPILL_FOLDER_PREFIX.length))),
+          )
+          .flatMap((folder) =>
+            readdirSync(join(temp, folder))
+              .filter((name) => name.endsWith(SPILL_FILE_SUFFIX))
+              .map((name) => join(temp, folder, name)),
+          );
+      const whileOpen = spillFiles();
+      expect(whileOpen.length).toBeGreaterThan(0);
+      const spilledBytes = whileOpen.reduce((total, file) => total + statSync(file).size, 0);
+      expect(spilledBytes).toBeGreaterThan(LARGE_MESSAGES * LARGE_VALUE_BYTES - SPILL_WRITE_BUFFER_BYTES);
+
+      await findAction(page, "Value Panel");
+      await preview.click();
+      const panel = tab.getByTestId("message-panel");
+      await shown(panel);
+      await count(panel.getByTestId("message-loading")).toBe(0);
+      const whole = panel.getByTestId("message-value");
+      await eventually(async () => (await whole.textContent())?.length ?? 0).toBe(LARGE_VALUE_BYTES);
+      expect((await whole.textContent())?.endsWith(LARGE_VALUE_END)).toBe(true);
+      await count(panel.getByTestId("message-preview-only")).toBe(0);
+      await capture(page, "25-large-message-panel");
+
+      await pressChord(page, "W");
+      await count(topicTab(page)).toBe(0);
+      await eventually(() => Promise.resolve(spillFiles().length)).toBe(0);
+      writeEvidence(
+        "25-large-messages.txt",
+        [
+          `Seeded ${String(LARGE_MESSAGES)} messages of ${String(LARGE_VALUE_BYTES / KIB)} KB on one partition.`,
+          `While the topic tab was open: ${String(whileOpen.length)} spill file(s), ${String(Math.round(spilledBytes / KIB / KIB))} MB, under ${temp}:`,
+          ...whileOpen.map((file) => `  ${file.slice(temp.length)}`),
+          `After closing the tab: ${String(spillFiles().length)} spill file(s); every engine folder left: ${readdirSync(
+            temp,
+          )
+            .filter((name) => name.startsWith(SPILL_FOLDER_PREFIX))
+            .join(", ")}`,
+          "Process memory after the read (getAppMetrics, working set / peak):",
+          ...metrics.map(
+            (metric) =>
+              `  ${metric.type}${metric.name === undefined ? "" : ` ${metric.name}`} pid ${String(metric.pid)}: ${String(
+                Math.round(metric.memory.workingSetSize / KIB),
+              )} MB / ${String(Math.round(metric.memory.peakWorkingSetSize / KIB))} MB`,
+          ),
+        ].join("\n") + "\n",
+      );
+    },
+    LONG_SCENARIO_MS,
   );
 });

@@ -5,6 +5,7 @@ import { TOPIC_ACTION_IDS, type TopicOffsetArgs } from "@table-craft/desktop/ren
 import { BUTTON, INPUT } from "@table-craft/desktop/renderer/keyAdmin/controls.js";
 import { parsesAsJson } from "@table-craft/desktop/renderer/model/jsonText.js";
 import { prettyJson } from "@table-craft/desktop/renderer/model/prettyJson.js";
+import { isPreviewMessage, PREVIEW_ONLY_NOTICE } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import { partitionsLabel } from "@table-craft/desktop/renderer/model/topicRead.js";
 import { TEXT_TAB_ROW_INSET } from "@table-craft/desktop/renderer/shell/islands.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
@@ -42,7 +43,46 @@ function valueText(value: string | null): string {
   return parsesAsJson(value) ? prettyJson(value) : value;
 }
 
-function Detail({ entry, message }: { readonly entry: TailEntry; readonly message: TailMessage }) {
+type WholeState = "loading" | "lost" | "whole";
+
+/** The selected row's whole message from the tail's temporary file (decision 172), else its preview. */
+function useWholeTailMessage(
+  id: string,
+  sequence: string,
+  preview: TailMessage,
+): { readonly state: WholeState; readonly message: TailMessage } {
+  const [fetched, setFetched] = useState<{ readonly sequence: string; readonly message: TailMessage | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    let live = true;
+    void useTail
+      .getState()
+      .message(id, sequence)
+      .catch(() => null)
+      .then((message) => {
+        if (live) setFetched({ sequence, message });
+      });
+    return () => {
+      live = false;
+    };
+  }, [id, sequence]);
+  const cut = isPreviewMessage(preview);
+  if (fetched === null || fetched.sequence !== sequence) return { state: cut ? "loading" : "whole", message: preview };
+  if (fetched.message === null) return { state: cut ? "lost" : "whole", message: preview };
+  return { state: "whole", message: fetched.message };
+}
+
+function Detail({
+  entry,
+  sequence,
+  preview,
+}: {
+  readonly entry: TailEntry;
+  readonly sequence: string;
+  readonly preview: TailMessage;
+}) {
+  const { state, message } = useWholeTailMessage(entry.summary.tailId, sequence, preview);
   const facts = [
     `Partition ${String(message.partition)}`,
     `Offset ${message.offset}`,
@@ -68,6 +108,11 @@ function Detail({ entry, message }: { readonly entry: TailEntry; readonly messag
         </button>
       </div>
       <div className="min-h-0 overflow-auto px-pane-inset pb-cell font-grid">
+        {state === "whole" ? null : (
+          <p className="text-ink-muted" data-testid="tail-detail-note">
+            {state === "loading" ? "Loading full message…" : PREVIEW_ONLY_NOTICE}
+          </p>
+        )}
         <p className="text-ink-muted">Key</p>
         <pre className="whitespace-pre-wrap">{message.key ?? "null"}</pre>
         {message.headers.length === 0 ? null : (
@@ -199,7 +244,7 @@ function Stream({ entry }: { readonly entry: TailEntry }) {
           </tbody>
         </table>
       </div>
-      {chosen?.kind === "message" ? <Detail entry={entry} message={chosen.message} /> : null}
+      {chosen?.kind === "message" ? <Detail entry={entry} sequence={chosen.sequence} preview={chosen.message} /> : null}
     </div>
   );
 }

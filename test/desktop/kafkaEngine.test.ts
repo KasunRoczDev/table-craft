@@ -1,11 +1,16 @@
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+  MESSAGE_PREVIEW_CHARS,
   PluginError,
   z,
   type Capability,
   type DatasourcePlugin,
   type ExecuteResult,
   type GroupManager,
+  type MessageSpill,
   type ResetPreview,
   type Row,
   type SchemaRegistry,
@@ -13,15 +18,18 @@ import {
   type TailMessage,
   type TopicBrowser,
   type TopicRead,
+  type TopicReadRequest,
   type TopicTail,
   type TopicTailBatch,
 } from "@table-craft/plugin-api";
-import type { PluginLoadResult } from "@table-craft/core";
+import { SpillBudget, spillDirectory, type PluginLoadResult } from "@table-craft/core";
 import { createEngine } from "@table-craft/desktop/engine/engine.js";
 import {
   RESULT_FETCH_ALL_CAP,
   RESULT_PAGE_ROWS,
+  type EngineEvent,
   type EngineResponse,
+  type ExportTask,
   type OpenedTopic,
   type TopicTailSummary,
   type TopicTailWindow,
@@ -57,7 +65,7 @@ const RECORD = {
 
 type Services = Session["services"];
 
-function setup(open: () => Promise<Session>, readOnly = false) {
+function setup(open: () => Promise<Session>, readOnly = false, spillBudget?: SpillBudget) {
   const plugin: DatasourcePlugin = {
     id: "kafka-fake",
     capabilities: CAPABILITIES,
@@ -74,6 +82,7 @@ function setup(open: () => Promise<Session>, readOnly = false) {
   return createEngine({
     datasource: { id: "k", pluginId: plugin.id, config: {}, readOnly, keepAliveSeconds: 0 },
     plugins: [loaded],
+    ...(spillBudget === undefined ? {} : { spillBudget }),
   });
 }
 
@@ -141,7 +150,7 @@ describe("kafka engine routes", () => {
       await connection.handle({ id: 2, type: "topics.open", sessionId, request: READ, ...PAGING }),
     );
 
-    expect(read).toHaveBeenCalledWith(READ);
+    expect(read).toHaveBeenCalledWith(READ, expect.anything());
     expect(opened.read).toEqual({
       scanned: "100000",
       matched: "2",
@@ -354,6 +363,186 @@ describe("kafka engine routes", () => {
     await connection.close();
     expect(closeTail).toHaveBeenCalledTimes(1);
     expect(closeSession).toHaveBeenCalledTimes(1);
+    await engine.close();
+  });
+});
+
+const FULL_VALUE = "v".repeat(5_000);
+const PREVIEW_VALUE = `${FULL_VALUE.slice(0, MESSAGE_PREVIEW_CHARS)}…`;
+const VALUE_COLUMN = 3;
+const SPILL_COLUMNS = ["partition", "offset", "key", "value", "headers"].map((name) => ({ name, type: null }));
+
+/** A read that spills message 7 the way the kafka plugin does: the full cells out, a preview in the row. */
+function spillingRead() {
+  return vi.fn(async (_request: TopicReadRequest, spill?: MessageSpill): Promise<TopicRead> => {
+    await spill?.put(0, "7", { key: "k", value: FULL_VALUE, headers: null });
+    const rows: Row[] = [
+      [0, { kind: "bigint", value: "7" }, "k", spill === undefined ? FULL_VALUE : PREVIEW_VALUE, null],
+      [0, { kind: "bigint", value: "8" }, "small", "tiny", null],
+    ];
+    return {
+      result: { columns: SPILL_COLUMNS, rows: rowsOf(rows), rowsAffected: null },
+      scanned: "2",
+      matched: "2",
+      exhausted: true,
+      resume: null,
+      warnings: [],
+    };
+  });
+}
+
+async function spillFiles(): Promise<string[]> {
+  return (await readdir(spillDirectory()).catch(() => [] as string[])).sort();
+}
+
+describe("kafka large messages on disk", () => {
+  async function openSpilled(emit?: (event: EngineEvent) => void, spill?: boolean) {
+    const read = spillingRead();
+    const engine = setup(() => Promise.resolve(session({ topics: { read } as unknown as TopicBrowser })));
+    const connection = engine.connect(emit);
+    const { sessionId } = result<{ sessionId: string }>(await connection.handle({ id: 1, type: "session.open" }));
+    const opened = result<OpenedTopic>(
+      await connection.handle({
+        id: 2,
+        type: "topics.open",
+        sessionId,
+        request: READ,
+        ...PAGING,
+        ...(spill === undefined ? {} : { spill }),
+      }),
+    );
+    return { engine, connection, read, handle: opened.statement.handle, rows: opened.statement.firstWindow.rows };
+  }
+
+  it("givenLargeMessageSpilled_whenOpened_thenRowHoldsPreviewAndTopicsMessageReturnsTheFullValue", async () => {
+    const { engine, connection, handle, rows } = await openSpilled();
+
+    const full = result<unknown>(
+      await connection.handle({ id: 3, type: "topics.message", handle, partition: 0, offset: "7" }),
+    );
+    const small = result<unknown>(
+      await connection.handle({ id: 4, type: "topics.message", handle, partition: 0, offset: "8" }),
+    );
+    const missing = result<unknown>(
+      await connection.handle({ id: 5, type: "topics.message", handle, partition: 0, offset: "9" }),
+    );
+
+    expect(rows[0]?.[VALUE_COLUMN]).toBe(PREVIEW_VALUE);
+    expect(full).toEqual({ key: "k", value: FULL_VALUE, headers: null });
+    expect(small).toEqual({ key: "small", value: "tiny", headers: null });
+    expect(missing).toBeNull();
+    await engine.close();
+  });
+
+  it("givenSpillOff_whenOpened_thenTheReadGetsNoSpill", async () => {
+    const { engine, read, rows } = await openSpilled(undefined, false);
+
+    expect(read.mock.calls[0]?.[1]).toBeUndefined();
+    expect(rows[0]?.[VALUE_COLUMN]).toBe(FULL_VALUE);
+    await engine.close();
+  });
+
+  it("givenSpilledResult_whenReleased_thenItsSpillFileIsDeleted", async () => {
+    const before = await spillFiles();
+    const { engine, connection, handle } = await openSpilled();
+    await connection.handle({ id: 3, type: "topics.message", handle, partition: 0, offset: "7" });
+    const created = (await spillFiles()).filter((file) => !before.includes(file));
+    expect(created).toHaveLength(1);
+
+    result(await connection.handle({ id: 4, type: "result.release", handle }));
+
+    await vi.waitFor(async () => expect((await spillFiles()).filter((file) => created.includes(file))).toEqual([]));
+    await engine.close();
+  });
+
+  it("givenSpilledResult_whenExported_thenTheFileHoldsFullValues", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "table-craft-kafka-export-"));
+    const path = join(directory, "messages.csv");
+    const events: EngineEvent[] = [];
+    const { engine, connection, handle } = await openSpilled((event) => events.push(event));
+
+    const task = result<ExportTask>(
+      await connection.handle({
+        id: 3,
+        type: "export.start",
+        source: { kind: "result", handle, columns: [1, VALUE_COLUMN] },
+        format: "csv",
+        path,
+        stallSeconds: 120,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(events.some((event) => event.type === "export.done" && event.task.taskId === task.taskId)).toBe(true),
+    );
+    const lines = (await readFile(path, "utf8")).trimEnd().split("\n");
+
+    expect(lines[1]).toContain(FULL_VALUE);
+    expect(lines[1]).not.toContain("…");
+    expect(lines[2]).toContain("tiny");
+    await engine.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("givenTailSpillRotated_whenTailMessageAsked_thenNullForRotatedAndFullForKept", async () => {
+    const large = (offset: number): TailMessage => ({ ...message(offset), value: FULL_VALUE });
+    const batches: TopicTailBatch[] = [
+      { messages: [large(0), large(1), large(2), message(3)], state: "live", error: null },
+    ];
+    const tail: TopicTail = {
+      next: () => {
+        const batch = batches.shift();
+        return batch === undefined ? new Promise<TopicTailBatch>(() => undefined) : Promise.resolve(batch);
+      },
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const budget = new SpillBudget({ totalBytes: 12_000, minFreeBytes: 0 });
+    const engine = setup(
+      () => Promise.resolve(session({ topics: { tail: () => Promise.resolve(tail) } as unknown as TopicBrowser })),
+      false,
+      budget,
+    );
+    const connection = engine.connect();
+    const started = result<TopicTailSummary>(
+      await connection.handle({
+        id: 1,
+        type: "topics.tailStart",
+        topic: "orders",
+        partitions: null,
+        from: { kind: "latest" },
+        keyFormat: "auto",
+        valueFormat: "auto",
+        maxMessages: 10,
+        maxBytes: 1_000_000,
+      }),
+    );
+    const full = async (sequence: number) =>
+      result<TailMessage | null>(
+        await connection.handle({
+          id: 2,
+          type: "topics.tailMessage",
+          tailId: started.tailId,
+          sequence: String(sequence),
+        }),
+      );
+
+    await vi.waitFor(async () => expect((await full(3))?.value).toBe(FULL_VALUE));
+    const window = result<TopicTailWindow>(
+      await connection.handle({
+        id: 3,
+        type: "topics.tailWindow",
+        tailId: started.tailId,
+        after: null,
+        count: 10,
+        maxBytes: 1_000_000,
+      }),
+    );
+
+    expect(window.rows.map((row) => row.message.value)).toEqual([PREVIEW_VALUE, PREVIEW_VALUE, PREVIEW_VALUE, "v3"]);
+    expect(await full(1)).toBeNull();
+    expect(await full(4)).toEqual(message(3));
+    result(await connection.handle({ id: 4, type: "topics.tailClear", tailId: started.tailId }));
+    expect(await full(3)).toBeNull();
+    await vi.waitFor(() => expect(budget.used).toBe(0));
     await engine.close();
   });
 });

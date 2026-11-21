@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import {
+  MESSAGE_PREVIEW_CHARS,
+  type MessageSpill,
+  type Row,
+  type SpilledMessage,
+  type TopicRead,
+  type TopicReadRequest,
+} from "@table-craft/plugin-api";
+import type * as FetchModule from "@table-craft/plugin-kafka/fetch";
+import { fetchRound } from "@table-craft/plugin-kafka/fetch";
+import { readTopic, type ReadHost } from "@table-craft/plugin-kafka/read";
+import { describe, expect, it, vi } from "vitest";
 import {
   clampLimit,
   compareMessages,
@@ -78,5 +89,109 @@ describe("kafka read plan", () => {
   it("givenLimitOutsideRange_whenClamped_thenWithinReadCap", () => {
     expect(clampLimit(0)).toBe(1);
     expect(clampLimit(1_000_000)).toBe(50_000);
+  });
+});
+
+vi.mock("@table-craft/plugin-kafka/fetch", async (importOriginal) => ({
+  ...(await importOriginal<typeof FetchModule>()),
+  fetchRound: vi.fn(),
+}));
+
+const SPILL_TOPIC = "orders";
+const LARGE_VALUE_CHARS = 5_000;
+const SPILL_FULL = "the temporary disk space for large messages is full (2 GB)";
+
+function largeMessages(count: number): FetchedMessage[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value = Buffer.from(String(index).repeat(LARGE_VALUE_CHARS));
+    return { ...message(0, index, 1_000 + index), value, size: value.byteLength };
+  });
+}
+
+function readHost(): ReadHost {
+  const consumer = {
+    topics: { track: () => undefined },
+    metadata: () => Promise.resolve({ topics: new Map([[SPILL_TOPIC, { id: "t", partitions: [{ leader: 1 }] }]]) }),
+  };
+  const admin = {
+    topicWatermarks: () => Promise.resolve(new Map([[0, { low: 0n, high: 3n }]])),
+  };
+  return {
+    admin: admin as unknown as ReadHost["admin"],
+    fetcher: () => consumer as unknown as ReturnType<ReadHost["fetcher"]>,
+    registry: null,
+    maxScan: 100,
+    fullBytes: false,
+    signal: null,
+    committed: () => Promise.resolve(new Map()),
+  };
+}
+
+const spillRequest: TopicReadRequest = {
+  topic: SPILL_TOPIC,
+  partitions: null,
+  from: { kind: "earliest" },
+  limit: 10,
+  keyFormat: "string",
+  valueFormat: "string",
+  filter: null,
+  maxScan: null,
+  resume: null,
+};
+
+async function rowsOf(read: TopicRead): Promise<Row[]> {
+  const rows: Row[] = [];
+  for await (const row of read.result.rows) rows.push(row);
+  return rows;
+}
+
+describe("kafka read with a spill", () => {
+  const VALUE_COLUMN = 4;
+
+  it("givenLargeMessages_whenReadWithSpill_thenRowsKeepPreviewsAndSpillTheFullCells", async () => {
+    vi.mocked(fetchRound).mockResolvedValueOnce([
+      { partition: 0, errorCode: 0, highWatermark: 3n, logStartOffset: 0n, messages: largeMessages(3), next: 3n },
+    ]);
+    const spilled = new Map<string, SpilledMessage>();
+    const spill: MessageSpill = {
+      put: (partition, offset, full) => {
+        spilled.set(`${String(partition)}:${offset}`, full);
+        return Promise.resolve();
+      },
+    };
+    const read = await readTopic(readHost(), spillRequest, null, spill);
+    const rows = await rowsOf(read);
+    expect(rows).toHaveLength(3);
+    const preview = rows[1]?.[VALUE_COLUMN];
+    expect(typeof preview === "string" && preview.length).toBe(MESSAGE_PREVIEW_CHARS + 1);
+    expect(typeof preview === "string" && preview.endsWith("…")).toBe(true);
+    expect(spilled.get("0:1")?.value).toBe("1".repeat(LARGE_VALUE_CHARS));
+    expect(read.exhausted).toBe(true);
+  });
+
+  it("givenSpillFull_whenRead_thenStopsWithWarningAndResumesAtRefusedMessage", async () => {
+    vi.mocked(fetchRound).mockResolvedValueOnce([
+      { partition: 0, errorCode: 0, highWatermark: 3n, logStartOffset: 0n, messages: largeMessages(3), next: 3n },
+    ]);
+    let puts = 0;
+    const spill: MessageSpill = {
+      put: () => {
+        puts += 1;
+        return puts > 1 ? Promise.reject(new Error(SPILL_FULL)) : Promise.resolve();
+      },
+    };
+    const read = await readTopic(readHost(), spillRequest, null, spill);
+    expect(await rowsOf(read)).toHaveLength(1);
+    expect(read.warnings).toContain(`The read stopped: ${SPILL_FULL}; lower the limit or narrow the filter.`);
+    expect(read.exhausted).toBe(false);
+    expect(parseResume(read.resume ?? "", SPILL_TOPIC).cursors[0]?.position).toBe(1n);
+  });
+
+  it("givenLargeMessages_whenReadWithoutSpill_thenRowsKeepFullCells", async () => {
+    vi.mocked(fetchRound).mockResolvedValueOnce([
+      { partition: 0, errorCode: 0, highWatermark: 3n, logStartOffset: 0n, messages: largeMessages(3), next: 3n },
+    ]);
+    const rows = await rowsOf(await readTopic(readHost(), spillRequest));
+    expect(rows[2]?.[VALUE_COLUMN]).toBe("2".repeat(LARGE_VALUE_CHARS));
   });
 });

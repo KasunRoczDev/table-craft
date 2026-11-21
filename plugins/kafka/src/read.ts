@@ -1,5 +1,11 @@
 import type { Consumer } from "@platformatic/kafka";
-import { PluginError, type MessageFormat, type TopicRead, type TopicReadRequest } from "@table-craft/plugin-api";
+import {
+  PluginError,
+  type MessageFormat,
+  type MessageSpill,
+  type TopicRead,
+  type TopicReadRequest,
+} from "@table-craft/plugin-api";
 import { isInternalTopic, type KafkaAdmin } from "./admin.js";
 import { fetchRound, FETCH_ERRORS, type FetchSizes, type PartitionFetch } from "./fetch.js";
 import { decode, schemaIdOf, type DecodeOptions } from "./formats.js";
@@ -16,7 +22,17 @@ import {
   type FetchedMessage,
   type PartitionCursor,
 } from "./readPlan.js";
-import { headerTexts, messagesResult, type DecodedMessage } from "./results.js";
+import {
+  headerTexts,
+  isLarge,
+  keptCellBytes,
+  messageCells,
+  messageRow,
+  messagesResult,
+  previewCells,
+  type DecodedMessage,
+  type KeptMessage,
+} from "./results.js";
 import type { SchemaCache } from "./schemaCache.js";
 
 const READ_SIZES: FetchSizes = { maxWaitMs: 100, maxBytes: 4 * 1024 * 1024, partitionMaxBytes: 1024 * 1024 };
@@ -33,6 +49,8 @@ const CANCELLED = "Cancelled: the read stopped fetching.";
  * 1 MB values, or a filter matching every message of a wide Latest N window, would fill the engine.
  */
 const READ_KEPT_BYTES = 134_217_728;
+/** The memory the rows of a read with a spill may take; their large cells are previews (decision 172). */
+const READ_PREVIEW_BYTES = 67_108_864;
 const MEBIBYTE = 1_048_576;
 
 /** What a read needs from its session. */
@@ -157,17 +175,43 @@ function checkCancelled(signal: AbortSignal | null): void {
   if (signal?.aborted === true) throw new PluginError("cancelled", CANCELLED);
 }
 
+/** Why the spill refused a message, as the host phrased it to follow "The read stopped: ". */
+class SpillRefused extends Error {}
+
+/**
+ * A matched message as its row, with only the preview of a large message kept when there is a
+ * spill; returns the row and the bytes it counts against the read's memory.
+ */
+async function keep(
+  message: DecodedMessage,
+  spill: MessageSpill | undefined,
+): Promise<{ readonly kept: KeptMessage; readonly bytes: number }> {
+  const cells = messageCells(message);
+  const place = { partition: message.partition, offset: message.offset, timestamp: message.timestamp };
+  if (spill === undefined) return { kept: { ...place, row: messageRow(message, cells) }, bytes: message.size };
+  if (!isLarge(cells)) return { kept: { ...place, row: messageRow(message, cells) }, bytes: keptCellBytes(cells) };
+  try {
+    await spill.put(message.partition, message.offset.toString(), cells);
+  } catch (cause) {
+    throw new SpillRefused(cause instanceof Error ? cause.message : String(cause));
+  }
+  const preview = previewCells(cells);
+  return { kept: { ...place, row: messageRow(message, preview) }, bytes: keptCellBytes(preview) };
+}
+
 /**
  * Reads a topic by explicit offsets (decisions 4 and 6 of plan 164): each partition from its start
  * to the high watermark it had when the read began, until `maxScan` messages were fetched; the
  * filter runs over decoded text, and the rows come ordered by timestamp, partition and offset.
  * With `followMs` it reads past the high watermark instead, keeping what arrives until that long
- * has passed, as `kcat` does without `-e`; such a read cannot be resumed.
+ * has passed, as `kcat` does without `-e`; such a read cannot be resumed. With `spill`, a large
+ * message keeps its preview and its full cells go to the spill (decision 172).
  */
 export async function readTopic(
   host: ReadHost,
   request: TopicReadRequest,
   followMs: number | null = null,
+  spill?: MessageSpill,
 ): Promise<TopicRead> {
   const consumer = host.fetcher();
   const filter = messageFilter(request.filter);
@@ -181,7 +225,9 @@ export async function readTopic(
   const deadline = followMs === null ? null : Date.now() + followMs;
   /** A Latest N read keeps every match of its window; a forward read the first `limit` of each partition. */
   const perPartition = latest === null ? limit : Number.MAX_SAFE_INTEGER;
-  const kept: DecodedMessage[] = [];
+  const kept: KeptMessage[] = [];
+  const keptCap = spill === undefined ? READ_KEPT_BYTES : READ_PREVIEW_BYTES;
+  let spillStopped: string | null = null;
   const warnings = new Set<string>();
   const idle = new Map<number, number>();
   let scanned = 0;
@@ -194,7 +240,12 @@ export async function readTopic(
         cursor.matched < perPartition &&
         (idle.get(cursor.partition) ?? 0) < MAX_IDLE_ROUNDS,
     );
-  while (scanned < maxScan && keptBytes < READ_KEPT_BYTES && (deadline === null || Date.now() < deadline)) {
+  while (
+    spillStopped === null &&
+    scanned < maxScan &&
+    keptBytes < keptCap &&
+    (deadline === null || Date.now() < deadline)
+  ) {
     checkCancelled(host.signal);
     const targets = active();
     if (targets.length === 0) break;
@@ -230,7 +281,8 @@ export async function readTopic(
       const taken = inRange.slice(0, room);
       scanned += taken.length;
       const decoded = await decodeAll(taken, request, host.registry, host.fullBytes);
-      for (const message of decoded) {
+      let refusedAt: bigint | null = null;
+      for (const [index, message] of decoded.entries()) {
         for (const decodedPart of [message.decodedKey, message.decodedValue]) {
           if (decodedPart.warning !== null)
             warnings.add(`Some messages ${decodedPart.warning}; they are shown as bytes.`);
@@ -238,9 +290,23 @@ export async function readTopic(
         const matches =
           filter === null || filter([message.decodedKey.text, message.decodedValue.text, ...headerTexts(message)]);
         if (!matches || cursor.matched >= perPartition) continue;
-        kept.push(message);
-        keptBytes += message.size;
+        try {
+          const { kept: row, bytes } = await keep(message, spill);
+          kept.push(row);
+          keptBytes += bytes;
+        } catch (cause) {
+          if (!(cause instanceof SpillRefused)) throw cause;
+          spillStopped = cause.message;
+          refusedAt = message.offset;
+          scanned -= decoded.length - index;
+          break;
+        }
         cursor.matched += 1;
+      }
+      if (refusedAt !== null) {
+        // Scan Further starts again at the message the spill refused.
+        cursor.position = refusedAt;
+        break;
       }
       const last = taken.at(-1);
       const before = cursor.position;
@@ -257,7 +323,9 @@ export async function readTopic(
       layout = await layoutOf(consumer, host.admin, request.topic, request.partitions);
     }
   }
-  if (keptBytes >= READ_KEPT_BYTES) {
+  if (spillStopped !== null) {
+    warnings.add(`The read stopped: ${spillStopped}; lower the limit or narrow the filter.`);
+  } else if (keptBytes >= keptCap) {
     warnings.add(
       `The read stopped after keeping ${String(Math.round(keptBytes / MEBIBYTE))} MB of messages; lower the limit or narrow the filter.`,
     );

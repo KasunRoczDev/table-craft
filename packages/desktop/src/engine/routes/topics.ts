@@ -10,6 +10,7 @@ export function topicsRoutes(connection: ConnectionContext): RoutesFor<"topics">
     "topics.list": ({ glob, internal }) => read("topics", (topics) => topics.list({ glob, internal })),
     "topics.describe": ({ topic }) => read("topics", (topics) => topics.describe(topic)),
     "topics.open": (request) => connection.openTopic(request),
+    "topics.message": (request) => connection.topicMessage(request),
     "topics.produce": ({ record }) => write("topics", (topics) => topics.produce(record)),
     "topics.create": ({ request, validateOnly }) =>
       write("topics", async (topics) => {
@@ -49,5 +50,6 @@ export function topicsRoutes(connection: ConnectionContext): RoutesFor<"topics">
       return Promise.resolve(null);
     },
     "topics.tailList": () => Promise.resolve(tails().list()),
+    "topics.tailMessage": ({ tailId, sequence }) => tails().message(tailId, sequence),
   };
 }

@@ -131,6 +131,7 @@ import {
   SCHEMA_TYPES,
   TOPIC_MESSAGE_COLUMNS,
   TOPIC_READ_LIMIT,
+  MESSAGE_PREVIEW_CHARS,
   type CompatibilityCheck,
   type ConfigChange,
   type ConfigEntry,
@@ -142,6 +143,7 @@ import {
   type ProduceResult,
   type RecordsBefore,
   type RegisteredSchema,
+  type SpilledMessage,
   type ResetPreview,
   type ResetScope,
   type ResetTarget,
@@ -379,6 +381,7 @@ describe("engine protocol", () => {
     expect(protocol.MESSAGE_FORMATS).toEqual(MESSAGE_FORMATS);
     expect(protocol.TOPIC_MESSAGE_COLUMNS).toEqual(TOPIC_MESSAGE_COLUMNS);
     expect(protocol.TOPIC_READ_LIMIT).toBe(TOPIC_READ_LIMIT);
+    expect(protocol.MESSAGE_PREVIEW_CHARS).toBe(MESSAGE_PREVIEW_CHARS);
     expect(protocol.SCHEMA_TYPES).toEqual(SCHEMA_TYPES);
     expectTypeOf<protocol.TopicSummary>().toEqualTypeOf<TopicSummary>();
     expectTypeOf<protocol.PartitionInfo>().toEqualTypeOf<PartitionInfo>();
@@ -405,6 +408,7 @@ describe("engine protocol", () => {
     expectTypeOf<protocol.SchemaVersion>().toEqualTypeOf<SchemaVersion>();
     expectTypeOf<protocol.CompatibilityCheck>().toEqualTypeOf<CompatibilityCheck>();
     expectTypeOf<protocol.RegisteredSchema>().toEqualTypeOf<RegisteredSchema>();
+    expectTypeOf<protocol.SpilledMessage>().toEqualTypeOf<SpilledMessage>();
   });
 
   it("givenCoreErrorCodes_whenComparedWithEngineErrorCodes_thenEveryOneIsCovered", () => {

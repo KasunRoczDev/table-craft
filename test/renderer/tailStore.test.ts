@@ -105,4 +105,37 @@ describe("tail windows", () => {
     store.getState().pause("t1");
     expect(store.getState().entries.t1?.rows).toHaveLength(3);
   });
+
+  it("givenSpillSetting_whenStarted_thenSentAndClosingClearsTheTail", async () => {
+    const call = vi.fn((type: string): Promise<unknown> => {
+      if (type === "topics.tailStart") return Promise.resolve(SUMMARY);
+      if (type === "topics.tailMessage") return Promise.resolve(message(9));
+      return Promise.resolve(window([]));
+    });
+    const store = createTailStore(
+      () => Promise.resolve({ call } as unknown as EngineClient),
+      () => false,
+    );
+    await store.getState().start("kafka", REQUEST);
+    expect(call).toHaveBeenCalledWith("topics.tailStart", expect.objectContaining({ spill: false }));
+    expect(await store.getState().message("t1", "9")).toMatchObject({ offset: "9" });
+    await store.getState().stop("t1", true);
+    expect(call).toHaveBeenCalledWith("topics.tailStop", { tailId: "t1" });
+    expect(call).toHaveBeenCalledWith("topics.tailClear", { tailId: "t1" });
+    expect(store.getState().entries.t1).toBeUndefined();
+  });
+
+  it("givenDetachedTail_whenClosedOrAsked_thenNoCallReconnects", async () => {
+    const call = vi.fn((type: string): Promise<unknown> =>
+      Promise.resolve(type === "topics.tailStart" ? SUMMARY : window([])),
+    );
+    const connect = vi.fn(() => Promise.resolve({ call } as unknown as EngineClient));
+    const store = createTailStore(connect);
+    await store.getState().start("kafka", REQUEST);
+    store.getState().detach("kafka");
+    const before = connect.mock.calls.length;
+    expect(await store.getState().message("t1", "1")).toBeNull();
+    await store.getState().stop("t1", true);
+    expect(connect).toHaveBeenCalledTimes(before);
+  });
 });

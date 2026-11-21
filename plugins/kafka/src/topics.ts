@@ -4,6 +4,7 @@ import {
   type ConfigChange,
   type DeleteRecordsPreview,
   type MessageFormat,
+  type MessageSpill,
   type PartitionInfo,
   type ProduceRecord,
   type ProduceResult,
@@ -24,7 +25,7 @@ import { noteTopicSize } from "./sizes.js";
 
 /** What the topic service hands to the parts that write, read and tail. */
 export interface TopicParts {
-  read(request: TopicReadRequest): Promise<TopicRead>;
+  read(request: TopicReadRequest, spill?: MessageSpill): Promise<TopicRead>;
   produce(record: ProduceRecord): Promise<ProduceResult>;
   create(request: TopicCreate, options: AdminOptions): Promise<void>;
   alterConfigs(topic: string, changes: readonly ConfigChange[], options: AdminOptions): Promise<void>;
@@ -125,8 +126,8 @@ export class KafkaTopics implements TopicBrowser {
     return { name, id: topic.id, internal: isInternalTopic(name), partitions: infos, configs, messages };
   }
 
-  read(request: TopicReadRequest): Promise<TopicRead> {
-    return this.#parts.read(request);
+  read(request: TopicReadRequest, spill?: MessageSpill): Promise<TopicRead> {
+    return this.#parts.read(request, spill);
   }
 
   produce(record: ProduceRecord): Promise<ProduceResult> {

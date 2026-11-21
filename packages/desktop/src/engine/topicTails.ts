@@ -1,9 +1,12 @@
-import type { Session, TailMessage, TopicTail, TopicTailRequest } from "@table-craft/plugin-api";
-import type {
-  RequestOf,
-  TopicTailRow,
-  TopicTailSummary,
-  TopicTailWindow,
+import { SpillFile, type SpillBudget } from "@table-craft/core";
+import type { MessageHeader, Session, TailMessage, TopicTail, TopicTailRequest } from "@table-craft/plugin-api";
+import {
+  MESSAGE_PREVIEW_CHARS,
+  TOPIC_TAIL_SPILL_BYTES,
+  type RequestOf,
+  type TopicTailRow,
+  type TopicTailSummary,
+  type TopicTailWindow,
 } from "@table-craft/desktop/engine/protocol.js";
 import { serviceOf } from "@table-craft/desktop/engine/services.js";
 import {
@@ -20,11 +23,46 @@ const PULL_BYTES = 1_048_576;
 const PULL_TIMEOUT_MS = 1_000;
 /** The pause after an empty batch, so a plugin that answers at once is not spun on. */
 const IDLE_PAUSE_MS = 10;
+const PREVIEW_END = "…";
 
 interface HeldMessage {
   readonly sequence: bigint;
   readonly message: TailMessage;
   readonly bytes: number;
+  /** The message is a preview; the full one is in the tail's spill. */
+  readonly spilled: boolean;
+}
+
+const cut = (text: string | null): string | null =>
+  text === null || text.length <= MESSAGE_PREVIEW_CHARS
+    ? text
+    : `${text.slice(0, MESSAGE_PREVIEW_CHARS)}${PREVIEW_END}`;
+
+/** Headers up to the preview's length, each value cut to it; the rest go. */
+function headerPreview(headers: readonly MessageHeader[]): MessageHeader[] {
+  const kept: MessageHeader[] = [];
+  let length = 0;
+  for (const header of headers) {
+    if (length >= MESSAGE_PREVIEW_CHARS) break;
+    const value = cut(header.value);
+    kept.push({ name: header.name, value });
+    length += header.name.length + (value?.length ?? 0);
+  }
+  return kept;
+}
+
+/** A large message's preview, as the ring holds it (decision 172); null when the message is small enough to hold whole. */
+export function tailPreview(message: TailMessage): TailMessage | null {
+  const headerLength = message.headers.reduce(
+    (sum, header) => sum + header.name.length + (header.value?.length ?? 0),
+    0,
+  );
+  const large =
+    (message.key?.length ?? 0) > MESSAGE_PREVIEW_CHARS ||
+    (message.value?.length ?? 0) > MESSAGE_PREVIEW_CHARS ||
+    headerLength > MESSAGE_PREVIEW_CHARS;
+  if (!large) return null;
+  return { ...message, key: cut(message.key), value: cut(message.value), headers: headerPreview(message.headers) };
 }
 
 /**
@@ -45,14 +83,15 @@ export class TopicTailRing {
     readonly maxBytes: number,
   ) {}
 
-  append(message: TailMessage): void {
+  /** Holds the message under the next sequence and returns it; `spilled` marks a preview of a message on disk. */
+  append(message: TailMessage, spilled = false): bigint {
     const sequence = this.next++;
     const bytes = Buffer.byteLength(JSON.stringify(message));
     if (bytes > this.maxBytes) {
       this.dropped += 1n;
-      return;
+      return sequence;
     }
-    this.rows.push({ sequence, message, bytes });
+    this.rows.push({ sequence, message, bytes, spilled });
     this.bytes += bytes;
     while (this.rows.length - this.head > this.maxMessages || this.bytes > this.maxBytes) {
       const oldest = this.rows[this.head++];
@@ -65,6 +104,22 @@ export class TopicTailRing {
       this.rows = this.rows.slice(this.head);
       this.head = 0;
     }
+    return sequence;
+  }
+
+  /** The held message of `sequence`, by binary search: sequences only grow along the ring. */
+  find(sequence: bigint): { readonly message: TailMessage; readonly spilled: boolean } | null {
+    let low = this.head;
+    let high = this.rows.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const row = this.rows[middle];
+      if (row === undefined) return null;
+      if (row.sequence === sequence) return row;
+      if (row.sequence < sequence) low = middle + 1;
+      else high = middle - 1;
+    }
+    return null;
   }
 
   clear(): void {
@@ -115,6 +170,8 @@ interface RunningTail {
   readonly ring: TopicTailRing;
   readonly session: Session;
   readonly tail: TopicTail;
+  /** Full large messages by sequence; null when the tail was started with `spill: false`. */
+  spill: SpillFile<TailMessage> | null;
   state: TopicTailSummary["state"];
   error: string | null;
   closed: boolean;
@@ -125,8 +182,15 @@ interface RunningTail {
 export class TopicTails {
   private readonly tails = new Map<string, RunningTail>();
 
-  constructor(private readonly scope: KeyOperationScope) {
+  constructor(
+    private readonly scope: KeyOperationScope,
+    private readonly budget: SpillBudget,
+  ) {
     scope.register(() => this.close());
+  }
+
+  private newSpill(): SpillFile<TailMessage> {
+    return new SpillFile<TailMessage>({ budget: this.budget, maxBytes: TOPIC_TAIL_SPILL_BYTES, rotate: true });
   }
 
   private summary(open: RunningTail): TopicTailSummary {
@@ -152,6 +216,7 @@ export class TopicTails {
       const stopped = [...this.tails.values()].find((entry) => entry.closed);
       if (stopped === undefined) throw invalidOperation("Too many tails; stop a tail first.");
       this.tails.delete(stopped.id);
+      void stopped.spill?.close();
     }
     const session = await this.scope.open("topics");
     let tail: TopicTail | undefined;
@@ -171,6 +236,7 @@ export class TopicTails {
         ring: new TopicTailRing(request.maxMessages, request.maxBytes),
         session,
         tail,
+        spill: request.spill === false ? null : this.newSpill(),
         state: "live",
         error: null,
         closed: false,
@@ -191,7 +257,7 @@ export class TopicTails {
       while (!open.closed) {
         const batch = await open.tail.next({ count: PULL_MESSAGES, maxBytes: PULL_BYTES, timeoutMs: PULL_TIMEOUT_MS });
         if (open.closed) break;
-        for (const message of batch.messages) open.ring.append(message);
+        for (const message of batch.messages) this.hold(open, message);
         open.state = batch.state;
         open.error = batch.error;
         if (batch.state === "stopped") break;
@@ -202,6 +268,17 @@ export class TopicTails {
     } finally {
       await this.stopOpen(open);
     }
+  }
+
+  /** A spill the disk refused leaves the preview alone; `topics.tailMessage` then answers null. */
+  private hold(open: RunningTail, message: TailMessage): void {
+    const preview = open.spill === null ? null : tailPreview(message);
+    if (preview === null) {
+      open.ring.append(message);
+      return;
+    }
+    const sequence = open.ring.append(preview, true);
+    open.spill?.put(String(sequence), message).catch(() => undefined);
   }
 
   private stopOpen(open: RunningTail): Promise<void> {
@@ -226,12 +303,32 @@ export class TopicTails {
     await this.stopOpen(this.find(id));
   }
 
+  /** The full message of `sequence`, from the ring or the tail's spill; null once either dropped it. */
+  async message(id: string, sequence: string): Promise<TailMessage | null> {
+    const open = this.find(id);
+    const held = open.ring.find(BigInt(sequence));
+    if (held === null) return null;
+    if (!held.spilled) return held.message;
+    return (await open.spill?.get(sequence)) ?? null;
+  }
+
+  /** Empties the ring and deletes its spill; a running tail spills into a new one. */
   clear(id: string): void {
-    this.find(id).ring.clear();
+    const open = this.find(id);
+    open.ring.clear();
+    if (open.spill === null) return;
+    void open.spill.close();
+    open.spill = open.closed ? null : this.newSpill();
   }
 
   async close(): Promise<void> {
-    await Promise.allSettled([...this.tails.values()].map((entry) => this.stopOpen(entry)));
+    const tails = [...this.tails.values()];
     this.tails.clear();
+    await Promise.allSettled(
+      tails.map(async (entry) => {
+        await this.stopOpen(entry);
+        await entry.spill?.close();
+      }),
+    );
   }
 }

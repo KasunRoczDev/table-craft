@@ -130,6 +130,20 @@ describe("topic tabs", () => {
     });
   });
 
+  it("givenSpillSetting_whenRead_thenSentAndMessageAskedOfTheResult", async () => {
+    const engine = topicEngine();
+    const tabs = createTopicTabsStore({
+      connect: () => Promise.resolve(engine.client),
+      capabilities: () => ["topics"],
+      spill: () => false,
+    });
+    await tabs.getState().open("topic-0", TARGET);
+    expect(opens(engine)[0]).toMatchObject({ spill: false });
+    await tabs.getState().message("topic-0", 2, "41");
+    expect(engine.call).toHaveBeenCalledWith("topics.message", { handle: "h1", partition: 2, offset: "41" });
+    expect(await tabs.getState().message("missing", 0, "0")).toBeNull();
+  });
+
   it("givenConsumerGroups_whenOpened_thenConsumersRead", async () => {
     const engine = topicEngine();
     const tabs = store(engine, ["topics", "consumerGroups"]);

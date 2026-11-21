@@ -1,4 +1,4 @@
-import { CoreError, TunnelError, type EditTable, type ResultState } from "@table-craft/core";
+import { CoreError, TunnelError, type EditTable, type ExportEncoderOptions, type ResultState } from "@table-craft/core";
 import {
   isPluginError,
   type BytesValue,
@@ -173,7 +173,9 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
     connector,
     sessionLog,
     sqlLanguage,
+    datasourcePlugin,
     results,
+    spills,
     listServerSessions,
     tasks,
     exportRowsOf,
@@ -214,6 +216,7 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
     for (const [id, entry] of staged) if (entry.handle === handle) staged.delete(id);
     keySources.delete(handle);
     limitedRuns.delete(handle);
+    void spills.release(handle);
   }
 
   async function releaseHandlesOf(sessionId: string): Promise<void> {
@@ -332,22 +335,28 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
    * short, its statement again without the limit on the console's own session (decision 162); else
    * the rows held when the cursor is done; else the console's own cursor, drained.
    */
+  /** A datasource without SQL, such as a topic read's (plan 164), exports every format but SQL INSERT. */
+  function encoderOf(handle: string): ExportEncoderOptions {
+    const dialect = datasourcePlugin().language;
+    const table = tables.get(handle)?.table;
+    if (dialect === undefined) return {};
+    return table === undefined ? { dialect } : { dialect, table };
+  }
+
   /** The rows a local filter shows, from memory: they are already decided (decision 050). */
   function shownJob(handle: string, projection: readonly number[], format: ExportFormat, path: string): ExportJob {
-    const table = tables.get(handle)?.table;
-    const language = sqlLanguage();
     const shown = results.shownRows(handle);
     return {
       path,
       format,
       columns: chosenColumns(handle, projection),
       projection,
-      encoder: table === undefined ? { dialect: language } : { dialect: language, table },
+      encoder: encoderOf(handle),
       origin: "memory",
       estimate: shown.length,
       retryable: false,
       drains: null,
-      open: () => Promise.resolve({ rows: heldRows(shown), close: () => Promise.resolve() }),
+      open: () => Promise.resolve({ rows: spills.fullRows(handle, heldRows(shown)), close: () => Promise.resolve() }),
     };
   }
 
@@ -358,23 +367,15 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
   ): ExportJob {
     const handle = ownedHandle(source.handle);
     if (source.shownOnly === true) return shownJob(handle, source.columns, format, path);
-    const language = sqlLanguage();
     const columns = chosenColumns(handle, source.columns);
     const owner = sessions.get(handles.get(handle) ?? "");
     const sql = statements.get(handle);
     const state = results.state(handle);
-    const table = tables.get(handle)?.table;
-    const base = {
-      path,
-      format,
-      columns,
-      projection: source.columns,
-      encoder: table === undefined ? { dialect: language } : { dialect: language, table },
-    };
+    const base = { path, format, columns, projection: source.columns, encoder: encoderOf(handle) };
     const rerun =
       sql !== undefined &&
       owner !== undefined &&
-      language.classify(sql).kind === "read" &&
+      sqlLanguage().classify(sql).kind === "read" &&
       !inTransaction(owner.session) &&
       owner.session.privateDatabase !== true;
     if (rerun) {
@@ -407,7 +408,7 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
         estimate: held.length,
         retryable: false,
         drains: null,
-        open: () => Promise.resolve({ rows: heldRows(held), close: () => Promise.resolve() }),
+        open: () => Promise.resolve({ rows: spills.fullRows(handle, heldRows(held)), close: () => Promise.resolve() }),
       };
     }
     const sessionId = handles.get(handle);
@@ -732,7 +733,10 @@ function liveContext(context: EngineContext, emit: (event: EngineEvent) => void)
     cursors.clear();
     keySources.clear();
     limitedRuns.clear();
-    await settledWithin(Promise.allSettled(held.map((handle) => results.release(handle))), RELEASE_GRACE_MS);
+    await settledWithin(
+      Promise.allSettled(held.flatMap((handle) => [results.release(handle), spills.release(handle)])),
+      RELEASE_GRACE_MS,
+    );
     const open = [...sessions.values()];
     sessions.clear();
     await Promise.allSettled(open.map((entry) => entry.session.close()));

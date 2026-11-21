@@ -605,6 +605,8 @@ export type EngineErrorCode =
   | "invalidRequest"
   | "editRejected"
   | "resultChanged"
+  | "spillFull"
+  | "spillFailed"
   | "timedOut"
   | "statementTimedOut"
   | "connectionLost"

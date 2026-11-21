@@ -9,6 +9,7 @@ import {
 } from "@table-craft/desktop/engine/protocol.js";
 import type { EngineClient } from "@table-craft/desktop/renderer/engine/client.js";
 import { useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
+import { currentSpill } from "@table-craft/desktop/renderer/state/settings.js";
 
 /** One poll asks for at most this many messages and bytes. */
 export const TAIL_WINDOW_COUNT = 500;
@@ -165,13 +166,17 @@ interface TailState {
   readonly clear: (id: string) => Promise<void>;
   readonly stop: (id: string, close?: boolean) => Promise<void>;
   readonly detach: (datasourceId: string) => void;
+  /** The whole message behind a row's preview (decision 172); null once the tail no longer keeps it. */
+  readonly message: (id: string, sequence: string) => Promise<TailMessage | null>;
 }
 
-export function createTailStore(connect: (id: string) => Promise<EngineClient>) {
+/** `spill` is `data.spillMessages`, read at each start. */
+export function createTailStore(connect: (id: string) => Promise<EngineClient>, spill: () => boolean = () => true) {
   const busy = new Set<string>();
   const generations = new Map<string, number>();
   /** Bumped by a clear, so a window read before it is dropped. */
   const epochs = new Map<string, number>();
+  const detached = new Set<string>();
   return create<TailState>()((set, get) => {
     const patch = (id: string, change: Partial<TailEntry>) => {
       const entry = get().entries[id];
@@ -188,6 +193,7 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>) 
           ...request,
           maxMessages: TOPIC_TAIL_MAX_MESSAGES,
           maxBytes: TOPIC_TAIL_MAX_RING_BYTES,
+          spill: spill(),
         });
         if ((generations.get(datasourceId) ?? 0) !== generation) {
           await client.call("topics.tailStop", { tailId: summary.tailId });
@@ -263,6 +269,10 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>) 
           patch(id, { summary: { ...entry.summary, state: "stopped" } });
           return;
         }
+        // A stopped tail keeps its messages, and their temporary file, until it is cleared; a
+        // detached one went with its engine, and connecting again only to clear it would reconnect.
+        if (!detached.delete(id))
+          await (await connect(entry.datasourceId)).call("topics.tailClear", { tailId: id }).catch(() => null);
         const { [id]: _gone, ...entries } = get().entries;
         set({ entries, activeId: get().activeId === id ? (Object.keys(entries).at(-1) ?? null) : get().activeId });
       },
@@ -270,14 +280,22 @@ export function createTailStore(connect: (id: string) => Promise<EngineClient>) 
       detach(datasourceId) {
         generations.set(datasourceId, (generations.get(datasourceId) ?? 0) + 1);
         for (const [id, entry] of Object.entries(get().entries))
-          if (entry.datasourceId === datasourceId)
+          if (entry.datasourceId === datasourceId) {
+            detached.add(id);
             patch(id, {
               summary: { ...entry.summary, state: "stopped" },
               error: "Disconnected. This tail stopped; start a new one after reconnecting.",
             });
+          }
+      },
+
+      async message(id, sequence) {
+        const entry = get().entries[id];
+        if (entry === undefined || detached.has(id)) return null;
+        return (await connect(entry.datasourceId)).call("topics.tailMessage", { tailId: id, sequence });
       },
     };
   });
 }
 
-export const useTail = createTailStore((id) => useDatasources.getState().connect(id));
+export const useTail = createTailStore((id) => useDatasources.getState().connect(id), currentSpill);

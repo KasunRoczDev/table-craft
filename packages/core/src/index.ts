@@ -254,3 +254,18 @@ export {
   type TunnelTarget,
 } from "./tunnels/index.js";
 export { Utf8Error, decodeUtf8, utf8Decoder, type Utf8Decoder } from "./scripts/index.js";
+export {
+  SPILL_MIN_FREE_BYTES,
+  SPILL_SEGMENT_BYTES,
+  SPILL_TOTAL_BYTES,
+  SpillBudget,
+  SpillFailed,
+  SpillFile,
+  SpillFull,
+  removeSpillDirectory,
+  spillDirectory,
+  sweepSpills,
+  type FreeSpace,
+  type SpillBudgetOptions,
+  type SpillFileOptions,
+} from "./spill/spillFile.js";

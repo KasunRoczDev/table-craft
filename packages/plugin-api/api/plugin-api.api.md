@@ -1032,11 +1032,17 @@ const MANIFEST_FILE = "table-craft-plugin.json";
 
 const MESSAGE_FORMATS: readonly [ "auto", "string", "json", "avro", "protobuf", "jsonSchema", "hex", "base64", "int32", "int64", "double" ];
 
+const MESSAGE_PREVIEW_CHARS = 1024;
+
 type MessageFormat = (typeof MESSAGE_FORMATS)[number];
 
 interface MessageHeader {
   readonly name: string;
   readonly value: string | null;
+}
+
+interface MessageSpill {
+  put(partition: number, offset: string, message: SpilledMessage): Promise<void>;
 }
 
 const NODE_ALL_PRIMARIES = "allPrimaries";
@@ -1528,6 +1534,12 @@ interface SlowCommand {
   readonly node: string | null;
 }
 
+interface SpilledMessage {
+  readonly headers: WireValue;
+  readonly key: WireValue;
+  readonly value: WireValue;
+}
+
 interface SqlLanguage extends SqlLanguageBase {
   readonly services: Partial<LanguageServices>;
 }
@@ -1662,7 +1674,7 @@ interface TopicBrowser {
   list(filter: { readonly glob: string | null; readonly internal: boolean; }): Promise<readonly TopicSummary[]>;
   prepareDeleteRecords(topic: string, partitions: readonly number[] | null, before: RecordsBefore): Promise<DeleteRecordsPreview>;
   produce(record: ProduceRecord): Promise<ProduceResult>;
-  read(request: TopicReadRequest): Promise<TopicRead>;
+  read(request: TopicReadRequest, spill?: MessageSpill): Promise<TopicRead>;
   remove(topic: string): Promise<void>;
   tail(request: TopicTailRequest): Promise<TopicTail>;
 }

@@ -18,6 +18,10 @@ const RANDOM_BYTES = 3;
 const SEND_BATCH = 200;
 const BULK_VALUE_BYTES = 200;
 const BULK_BATCH = 2000;
+/** Two large values per request, so a batch stays under the broker's default 1 MB message cap. */
+const LARGE_BATCH = 2;
+/** Ends every large value, so a test can tell the whole value from its 1 KB preview. */
+export const LARGE_VALUE_END = "|end";
 
 export const ORDERS_PARTITIONS = 3;
 export const ORDERS_PER_PARTITION = 30;
@@ -67,6 +71,8 @@ export interface LiveKafka {
   readonly created: string;
   /** Filled only by the scenario that cancels a long read, through `fillBulk`. */
   readonly bulk: string;
+  /** Filled only by the scenario that reads large messages, through `fillLarge`. */
+  readonly large: string;
   readonly billing: string;
   readonly active: string;
   readonly orderSubject: string;
@@ -76,6 +82,8 @@ export interface LiveKafka {
   readonly produce: (topic: string, messages: readonly SeedMessage[], batch?: number) => Promise<void>;
   /** Creates `bulk` and fills it with `count` records, enough that reading it all takes a while. */
   readonly fillBulk: (count: number) => Promise<void>;
+  /** Creates `large` and fills it with `count` values of `bytes` each, ending with `LARGE_VALUE_END`. */
+  readonly fillLarge: (count: number, bytes: number) => Promise<void>;
   readonly drop: () => Promise<void>;
 }
 
@@ -154,6 +162,7 @@ export async function seedLiveKafka(bootstrapServers: string = KAFKA_CONFIG.boot
     purge: `${prefix}purge`,
     created: `${prefix}created`,
     bulk: `${prefix}bulk`,
+    large: `${prefix}large`,
     billing: `${prefix}billing`,
     active: `${prefix}active`,
   };
@@ -179,11 +188,33 @@ export async function seedLiveKafka(bootstrapServers: string = KAFKA_CONFIG.boot
     );
   };
 
+  const fillLarge = async (count: number, bytes: number) => {
+    await admin.createTopics({ topics: [names.large], partitions: 1, replicas: 1 });
+    const filler = "x".repeat(bytes - LARGE_VALUE_END.length);
+    await produce(
+      names.large,
+      Array.from({ length: count }, (_, n) => ({
+        partition: 0,
+        key: `large-${String(n)}`,
+        value: `${filler}${LARGE_VALUE_END}`,
+      })),
+      LARGE_BATCH,
+    );
+  };
+
   const drop = async () => {
     await member?.close().catch(() => undefined);
     member = null;
     await admin.deleteGroups({ groups: [names.billing, names.active] }).catch(() => undefined);
-    for (const topic of [names.orders, names.history, names.events, names.purge, names.created, names.bulk]) {
+    for (const topic of [
+      names.orders,
+      names.history,
+      names.events,
+      names.purge,
+      names.created,
+      names.bulk,
+      names.large,
+    ]) {
       await admin.deleteTopics({ topics: [topic] }).catch(() => undefined);
     }
     await producer.close().catch(() => undefined);
@@ -250,7 +281,7 @@ export async function seedLiveKafka(bootstrapServers: string = KAFKA_CONFIG.boot
     });
     member = await joinGroup(options, admin, names.active, names.events);
 
-    return { bootstrapServers, registry, ...names, orderSubject, ordersStart, produce, fillBulk, drop };
+    return { bootstrapServers, registry, ...names, orderSubject, ordersStart, produce, fillBulk, fillLarge, drop };
   } catch (cause) {
     await drop();
     throw cause;

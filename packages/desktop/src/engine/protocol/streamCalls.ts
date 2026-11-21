@@ -6,6 +6,8 @@ import type {
   ProduceRecord,
   ProduceResult,
   RecordsBefore,
+  SpilledMessage,
+  TailMessage,
   TopicCreate,
   TopicDescription,
   TopicReadRequest,
@@ -53,8 +55,22 @@ export interface StreamCalls {
    * the rows go to the result store like a statement's, the counters come back. Needs `topics`.
    */
   "topics.open": {
-    params: { readonly sessionId: string; readonly request: TopicReadRequest } & ResultPaging & StatementLimit;
+    params: {
+      readonly sessionId: string;
+      readonly request: TopicReadRequest;
+      /** Keeps a preview of each large message in the rows and the full one on disk (decision 172); default true. */
+      readonly spill?: boolean;
+    } & ResultPaging &
+      StatementLimit;
     result: OpenedTopic;
+  };
+  /**
+   * The full key, value and headers of one message a `topics.open` result shows, read back from its
+   * spill; null when the result does not hold it.
+   */
+  "topics.message": {
+    params: { readonly handle: string; readonly partition: number; readonly offset: string };
+    result: SpilledMessage | null;
   };
   /** Sends one record. A write. Needs `topics`. */
   "topics.produce": { params: { readonly record: ProduceRecord }; result: ProduceResult };
@@ -84,8 +100,18 @@ export interface StreamCalls {
    * `maxMessages` and `maxBytes`, dropping the oldest past either. Needs `topics`.
    */
   "topics.tailStart": {
-    params: TopicTailRequest & { readonly maxMessages: number; readonly maxBytes: number };
+    params: TopicTailRequest & {
+      readonly maxMessages: number;
+      readonly maxBytes: number;
+      /** Holds large messages as previews and the full ones on disk, the oldest dropped first; default true. */
+      readonly spill?: boolean;
+    };
     result: TopicTailSummary;
+  };
+  /** The full message of sequence `sequence`; null once the ring or its file dropped it. */
+  "topics.tailMessage": {
+    params: { readonly tailId: string; readonly sequence: string };
+    result: TailMessage | null;
   };
   /** The held messages after sequence `after` (null: from the oldest held), and the gap before them. */
   "topics.tailWindow": {

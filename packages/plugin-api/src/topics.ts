@@ -1,4 +1,5 @@
 import type { ExecuteResult } from "./plugin.js";
+import type { WireValue } from "./values.js";
 
 /**
  * How a key or value's bytes are shown (plan 164). `auto` tries a Schema Registry prefix, then
@@ -110,6 +111,33 @@ export interface TopicReadRequest {
 }
 
 export const TOPIC_READ_LIMIT = 50_000;
+
+/**
+ * Characters of a key, value or headers cell a read keeps in memory when the host gave it a
+ * `MessageSpill`; a longer cell keeps its first `MESSAGE_PREVIEW_CHARS` followed by `…`, and its
+ * whole message goes to the spill.
+ */
+export const MESSAGE_PREVIEW_CHARS = 1024;
+
+/** The full cells of a message whose row shows a preview, as `TOPIC_MESSAGE_COLUMNS` holds them. */
+export interface SpilledMessage {
+  readonly key: WireValue;
+  readonly value: WireValue;
+  readonly headers: WireValue;
+}
+
+/**
+ * Where a read puts the full cells of a large message, so memory keeps only its preview (decision
+ * 172). The host reads them back by partition and offset when the user opens the message.
+ */
+export interface MessageSpill {
+  /**
+   * Rejects when the host cannot keep the message, such as when its temporary disk space is full;
+   * the error's message says why, phrased to follow "The read stopped: ". The read then stops
+   * where it is and stays resumable.
+   */
+  put(partition: number, offset: string, message: SpilledMessage): Promise<void>;
+}
 
 export interface TopicRead {
   /** Rows of `TOPIC_MESSAGE_COLUMNS`, ordered by timestamp, partition and offset. */
@@ -255,7 +283,11 @@ export interface TopicBrowser {
   readonly formats: readonly MessageFormat[];
   list(filter: { readonly glob: string | null; readonly internal: boolean }): Promise<readonly TopicSummary[]>;
   describe(topic: string): Promise<TopicDescription>;
-  read(request: TopicReadRequest): Promise<TopicRead>;
+  /**
+   * With `spill`, a kept message whose key, value or headers cell is longer than
+   * `MESSAGE_PREVIEW_CHARS` keeps a preview in its row and puts its full cells in `spill`.
+   */
+  read(request: TopicReadRequest, spill?: MessageSpill): Promise<TopicRead>;
   produce(record: ProduceRecord): Promise<ProduceResult>;
   create(request: TopicCreate, options: AdminOptions): Promise<void>;
   alterConfigs(topic: string, changes: readonly ConfigChange[], options: AdminOptions): Promise<void>;

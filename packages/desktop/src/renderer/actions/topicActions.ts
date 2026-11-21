@@ -3,6 +3,7 @@ import {
   messageCommand,
   messageJson,
   messageOf,
+  withFullCells,
   type TopicMessage,
 } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import { toggledPartitionFilter } from "@table-craft/desktop/renderer/model/topicRead.js";
@@ -185,9 +186,26 @@ export function focusedMessage(tab: TopicTab | null | undefined): TopicMessage |
   return row === undefined ? null : messageOf(result.columns, row);
 }
 
-/** The focused row of a topic tab as a record to send again (decision 13). */
-export function produceDraftOf(tab: TopicTab | null | undefined): ProduceDraft | null {
-  const message = focusedMessage(tab);
+/**
+ * The focused message with the whole key, value and headers its read kept on disk (decision 172);
+ * the row's own cells when the read no longer holds them.
+ */
+export async function wholeFocusedMessage(context: ActionContext): Promise<TopicMessage | null> {
+  const message = focusedMessage(context.topicTab);
+  const tabId = context.activeTab?.id;
+  if (message === null || message.partition === null || tabId === undefined) return message;
+  const full = await useTopicTabs
+    .getState()
+    .message(tabId, message.partition, message.offset)
+    .catch(() => null);
+  return full === null ? message : withFullCells(message, full);
+}
+
+/** The focused row of a topic tab, or `message`, as a record to send again (decision 13). */
+export function produceDraftOf(
+  tab: TopicTab | null | undefined,
+  message: TopicMessage | null = focusedMessage(tab),
+): ProduceDraft | null {
   if (message === null) return null;
   return {
     ...EMPTY_PRODUCE,
@@ -360,7 +378,7 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     available: streams,
     when: (context) => canWriteTopic(context) && produceDraftOf(context.topicTab) !== null,
     run: guarded("Produce Message", async (context) => {
-      const draft = produceDraftOf(context.topicTab);
+      const draft = produceDraftOf(context.topicTab, await wholeFocusedMessage(context));
       if (draft !== null) await produce(context, draft);
     }),
   }),
@@ -534,7 +552,7 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     tabKind: "topic",
     when: (context) => focusedMessage(context.topicTab) !== null,
     run: async (context) => {
-      const message = focusedMessage(context.topicTab);
+      const message = await wholeFocusedMessage(context);
       if (message !== null) await writeClipboard(messageJson(message));
     },
   }),

@@ -1,4 +1,5 @@
 import type { ExecutedStatement } from "./sessions.js";
+import type { WireValue } from "./wire.js";
 
 /** Mirrors `MESSAGE_FORMATS` in plugin-api (plan 164). */
 export const MESSAGE_FORMATS = [
@@ -208,12 +209,24 @@ export interface TailMessage {
   readonly valueSchema: string | null;
 }
 
+/** Mirrors `MESSAGE_PREVIEW_CHARS` in plugin-api: what a spilled cell keeps in memory, before its `…`. */
+export const MESSAGE_PREVIEW_CHARS = 1024;
+
+/** Mirrors `SpilledMessage` in plugin-api: the full cells `topics.message` reads back. */
+export interface SpilledMessage {
+  readonly key: WireValue;
+  readonly value: WireValue;
+  readonly headers: WireValue;
+}
+
 /** Mirrors `TopicTailState` in plugin-api. */
 export type TopicTailState = "live" | "reconnecting" | "stopped";
 
 /** The most messages and bytes a tail's ring holds; the oldest go first past either. */
 export const TOPIC_TAIL_MAX_MESSAGES = 100_000;
 export const TOPIC_TAIL_MAX_RING_BYTES = 67_108_864;
+/** What a tail's file of large messages holds on disk; past it the oldest are deleted (decision 172). */
+export const TOPIC_TAIL_SPILL_BYTES = 536_870_912;
 /** The most messages and bytes one `topics.tailWindow` answers with. */
 export const TOPIC_TAIL_MAX_WINDOW = 1_000;
 export const TOPIC_TAIL_MAX_WINDOW_BYTES = 4_194_304;

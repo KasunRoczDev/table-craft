@@ -26,8 +26,11 @@ const RESUME_VERSION = 1;
 const NO_TIMESTAMP = -1n;
 const REGEX_LITERAL = /^\/(.*)\/([a-z]*)$/s;
 
+/** What orders a message among the rows of a read. */
+export type MessagePlace = Pick<FetchedMessage, "partition" | "offset" | "timestamp">;
+
 /** Rows come ordered by timestamp, then partition, then offset (decision 6); no timestamp sorts first. */
-export function compareMessages(a: FetchedMessage, b: FetchedMessage): number {
+export function compareMessages(a: MessagePlace, b: MessagePlace): number {
   const at = a.timestamp ?? NO_TIMESTAMP;
   const bt = b.timestamp ?? NO_TIMESTAMP;
   if (at !== bt) return at < bt ? -1 : 1;
@@ -37,13 +40,13 @@ export function compareMessages(a: FetchedMessage, b: FetchedMessage): number {
 }
 
 /** The newest `count` across every partition, oldest first: "last 500" of the topic, not of each partition. */
-export function newestAcross<T extends FetchedMessage>(messages: readonly T[], count: number): T[] {
+export function newestAcross<T extends MessagePlace>(messages: readonly T[], count: number): T[] {
   const ordered = [...messages].sort(compareMessages);
   return count <= 0 ? [] : ordered.slice(Math.max(0, ordered.length - count));
 }
 
 /** The oldest `count` across every partition, in order. */
-export function oldestAcross<T extends FetchedMessage>(messages: readonly T[], count: number): T[] {
+export function oldestAcross<T extends MessagePlace>(messages: readonly T[], count: number): T[] {
   return [...messages].sort(compareMessages).slice(0, Math.max(0, count));
 }
 

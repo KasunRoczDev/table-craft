@@ -25,7 +25,7 @@ subjects whose names match; a console command or a tab opened by name still reac
   ([decision 170](../decisions/170-browsing-a-topic-never-joins-a-group.md)).
 - **Topic tab.** **Messages** reads the latest N (500 by default), from the earliest offset, from an
   offset, from a time, or from a group's committed offsets, for all partitions or the ones you type
-  (`0, 3, 7`), up to 50,000 rows and 128 MB of messages, whichever comes first. **Read** turns into **Cancel** while it runs; a cancelled read
+  (`0, 3, 7`), up to 50,000 rows. **Read** turns into **Cancel** while it runs; a cancelled read
   keeps the rows of the previous one. **Filter** keeps the messages whose key, value or headers
   contain the text, or match a `/regex/`. The footer says how many messages were scanned and
   matched; under Latest N a filter searches only the newest N of each partition, the footer says
@@ -41,6 +41,15 @@ subjects whose names match; a console command or a tab opened by name still reac
   out, its headers, and its partition, offset, time, size and schema ids. **Copy Message as JSON**
   copies all of it and **Open Message in Console** writes the `consume` command that reads it again.
   When the read started from a group, the message at that group's committed offset says so.
+- **Large messages.** A message whose key, value or headers run past 1 KB shows its first 1 KB in
+  the grid, ending in `…`; the whole message waits in a temporary file on your disk, and the
+  message details, Copy Message as JSON, Produce Again and Export read it from there. A read keeps
+  up to 64 MB of these previews, and all temporary files together up to 2 GB, always leaving 1 GB of
+  the disk free; past either, the read stops with a warning and **Scan Further** carries on. The
+  files are plain text, readable only by you, and deleted when the rows are released or the tab
+  closes, and any left by a crash at the next start. Turn **Keep large messages on disk** off in
+  Settings → Data Editor (`data.spillMessages`) to keep whole messages in memory instead, up to
+  128 MB a read ([decision 172](../decisions/172-large-stream-messages-spill-to-a-temporary-file.md)).
 - **Partitions, Configs and Consumers.** **Partitions** lists leaders, replicas, in-sync replicas
   (an under-replicated partition says so) and watermarks, with **Add Partitions…** and **Delete
   Records…**. **Configs** lists each setting with its source, with **Edit Topic Configs…**.
@@ -76,7 +85,10 @@ subjects whose names match; a console command or a tab opened by name still reac
   drop some, and draws the newest 1,000. **Pause** freezes the view while the tail keeps running and
   counts what arrived. **Filter** takes text or a `/regex/`. Select a message to see its key, headers
   and value; **Open in Topic Tab at This Offset** (or a double-click) reads from it. **Export…**
-  writes the held messages to a JSON Lines file, and **Copy as JSON Lines** copies them.
+  writes the held messages to a JSON Lines file, and **Copy as JSON Lines** copies them. A large
+  message shows its first 1 KB; selecting it reads the whole one from the tail's temporary file,
+  which keeps the newest 512 MB of them, so an older one may say only its first 1 KB is kept.
+  Export and Copy write the previews; read the topic in a tab to export whole messages.
 - **Schema Registry.** Double-click a subject for its tab: its versions, each version's schema, the
   compatibility level, **Check Compatibility…** for a new schema and **Register New Version…**.
   Double-click a broker for its information.

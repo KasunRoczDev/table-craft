@@ -4,6 +4,7 @@ import type {
   EngineError,
   GroupSummary,
   SortKey,
+  SpilledMessage,
   TopicDescription,
   TopicReadInfo,
   TopicReadRequest,
@@ -32,7 +33,12 @@ import {
   type ResultTab,
 } from "@table-craft/desktop/renderer/state/resultTab.js";
 import { createResultWindows, toError } from "@table-craft/desktop/renderer/state/resultWindows.js";
-import { currentFormats, currentPaging, statementTimeoutOf } from "@table-craft/desktop/renderer/state/settings.js";
+import {
+  currentFormats,
+  currentPaging,
+  currentSpill,
+  statementTimeoutOf,
+} from "@table-craft/desktop/renderer/state/settings.js";
 import { streamCapabilities } from "@table-craft/desktop/renderer/state/streams.js";
 
 /** Which topic a topic tab shows (plan 164 decision 5). */
@@ -122,6 +128,11 @@ export interface TopicTabsState {
   readonly exportTo: (...args: Parameters<ResultWindows["exportTo"]>) => Promise<boolean>;
   readonly search: ResultWindows["search"];
   readonly findNext: ResultWindows["findNext"];
+  /**
+   * The whole key, value and headers of a shown message, from the read's temporary file when it
+   * was large (decision 172); null when the read is gone or no longer holds it.
+   */
+  readonly message: (id: string, partition: number, offset: string) => Promise<SpilledMessage | null>;
 }
 
 export interface TopicTabsDependencies {
@@ -131,6 +142,8 @@ export interface TopicTabsDependencies {
   readonly executions?: ExecutionReporter;
   readonly exports?: ExportStarter;
   readonly statementTimeout?: (datasourceId: string) => number;
+  /** `data.spillMessages`, read at each read; true when absent. */
+  readonly spill?: () => boolean;
 }
 
 const READ_LABEL = "Read topic";
@@ -270,6 +283,7 @@ export function createTopicTabsStore(dependencies: TopicTabsDependencies) {
           sessionId: current.sessionId,
           request,
           ...paging,
+          spill: dependencies.spill?.() ?? true,
           ...(timeoutSeconds > 0 ? { timeoutSeconds } : {}),
         });
         executions.finish(id, executionId, {
@@ -491,6 +505,13 @@ export function createTopicTabsStore(dependencies: TopicTabsDependencies) {
       },
       search: windows.search,
       findNext: windows.findNext,
+
+      async message(id, partition, offset) {
+        const result = get().tabs[id]?.result;
+        const client = clients.get(id);
+        if (result == null || result.stale || client === undefined) return null;
+        return client.call("topics.message", { handle: result.handle, partition, offset });
+      },
     };
   });
 }
@@ -502,6 +523,7 @@ export const useTopicTabs = createTopicTabsStore({
   capabilities: streamCapabilities,
   exports: useExports.getState(),
   statementTimeout: (datasourceId) => statementTimeoutOf(datasourceById(useDatasources.getState(), datasourceId)),
+  spill: currentSpill,
   executions: {
     start: (tabId, start) => useExecutions.getState().start(tabId, start),
     finish: (tabId, executionId, end) => useExecutions.getState().finish(tabId, executionId, end),

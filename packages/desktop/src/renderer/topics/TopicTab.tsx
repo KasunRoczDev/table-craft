@@ -174,7 +174,7 @@ function Messages({
               result={result}
               host={useTopicTabs.getState}
               staleText={STALE_TEXT}
-              panel={(focus) => <MessagePanel tab={tab} focus={focus} />}
+              panel={(focus) => <MessagePanel tabId={tabId} tab={tab} focus={focus} />}
               toolbar={
                 <>
                   <span className="mx-1 h-4 w-px shrink-0 bg-line" />

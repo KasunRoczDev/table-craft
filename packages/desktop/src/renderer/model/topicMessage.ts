@@ -1,4 +1,9 @@
-import type { Row, WireValue } from "@table-craft/desktop/engine/protocol.js";
+import {
+  MESSAGE_PREVIEW_CHARS,
+  type Row,
+  type SpilledMessage,
+  type WireValue,
+} from "@table-craft/desktop/engine/protocol.js";
 
 /** One message of a topic read, its cells as text (decision 5's columns). */
 export interface TopicMessage {
@@ -68,6 +73,40 @@ export function messageOf(columns: readonly { readonly name: string }[], row: Ro
     valueSchema: cellText(cell("valueSchema")),
   };
 }
+
+/** The message with the whole key, value and headers its read kept on disk (decision 172). */
+export function withFullCells(message: TopicMessage, full: SpilledMessage): TopicMessage {
+  return {
+    ...message,
+    key: cellText(full.key),
+    value: cellText(full.value),
+    valueJson: typeof full.value === "object" && full.value !== null && full.value.kind === "json",
+    headers: headerLines(full.headers),
+  };
+}
+
+const PREVIEW_END = "…";
+
+/** Whether `text` is a preview the engine or plugin cut at `MESSAGE_PREVIEW_CHARS`. */
+export function isPreviewText(text: string | null): boolean {
+  return text !== null && text.length > MESSAGE_PREVIEW_CHARS && text.endsWith(PREVIEW_END);
+}
+
+/** Whether any of the message's key, value or header values is a cut preview. */
+export function isPreviewMessage(message: {
+  readonly key: string | null;
+  readonly value: string | null;
+  readonly headers: readonly { readonly value: string | null }[];
+}): boolean {
+  return (
+    isPreviewText(message.key) ||
+    isPreviewText(message.value) ||
+    message.headers.some((header) => header.value?.endsWith(PREVIEW_END) === true)
+  );
+}
+
+/** Shown when a large message's whole text is gone and only its preview is left. */
+export const PREVIEW_ONLY_NOTICE = "Only the first 1 KB is kept; the full message is no longer available.";
 
 /** The message as one JSON document, for Copy Message as JSON (audit M12); JSON values stay JSON. */
 export function messageJson(message: TopicMessage): string {

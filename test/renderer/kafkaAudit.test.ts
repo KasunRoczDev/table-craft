@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { FilterChip, Row, TopicTailSummary } from "@table-craft/desktop/engine/protocol.js";
+import {
+  MESSAGE_PREVIEW_CHARS,
+  type FilterChip,
+  type Row,
+  type TopicTailSummary,
+} from "@table-craft/desktop/engine/protocol.js";
 import { produceSchemaOf } from "@table-craft/desktop/renderer/actions/topicActions.js";
 import { groupStateTone } from "@table-craft/desktop/renderer/model/streamTree.js";
 import { LISTED_ATTEMPTS, untilListed } from "@table-craft/desktop/renderer/state/streams.js";
@@ -11,7 +16,14 @@ import {
   deleteRecordsNeedsName,
   typedMatches,
 } from "@table-craft/desktop/renderer/model/topicAdmin.js";
-import { messageCommand, messageJson, messageOf } from "@table-craft/desktop/renderer/model/topicMessage.js";
+import {
+  isPreviewMessage,
+  messageCommand,
+  messageJson,
+  messageOf,
+  PREVIEW_ONLY_NOTICE,
+  withFullCells,
+} from "@table-craft/desktop/renderer/model/topicMessage.js";
 import {
   filteredPartition,
   scannedText,
@@ -159,6 +171,21 @@ describe("message panel", () => {
     expect(JSON.parse(messageJson(message))).toMatchObject({ value: { id: 1 } });
     expect(messageCommand("orders.v1", message)).toBe("consume orders.v1 -p 3 --from offset:1204331 --limit 1");
     expect(messageCommand("odd name", message)).toContain('consume "odd name"');
+  });
+
+  it("givenPreviewRow_whenWholeCellsArrive_thenTheyReplaceThePreview", () => {
+    const long = "x".repeat(MESSAGE_PREVIEW_CHARS * 4);
+    const preview = messageOf(COLUMNS, [
+      ...row.slice(0, 4),
+      `${long.slice(0, MESSAGE_PREVIEW_CHARS)}…`,
+      ...row.slice(5),
+    ]);
+    expect(isPreviewMessage(preview)).toBe(true);
+    expect(isPreviewMessage(messageOf(COLUMNS, row))).toBe(false);
+    const whole = withFullCells(preview, { key: "cust-42", value: { kind: "json", text: `"${long}"` }, headers: null });
+    expect(whole).toMatchObject({ value: `"${long}"`, valueJson: true, headers: [], offset: "1204331" });
+    expect(isPreviewMessage(whole)).toBe(false);
+    expect(PREVIEW_ONLY_NOTICE).toContain("first 1 KB");
   });
 });
 

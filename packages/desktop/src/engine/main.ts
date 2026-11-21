@@ -1,5 +1,12 @@
 import type { MessagePortMain, ParentPort } from "electron";
-import { loadPluginById, TunnelError, type HostKeyVerifier, type PluginLoadResult } from "@table-craft/core";
+import {
+  loadPluginById,
+  removeSpillDirectory,
+  sweepSpills,
+  TunnelError,
+  type HostKeyVerifier,
+  type PluginLoadResult,
+} from "@table-craft/core";
 import {
   createEngine,
   probeDatasource,
@@ -61,6 +68,15 @@ function crash(msg: string, cause: unknown): void {
 
 process.on("uncaughtException", (cause) => crash("uncaught exception", cause));
 process.on("unhandledRejection", (cause) => crash("unhandled rejection", cause));
+// Large messages spill under the temporary folder (decision 172): an engine that crashed left its folder behind.
+void sweepSpills().catch((cause: unknown) => log.warn("could not sweep old spill folders", { err: cause }));
+process.on("exit", () => {
+  try {
+    removeSpillDirectory();
+  } catch {
+    // The OS temporary folder's own cleanup and the next engine's sweep remove what is left.
+  }
+});
 let booted: Promise<EngineConnectionFactory> | null = null;
 let engine: Engine | null = null;
 const connections = new Set<Promise<EngineConnection>>();

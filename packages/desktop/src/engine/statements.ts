@@ -27,12 +27,14 @@ import {
   type RowLimiter,
   type RowLimitRewrite,
   type SavepointStatements,
+  type SpilledMessage,
   type TypeClass,
   type WireValue,
   type SqlLanguage,
   type Transactions,
 } from "@table-craft/plugin-api";
 import type { LiveContext, OpenSession, TableResult } from "@table-craft/desktop/engine/connection.js";
+import { MessageSpills } from "@table-craft/desktop/engine/messageSpills.js";
 import {
   BUG_HINT,
   EngineFailure,
@@ -142,6 +144,7 @@ export function statementRunners(live: LiveContext) {
     commandLanguage,
     consoleLanguage,
     results,
+    spills,
     relationOf,
     referencingKeys,
     completionCatalogOf,
@@ -433,6 +436,7 @@ export function statementRunners(live: LiveContext) {
   async function openTopic(request: RequestOf<"topics.open">): Promise<OpenedTopic> {
     const open = sessionFor(request.sessionId);
     const readOnly = options.datasource.readOnly;
+    const spill = request.spill === false ? null : spills.create();
     open.running += 1;
     try {
       const { value: opened } = await onLiveSession(
@@ -442,6 +446,7 @@ export function statementRunners(live: LiveContext) {
         async (session) => {
           const { result, scanned, matched, exhausted, resume, warnings } = await serviceOf(session, "topics").read(
             request.request,
+            spill === null ? undefined : MessageSpills.adapter(spill),
           );
           return {
             read: { scanned, matched, exhausted, resume, warnings },
@@ -449,12 +454,20 @@ export function statementRunners(live: LiveContext) {
           };
         },
         (cause) => (cause instanceof EngineFailure ? cause : statementFailed(cause, readOnly)),
-        (late) => void results.release(late.summary.handle),
+        (late) => {
+          void results.release(late.summary.handle);
+          void spill?.close();
+        },
       );
       const { read, summary } = opened;
       if (sessions.get(request.sessionId) !== open) {
         await results.release(summary.handle);
         sessionFor(request.sessionId);
+      }
+      if (spill !== null && spill.size > 0) {
+        spills.hold(summary.handle, spill);
+      } else {
+        void spill?.close();
       }
       handles.set(summary.handle, request.sessionId);
       if (results.holdsCursor(summary.handle)) cursors.set(request.sessionId, summary.handle);
@@ -462,10 +475,18 @@ export function statementRunners(live: LiveContext) {
         read,
         statement: { ...summary, firstWindow: results.window(summary.handle, 0), transactionOpen: false },
       };
+    } catch (cause) {
+      void spill?.close();
+      throw cause;
     } finally {
       open.running -= 1;
       open.lastUsed = now();
     }
+  }
+
+  /** The full cells of one message a topic read shows, from its spill or its held row (decision 172). */
+  function topicMessage(request: RequestOf<"topics.message">): Promise<SpilledMessage | null> {
+    return spills.message(ownedHandle(request.handle), request.partition, request.offset);
   }
 
   /** Whether a console result can be edited (decision 056); remembers an editable one for `edits.*`. */
@@ -679,6 +700,7 @@ export function statementRunners(live: LiveContext) {
     queryTable,
     openKey,
     openTopic,
+    topicMessage,
     resultEditable,
     tableFor,
     editStatements,
