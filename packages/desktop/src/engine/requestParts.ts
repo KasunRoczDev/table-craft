@@ -20,3 +20,17 @@ const timeoutSeconds = z
   .max(STATEMENT_TIMEOUT_SECONDS_RANGE.max)
   .optional();
 export const statementLimit = { timeoutSeconds, serverEnforced: z.boolean().optional() };
+/** 2^64 has 20 digits: no revision, lease ID or count is longer. */
+export const DECIMAL_MAX_LENGTH = 20;
+export const index = z.number().int().nonnegative();
+export const leaseId = z
+  .string()
+  .regex(/^-?[1-9][0-9]*$/)
+  .max(DECIMAL_MAX_LENGTH);
+export const keyName = z.strictObject({
+  text: z.string(),
+  hex: z
+    .string()
+    .regex(/^(?:[0-9a-f]{2})+$/)
+    .nullable(),
+});

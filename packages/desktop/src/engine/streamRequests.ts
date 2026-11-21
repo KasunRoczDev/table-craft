@@ -12,19 +12,29 @@ import {
   TOPIC_TAIL_MAX_WINDOW,
   TOPIC_TAIL_MAX_WINDOW_BYTES,
 } from "@table-craft/desktop/engine/protocol.js";
-import { paging, requestId, sessionId, statementLimit } from "@table-craft/desktop/engine/requestParts.js";
+import {
+  DECIMAL_MAX_LENGTH,
+  paging,
+  requestId,
+  sessionId,
+  statementLimit,
+} from "@table-craft/desktop/engine/requestParts.js";
 
-/** 2^64 has 20 digits: no Kafka offset or count is longer. */
-const DECIMAL_MAX_LENGTH = 20;
 const TAIL_ID_MAX_LENGTH = 256;
 /** A broker config value, such as a long `follower.replication.throttled.replicas` list. */
 const CONFIG_VALUE_MAX_LENGTH = 65_536;
+/** Kafka sends partition numbers and counts as INT32 and replication factors as INT16. */
+const INT32_MAX = 2_147_483_647;
+const INT16_MAX = 32_767;
+/** More partitions or config entries than one request names in practice; the cap only bounds a bad request. */
+const LISTED_MAX = 100_000;
+const HANDLE_MAX_LENGTH = 256;
 
 const topic = z.string().min(1).max(TOPIC_NAME_MAX_LENGTH);
 const name = z.string().min(1).max(STREAM_NAME_MAX_LENGTH);
 const glob = name.nullable();
-const partition = z.number().int().nonnegative();
-const partitions = z.array(partition).min(1).nullable();
+const partition = z.number().int().nonnegative().max(INT32_MAX);
+const partitions = z.array(partition).min(1).max(LISTED_MAX).nullable();
 const offset = z
   .string()
   .regex(/^(?:0|[1-9][0-9]*)$/)
@@ -77,9 +87,9 @@ const record = z.strictObject({
 const configValue = z.string().max(CONFIG_VALUE_MAX_LENGTH);
 const create = z.strictObject({
   name: topic,
-  partitions: z.number().int().positive(),
-  replicationFactor: z.number().int().positive().nullable(),
-  configs: z.array(z.strictObject({ name, value: configValue })),
+  partitions: z.number().int().positive().max(INT32_MAX),
+  replicationFactor: z.number().int().positive().max(INT16_MAX).nullable(),
+  configs: z.array(z.strictObject({ name, value: configValue })).max(LISTED_MAX),
 });
 const before = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("offset"), offset }),
@@ -107,21 +117,30 @@ export const STREAM_REQUESTS = [
     ...paging,
     ...statementLimit,
   }),
-  z.strictObject({ id: requestId, type: z.literal("topics.message"), handle: z.string().min(1), partition, offset }),
+  z.strictObject({
+    id: requestId,
+    type: z.literal("topics.message"),
+    handle: z.string().min(1).max(HANDLE_MAX_LENGTH),
+    partition,
+    offset,
+  }),
   z.strictObject({ id: requestId, type: z.literal("topics.produce"), record }),
   z.strictObject({ id: requestId, type: z.literal("topics.create"), request: create, validateOnly }),
   z.strictObject({
     id: requestId,
     type: z.literal("topics.alterConfigs"),
     topic,
-    changes: z.array(z.strictObject({ name, value: configValue.nullable() })).min(1),
+    changes: z
+      .array(z.strictObject({ name, value: configValue.nullable() }))
+      .min(1)
+      .max(LISTED_MAX),
     validateOnly,
   }),
   z.strictObject({
     id: requestId,
     type: z.literal("topics.addPartitions"),
     topic,
-    total: z.number().int().positive(),
+    total: z.number().int().positive().max(INT32_MAX),
     validateOnly,
   }),
   z.strictObject({ id: requestId, type: z.literal("topics.prepareDeleteRecords"), topic, partitions, before }),
