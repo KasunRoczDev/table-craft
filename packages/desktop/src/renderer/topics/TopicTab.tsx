@@ -18,6 +18,7 @@ import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import {
   useTopicTabs,
   type TopicTab as TopicTabState,
+  type TopicTarget,
   type TopicView,
 } from "@table-craft/desktop/renderer/state/topicTabs.js";
 import { ObjectHeader, Subtabs } from "@table-craft/desktop/renderer/streams/ObjectHeader.js";
@@ -133,6 +134,11 @@ function Footer({ tab }: { readonly tab: TopicTabState }) {
   );
 }
 
+/** What the tab's own buttons act on, whatever the Database tree selects. */
+function targetOf(tab: TopicTabState): TopicTarget {
+  return { datasourceId: tab.datasourceId, topic: tab.topic };
+}
+
 function Messages({
   tabId,
   tab,
@@ -179,7 +185,12 @@ function Messages({
                 <>
                   <span className="mx-1 h-4 w-px shrink-0 bg-line" />
                   <ActionButton actionId={TOPIC_ACTION_IDS.scanFurther} compact />
-                  <ActionButton actionId={TOPIC_ACTION_IDS.produceFromRow} compact reason={writeReason} />
+                  <ActionButton
+                    actionId={TOPIC_ACTION_IDS.produceFromRow}
+                    compact
+                    args={targetOf(tab)}
+                    reason={writeReason}
+                  />
                   <ActionButton actionId={GROUP_ACTION_IDS.skipFromRow} compact reason={writeReason} />
                 </>
               }
@@ -204,6 +215,7 @@ export function TopicTab({ tabId }: { readonly tabId: string }) {
   );
   const reasons = useStreamReasons(datasource);
   if (tab === undefined) return null;
+  const target = targetOf(tab);
   const color = datasource?.color ?? null;
   const groups = capabilities.includes("consumerGroups");
   const views: readonly { readonly value: TopicView; readonly label: string; readonly count?: number | null }[] = [
@@ -228,8 +240,14 @@ export function TopicTab({ tabId }: { readonly tabId: string }) {
         actions={
           <>
             <ActionButton actionId={TOPIC_ACTION_IDS.refresh} compact reason={reasons.read} />
-            <ActionButton actionId={TAIL_ACTION_IDS.start} compact reason={reasons.read} />
-            <ActionButton actionId={TOPIC_ACTION_IDS.produce} compact reason={reasons.write} testId="topic-produce" />
+            <ActionButton actionId={TAIL_ACTION_IDS.start} compact args={target} reason={reasons.read} />
+            <ActionButton
+              actionId={TOPIC_ACTION_IDS.produce}
+              compact
+              args={target}
+              reason={reasons.write}
+              testId="topic-produce"
+            />
           </>
         }
       />
@@ -251,9 +269,9 @@ export function TopicTab({ tabId }: { readonly tabId: string }) {
           {tab.describeError === null ? "Reading the topic…" : tab.describeError.message}
         </p>
       ) : tab.view === "partitions" ? (
-        <PartitionsView description={tab.description} writeReason={reasons.write} />
+        <PartitionsView target={target} description={tab.description} writeReason={reasons.write} />
       ) : tab.view === "configs" ? (
-        <ConfigsView description={tab.description} writeReason={reasons.write} />
+        <ConfigsView target={target} description={tab.description} writeReason={reasons.write} />
       ) : (
         <ConsumersView
           datasourceId={tab.datasourceId}

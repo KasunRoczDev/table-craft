@@ -3,6 +3,7 @@ import { defineAction, type AnyAction } from "@table-craft/desktop/renderer/acti
 import {
   canWriteStreams,
   dialogDatasource,
+  streamSource,
   focusedMessage,
   guarded,
   openTopicAt,
@@ -103,10 +104,17 @@ async function refreshGroup(target: GroupTarget): Promise<void> {
   ]);
 }
 
-const canWriteGroup = (context: ActionContext) => {
-  const target = groupTarget(context);
+/** Whether the group `args` name, else the one the context points at, takes writes now. */
+export function canWriteGroup(context: ActionContext, args?: unknown): boolean {
+  const target = groupTarget(context, args);
   return target !== null && canWriteStreams(context, target.datasourceId, "consumerGroups");
-};
+}
+
+/** Whether a group action applies: to the group `args` name when given, else to `context.datasource`. */
+function groupsAvailable(context: ActionContext, args?: unknown): boolean {
+  if (!isGroupTarget(args)) return groups(context);
+  return streamSource(context, args.datasourceId)?.capabilities.includes("consumerGroups") === true;
+}
 
 /** Reset Offsets… (decision 11), opened on the group's topics or on the one `args` names. */
 const resetOffsets = guarded("Reset Offsets", async (context: ActionContext, args: ResetArgs | undefined) => {
@@ -173,7 +181,7 @@ export const GROUP_ACTIONS: readonly AnyAction[] = [
     title: "Reset Offsets…",
     category: "Streams",
     icon: "rollback",
-    available: groups,
+    available: groupsAvailable,
     when: canWriteGroup,
     run: resetOffsets,
   }),
@@ -182,7 +190,7 @@ export const GROUP_ACTIONS: readonly AnyAction[] = [
     title: "Delete Committed Offsets…",
     category: "Streams",
     icon: "delete",
-    available: groups,
+    available: groupsAvailable,
     when: canWriteGroup,
     run: guarded("Delete Committed Offsets", async (context, args: OpenGroupArgs | undefined) => {
       const target = groupTarget(context, args);
@@ -221,7 +229,7 @@ export const GROUP_ACTIONS: readonly AnyAction[] = [
     title: "Delete Consumer Group…",
     category: "Streams",
     icon: "delete",
-    available: groups,
+    available: groupsAvailable,
     when: canWriteGroup,
     run: guarded("Delete Consumer Group", async (context, args: OpenGroupArgs | undefined) => {
       const target = groupTarget(context, args);

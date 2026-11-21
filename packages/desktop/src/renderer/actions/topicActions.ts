@@ -10,7 +10,11 @@ import {
 } from "@table-craft/desktop/renderer/model/topicMessage.js";
 import { toggledPartitionFilter } from "@table-craft/desktop/renderer/model/topicRead.js";
 import { openConsole } from "@table-craft/desktop/renderer/actions/consoleCommands.js";
-import { datasourceTarget, type ActionContext } from "@table-craft/desktop/renderer/actions/context.js";
+import {
+  datasourceTarget,
+  type ActionContext,
+  type DatasourceTarget,
+} from "@table-craft/desktop/renderer/actions/context.js";
 import { defineAction, type AnyAction } from "@table-craft/desktop/renderer/actions/registry.js";
 import { catalogRowOf } from "@table-craft/desktop/renderer/model/explorerTree.js";
 import { DEFAULT_DRAFT, type ReadDraft } from "@table-craft/desktop/renderer/model/topicRead.js";
@@ -114,6 +118,17 @@ const streams = (context: ActionContext) => context.datasource?.capabilities.inc
 const readOnly = (context: ActionContext) => context.datasource?.view.readOnly === true;
 const connected = (context: ActionContext) => context.datasource?.connection.status === "connected";
 
+/** `datasourceId`'s state: `context.datasource` when it is that one, else read from the store. */
+export function streamSource(context: ActionContext, datasourceId: string): DatasourceTarget | null {
+  return context.datasource?.view.id === datasourceId ? context.datasource : datasourceTarget(datasourceId);
+}
+
+/** Whether a topic action applies: to the topic `args` name when given, else to `context.datasource`. */
+export function topicsAvailable(context: ActionContext, args?: unknown): boolean {
+  if (!isTopicTarget(args)) return streams(context);
+  return streamSource(context, args.datasourceId)?.capabilities.includes("topics") === true;
+}
+
 function isTopicTarget(args: unknown): args is TopicTarget {
   return typeof args === "object" && args !== null && "datasourceId" in args && "topic" in args;
 }
@@ -134,6 +149,12 @@ export function topicTarget(context: ActionContext, args?: unknown): TopicTarget
   if (selected !== null) return selected;
   const tab = context.topicTab;
   return tab == null ? selectedTopic(context) : { datasourceId: tab.datasourceId, topic: tab.topic };
+}
+
+/** The active topic tab's topic: what a row of its grid belongs to, whatever the tree selects. */
+function tabTopic(context: ActionContext): TopicTarget | undefined {
+  const tab = context.topicTab;
+  return tab == null ? undefined : { datasourceId: tab.datasourceId, topic: tab.topic };
 }
 
 /** The draft a topic opens with: its remembered formats over the defaults (decision 7). */
@@ -247,19 +268,22 @@ export function produceSchemaOf(
   return type === undefined ? null : { subject: `${topic}-value`, version: null, type };
 }
 
-async function produce(context: ActionContext, initial: ProduceDraft): Promise<void> {
-  const target = topicTarget(context);
+async function produce(context: ActionContext, initial: ProduceDraft, args?: unknown): Promise<void> {
+  const target = topicTarget(context, args);
   if (target === null) return;
   const client = await clientOf(target.datasourceId);
+  const tab =
+    context.topicTab?.datasourceId === target.datasourceId && context.topicTab.topic === target.topic
+      ? context.topicTab
+      : null;
   const partitions =
-    context.topicTab?.description?.partitions.length ??
+    tab?.description?.partitions.length ??
     useStreams.getState().streams[target.datasourceId]?.topics?.find((topic) => topic.name === target.topic)
       ?.partitions ??
     null;
   const streams = useStreams.getState().streams[target.datasourceId];
   const registry = streams?.registry?.available === true;
-  const lastSchema =
-    context.topicTab?.topic === target.topic ? (focusedMessage(context.topicTab)?.valueSchema ?? null) : null;
+  const lastSchema = focusedMessage(tab)?.valueSchema ?? null;
   const sent = await useStreamDialog.getState().ask({
     kind: "produce",
     datasource: dialogDatasource(context, target.datasourceId),
@@ -282,7 +306,7 @@ export function canWriteStreams(
   datasourceId: string,
   capability: "topics" | "consumerGroups" = "topics",
 ): boolean {
-  const source = context.datasource?.view.id === datasourceId ? context.datasource : datasourceTarget(datasourceId);
+  const source = streamSource(context, datasourceId);
   return (
     source !== null &&
     source.capabilities.includes(capability) &&
@@ -291,12 +315,13 @@ export function canWriteStreams(
   );
 }
 
-const canWriteTopic = (context: ActionContext) => {
-  const target = topicTarget(context);
+/** Whether the topic `args` name, else the one the context points at, takes writes now. */
+export function canWriteTopic(context: ActionContext, args?: unknown): boolean {
+  const target = topicTarget(context, args);
   return target !== null && canWriteStreams(context, target.datasourceId);
-};
+}
 
-const writeTopicAction = { available: streams, when: canWriteTopic } as const;
+const writeTopicAction = { available: topicsAvailable, when: canWriteTopic } as const;
 
 export const TOPIC_ACTIONS: readonly AnyAction[] = [
   defineAction<OpenTopicArgs | undefined>({
@@ -379,39 +404,44 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     title: "Copy Topic Name",
     category: "Streams",
     icon: "copy",
-    available: streams,
-    when: (context) => topicTarget(context) !== null,
+    available: topicsAvailable,
+    when: (context, args) => topicTarget(context, args) !== null,
     run: async (context, args) => {
       const target = topicTarget(context, args);
       if (target !== null) await writeClipboard(target.topic);
     },
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.produce,
     title: "Produce Message…",
     category: "Streams",
     icon: "produce",
     ...writeTopicAction,
-    run: guarded("Produce Message", async (context) => {
+    run: guarded("Produce Message", async (context, args: OpenTopicArgs | undefined) => {
       const formats = context.topicTab?.draft;
-      await produce(context, {
-        ...EMPTY_PRODUCE,
-        ...(formats === undefined || formats.valueFormat === "auto" ? {} : { valueFormat: formats.valueFormat }),
-        ...(formats === undefined || formats.keyFormat === "auto" ? {} : { keyFormat: formats.keyFormat }),
-      });
+      await produce(
+        context,
+        {
+          ...EMPTY_PRODUCE,
+          ...(formats === undefined || formats.valueFormat === "auto" ? {} : { valueFormat: formats.valueFormat }),
+          ...(formats === undefined || formats.keyFormat === "auto" ? {} : { keyFormat: formats.keyFormat }),
+        },
+        args,
+      );
     }),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.produceFromRow,
     title: "Produce Again from Row…",
     category: "Streams",
     icon: "produce",
     tabKind: "topic",
-    available: streams,
-    when: (context) => canWriteTopic(context) && produceDraftOf(context.topicTab) !== null,
-    run: guarded("Produce Message", async (context) => {
+    available: topicsAvailable,
+    when: (context, args) =>
+      canWriteTopic(context, args ?? tabTopic(context)) && produceDraftOf(context.topicTab) !== null,
+    run: guarded("Produce Message", async (context, args: OpenTopicArgs | undefined) => {
       const draft = produceDraftOf(context.topicTab, producible(await wholeFocusedMessage(context)));
-      if (draft !== null) await produce(context, draft);
+      if (draft !== null) await produce(context, draft, args ?? tabTopic(context));
     }),
   }),
   defineAction({
@@ -444,14 +474,14 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
       );
     }),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.editConfigs,
     title: "Edit Topic Configs…",
     category: "Streams",
     icon: "properties",
     ...writeTopicAction,
-    run: guarded("Edit Topic Configs", async (context) => {
-      const target = topicTarget(context);
+    run: guarded("Edit Topic Configs", async (context, args: OpenTopicArgs | undefined) => {
+      const target = topicTarget(context, args);
       if (target === null) return;
       const client = await clientOf(target.datasourceId);
       const { configs } = await client.call("topics.describe", { topic: target.topic });
@@ -466,13 +496,14 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
       if (altered) await refreshTopic(target);
     }),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.addPartitions,
     title: "Add Partitions…",
     category: "Streams",
+    icon: "add",
     ...writeTopicAction,
-    run: guarded("Add Partitions", async (context) => {
-      const target = topicTarget(context);
+    run: guarded("Add Partitions", async (context, args: OpenTopicArgs | undefined) => {
+      const target = topicTarget(context, args);
       if (target === null) return;
       const client = await clientOf(target.datasourceId);
       const { partitions } = await client.call("topics.describe", { topic: target.topic });
@@ -487,14 +518,14 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
       if (added) await refreshTopic(target);
     }),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.deleteRecords,
     title: "Delete Records…",
     category: "Streams",
     icon: "delete",
     ...writeTopicAction,
-    run: guarded("Delete Records", async (context) => {
-      const target = topicTarget(context);
+    run: guarded("Delete Records", async (context, args: OpenTopicArgs | undefined) => {
+      const target = topicTarget(context, args);
       if (target === null) return;
       const client = await clientOf(target.datasourceId);
       const { partitions } = await client.call("topics.describe", { topic: target.topic });
@@ -510,14 +541,14 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
       if (deleted) await refreshTopic(target);
     }),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TOPIC_ACTION_IDS.delete,
     title: "Delete Topic…",
     category: "Streams",
     icon: "delete",
     ...writeTopicAction,
-    run: guarded("Delete Topic", async (context) => {
-      const target = topicTarget(context);
+    run: guarded("Delete Topic", async (context, args: OpenTopicArgs | undefined) => {
+      const target = topicTarget(context, args);
       if (target === null) return;
       const where = dialogDatasource(context, target.datasourceId);
       const answer = await useModal.getState().ask({

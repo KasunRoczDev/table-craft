@@ -6,6 +6,7 @@ import { TOPIC_ACTION_IDS } from "@table-craft/desktop/renderer/actions/topicAct
 import { grouped } from "@table-craft/desktop/renderer/model/groupLag.js";
 import { bigOf, lagExceeds } from "@table-craft/desktop/renderer/model/streamTree.js";
 import { durationText } from "@table-craft/desktop/renderer/model/topicRead.js";
+import type { TopicTarget } from "@table-craft/desktop/renderer/state/topicTabs.js";
 import { formatBytes } from "@table-craft/desktop/renderer/model/format.js";
 import { ActionButton } from "@table-craft/desktop/renderer/ui/ActionButton.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
@@ -44,10 +45,15 @@ function sizeText(bytes: string | null): string {
   return value === null ? "" : formatBytes(Number(value));
 }
 
+/** A view's own toolbar: flush text buttons acting on the tab's topic, like the grid's toolbar strip. */
+const VIEW_TOOLBAR = "flex h-row shrink-0 items-center border-b border-line bg-panel";
+
 export function PartitionsView({
+  target,
   description,
   writeReason,
 }: {
+  readonly target: TopicTarget;
   readonly description: TopicDescription;
   readonly writeReason: string | null;
 }) {
@@ -62,9 +68,22 @@ export function PartitionsView({
   const totalBytes = sum(description.partitions.map((partition) => partition.bytes));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-row shrink-0 items-center gap-1 border-b border-line px-1">
-        <ActionButton actionId={TOPIC_ACTION_IDS.addPartitions} reason={writeReason} />
-        <ActionButton actionId={TOPIC_ACTION_IDS.deleteRecords} reason={writeReason} testId="topic-delete-records" />
+      <div role="toolbar" aria-label="Partitions" className={VIEW_TOOLBAR}>
+        <ActionButton
+          actionId={TOPIC_ACTION_IDS.addPartitions}
+          inline
+          args={target}
+          reason={writeReason}
+          testId="topic-add-partitions"
+        />
+        <ActionButton
+          actionId={TOPIC_ACTION_IDS.deleteRecords}
+          inline
+          tone="danger"
+          args={target}
+          reason={writeReason}
+          testId="topic-delete-records"
+        />
       </div>
       <PlainTable label="Partitions">
         <thead className={PLAIN_HEAD}>
@@ -121,16 +140,24 @@ export function PartitionsView({
 }
 
 export function ConfigsView({
+  target,
   description,
   writeReason,
 }: {
+  readonly target: TopicTarget;
   readonly description: TopicDescription;
   readonly writeReason: string | null;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-row shrink-0 items-center gap-1 border-b border-line px-1">
-        <ActionButton actionId={TOPIC_ACTION_IDS.editConfigs} reason={writeReason} testId="topic-edit-configs" />
+      <div role="toolbar" aria-label="Configs" className={VIEW_TOOLBAR}>
+        <ActionButton
+          actionId={TOPIC_ACTION_IDS.editConfigs}
+          inline
+          args={target}
+          reason={writeReason}
+          testId="topic-edit-configs"
+        />
       </div>
       <PlainTable label="Configs">
         <thead className={PLAIN_HEAD}>

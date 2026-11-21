@@ -342,7 +342,12 @@ export function GroupTab({ tabId }: { readonly tabId: string }) {
               </span>
             )}
             <ActionButton actionId={GROUP_ACTION_IDS.refresh} reason={reasons.read} />
-            <ActionButton actionId={GROUP_ACTION_IDS.resetOffsets} reason={reasons.write} testId="group-reset" />
+            <ActionButton
+              actionId={GROUP_ACTION_IDS.resetOffsets}
+              args={{ datasourceId: tab.datasourceId, group: tab.group }}
+              reason={reasons.write}
+              testId="group-reset"
+            />
           </>
         }
       />

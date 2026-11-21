@@ -1,6 +1,11 @@
 import { TOPIC_TAIL_COPY_MAX_BYTES } from "@table-craft/desktop/engine/protocol.js";
 import { defineAction, type AnyAction } from "@table-craft/desktop/renderer/actions/registry.js";
-import { topicTarget } from "@table-craft/desktop/renderer/actions/topicActions.js";
+import {
+  streamSource,
+  topicsAvailable,
+  topicTarget,
+  type OpenTopicArgs,
+} from "@table-craft/desktop/renderer/actions/topicActions.js";
 import { writeClipboard } from "@table-craft/desktop/renderer/state/clipboard.js";
 import { useLayout } from "@table-craft/desktop/renderer/state/layout.js";
 import { useModal } from "@table-craft/desktop/renderer/state/modal.js";
@@ -69,15 +74,18 @@ export const TAIL_ACTIONS: readonly AnyAction[] = [
     icon: "tail",
     run: () => useLayout.getState().toggle("tail"),
   }),
-  defineAction({
+  defineAction<OpenTopicArgs | undefined>({
     id: TAIL_ACTION_IDS.start,
     title: "Tail Topic",
     category: "Streams",
     icon: "tail",
-    available: (context) => context.datasource?.capabilities.includes("topics") === true,
-    when: (context) => context.datasource?.connection.status === "connected" && topicTarget(context) !== null,
-    run: async (context) => {
-      const target = topicTarget(context);
+    available: topicsAvailable,
+    when: (context, args) => {
+      const target = topicTarget(context, args);
+      return target !== null && streamSource(context, target.datasourceId)?.connection.status === "connected";
+    },
+    run: async (context, args) => {
+      const target = topicTarget(context, args);
       if (target === null) return;
       const draft = context.topicTab?.topic === target.topic ? context.topicTab.draft : null;
       try {

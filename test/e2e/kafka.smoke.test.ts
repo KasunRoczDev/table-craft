@@ -599,8 +599,15 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
 
       const tab = await openTopic(page, kafka.created);
       await tab.getByTestId("view-partitions").click();
-      await findAction(page, "Add Partitions…");
+      // The tree's selection is a group, and focus stays in the tree: the tab's buttons still act on its own topic.
+      await selectStreamRow(page, "consumerGroup", kafka.billing);
+      const add = tab.getByTestId("topic-add-partitions");
+      await disabled(add).toBe(false);
+      await disabled(tab.getByTestId("topic-delete-records")).toBe(false);
+      await capture(page, "07-partitions-toolbar");
+      await add.click();
       const grow = page.getByTestId("add-partitions-dialog");
+      await text(grow).toContain(`Add Partitions to ${kafka.created}`);
       await text(grow).toContain("land on another partition");
       await grow.getByTestId("add-partitions-total").fill("2");
       await capture(page, "07-admin");
@@ -619,8 +626,10 @@ describe.runIf(DATABASES_ENABLED)("Kafka live test (plan 164)", () => {
 
       const purge = await openTopic(page, kafka.purge);
       await purge.getByTestId("view-partitions").click();
+      await selectStreamRow(page, "consumerGroup", kafka.billing);
       await purge.getByTestId("topic-delete-records").click();
       const records = page.getByTestId("delete-records-dialog");
+      await text(records).toContain(`Delete Records of ${kafka.purge}`);
       await records.getByTestId("delete-boundary").fill("3");
       await records.getByRole("button", { name: "Preview", exact: true }).click();
       await shown(records.getByTestId("delete-records-preview"));

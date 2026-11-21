@@ -129,9 +129,12 @@ export interface Action<A = void> {
    * Whether the action exists for the active tab at all, as when its datasource's plugin lacks the
    * capability (decision 007); absent means always. Unavailable actions leave the palette and never run.
    */
-  readonly available?: (context: ActionContext) => boolean;
-  /** Whether the action can run now; absent means always. */
-  readonly when?: (context: ActionContext) => boolean;
+  readonly available?: (context: ActionContext, args?: A) => boolean;
+  /**
+   * Whether the action can run now; absent means always. `args` are what a button inside a tab
+   * passes, so its state follows the thing it acts on rather than the tree's selection.
+   */
+  readonly when?: (context: ActionContext, args?: A) => boolean;
   /**
    * Whether the work this action starts is under way now, so its buttons show progress rather than
    * look idle, as Run spins while its console runs (plan 112); absent means never.
@@ -155,9 +158,9 @@ export interface ActionRegistry {
   register(actions: readonly AnyAction[]): void;
   /** The only way anything runs a command. */
   invoke(id: string, args?: unknown): InvokeOutcome;
-  isEnabled(id: string, context?: ActionContext): boolean;
+  isEnabled(id: string, context?: ActionContext, args?: unknown): boolean;
   /** False when the action's `available` says it does not apply now. */
-  isAvailable(id: string, context?: ActionContext): boolean;
+  isAvailable(id: string, context?: ActionContext, args?: unknown): boolean;
   /** False for an unknown action or one without `busy`. */
   isBusy(id: string, context?: ActionContext): boolean;
   get(id: string): AnyAction | undefined;
@@ -173,10 +176,10 @@ export function createActionRegistry(
   const actions = new Map<string, AnyAction>();
   const listeners = new Set<(id: string) => void>();
 
-  function enabled(action: AnyAction, context: ActionContext): boolean {
+  function enabled(action: AnyAction, context: ActionContext, args: unknown): boolean {
     if (action.tabKind !== undefined && context.activeTab?.kind !== action.tabKind) return false;
-    if (action.available?.(context) === false) return false;
-    return action.when?.(context) ?? true;
+    if (action.available?.(context, args as never) === false) return false;
+    return action.when?.(context, args as never) ?? true;
   }
 
   return {
@@ -195,7 +198,7 @@ export function createActionRegistry(
       const action = actions.get(id);
       if (action === undefined) return "unknown";
       const context = contextOf();
-      if (!enabled(action, context)) return "disabled";
+      if (!enabled(action, context, args)) return "disabled";
       try {
         void Promise.resolve(action.run(context, args as never)).catch((cause: unknown) => reportFailure(id, cause));
       } catch (cause) {
@@ -204,13 +207,13 @@ export function createActionRegistry(
       for (const listener of listeners) listener(id);
       return "ran";
     },
-    isEnabled(id, context = contextOf()) {
+    isEnabled(id, context = contextOf(), args) {
       const action = actions.get(id);
-      return action !== undefined && enabled(action, context);
+      return action !== undefined && enabled(action, context, args);
     },
-    isAvailable(id, context = contextOf()) {
+    isAvailable(id, context = contextOf(), args) {
       const action = actions.get(id);
-      return action !== undefined && (action.available?.(context) ?? true);
+      return action !== undefined && (action.available?.(context, args as never) ?? true);
     },
     isBusy(id, context = contextOf()) {
       return actions.get(id)?.busy?.(context) ?? false;

@@ -92,10 +92,10 @@ export function subscribeToActions(listener: () => void): () => void {
   return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
 }
 
-/** Whether `id` can run now, re-read whenever a store it might depend on changes. */
-export function useActionEnabled(id: string): boolean {
+/** Whether `id` can run now with `args`, re-read whenever a store it might depend on changes. */
+export function useActionEnabled(id: string, args?: unknown): boolean {
   const tabId = useContext(ActionTabContext);
-  return useSyncExternalStore(subscribeToActions, () => registry.isEnabled(id, currentContext(tabId)));
+  return useSyncExternalStore(subscribeToActions, () => registry.isEnabled(id, currentContext(tabId), args));
 }
 
 /** `firstEnabledAction` over `ids`, re-read like `useActionEnabled`. */
