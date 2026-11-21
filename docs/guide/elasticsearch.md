@@ -47,8 +47,12 @@ request or a tab opened by name still reaches any of them.
   _Last 15 minutes_ by default, sorts newest first and draws a histogram of the hits over the
   range above the grid, with the hits per bar its height stands for and the time, in UTC, under
   every quarter; a bar the range cuts short reads paler. The footer says how many shards the range let the cluster skip.
-- **Paging.** The grid fetches pages as you scroll, through a scroll context that is cleared when
-  the result is released, the tab closes or the last page arrives.
+- **Paging.** The first page is a plain search that leaves nothing open on the cluster. Scrolling
+  the grid past it opens a point in time (Elasticsearch 7.10+, OpenSearch 2.4+) and reads on from
+  the last row shown, so no row repeats or goes missing; older servers use a scroll. Either is
+  released when the last page arrives, the result is released, the tab closes or the connection
+  ends. A cluster that refuses the release gets one warning, and the cursor expires after 5
+  minutes. On OpenSearch, paging past the first page sorts by `_id` as a tiebreaker.
   The footer reads `1–100 of 2,431 hits · took 6 ms · 5 shards`; past 10,000 the count reads
   `≥ 10,000`. Shard failures show as a warning with the reason.
 - **Memory.** A search keeps at most 128 MB of rows; past that the footer says it stopped, and a
