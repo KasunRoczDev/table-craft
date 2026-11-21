@@ -22,6 +22,7 @@ const TOPIC_MENU = [
   TOPIC_ACTION_IDS.copyName,
   null,
   TOPIC_ACTION_IDS.toggleInternal,
+  TOPIC_ACTION_IDS.manageShown,
 ] as const;
 
 const GROUP_MENU = [
@@ -43,6 +44,7 @@ const STREAM_MENU = [
   ACTION_IDS.copyName,
   null,
   TOPIC_ACTION_IDS.toggleInternal,
+  TOPIC_ACTION_IDS.manageShown,
 ] as const;
 
 /** A stream tree row's context menu (decision 169); null for any other row. */

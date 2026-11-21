@@ -170,11 +170,28 @@ export async function setShownNamespaces(
   view: DatasourceView,
   shownNamespaces: readonly string[] | undefined,
 ): Promise<boolean> {
-  const { storedSecrets: _stored, ephemeral: _ephemeral, shownNamespaces: _previous, ...datasource } = view;
+  return saveShown(view, "shownNamespaces", shownNamespaces, "Could not save the shown schemas");
+}
+
+/** Saves which topics a stream datasource's tree lists, as `setShownNamespaces` does namespaces. */
+export async function setShownTopics(
+  view: DatasourceView,
+  shownTopics: readonly string[] | undefined,
+): Promise<boolean> {
+  return saveShown(view, "shownTopics", shownTopics, "Could not save the shown topics");
+}
+
+async function saveShown(
+  view: DatasourceView,
+  field: "shownNamespaces" | "shownTopics",
+  names: readonly string[] | undefined,
+  failure: string,
+): Promise<boolean> {
+  const { storedSecrets: _stored, ephemeral: _ephemeral, [field]: _previous, ...datasource } = view;
   const saved = await settle(
-    "Could not save the shown schemas",
+    failure,
     bridge().saveDatasource({
-      datasource: { ...datasource, ...(shownNamespaces === undefined ? {} : { shownNamespaces }) },
+      datasource: { ...datasource, ...(names === undefined ? {} : { [field]: names }) },
       secrets: {},
     }),
   );

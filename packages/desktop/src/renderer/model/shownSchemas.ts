@@ -1,7 +1,11 @@
 import type { Namespace } from "@table-craft/desktop/engine/protocol.js";
 
-/** The namespaces whose name holds `query`, ignoring case; all of them for a blank query. */
-export function matchingNamespaces(namespaces: readonly Namespace[], query: string): readonly Namespace[] {
+interface Named {
+  readonly name: string;
+}
+
+/** The items whose name holds `query`, ignoring case; all of them for a blank query. */
+export function matchingNamespaces<T extends Named>(namespaces: readonly T[], query: string): readonly T[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") return namespaces;
   return namespaces.filter((namespace) => namespace.name.toLowerCase().includes(needle));
@@ -33,8 +37,8 @@ export function withNames(selected: ReadonlySet<string>, names: readonly string[
   return next;
 }
 
-/** How many of the listed namespaces `selected` keeps; null keeps them all. */
-export function selectedCount(namespaces: readonly Namespace[], selected: ReadonlySet<string> | null): number {
+/** How many of the listed items `selected` keeps; null keeps them all. */
+export function selectedCount(namespaces: readonly Named[], selected: ReadonlySet<string> | null): number {
   if (selected === null) return namespaces.length;
   return namespaces.filter((namespace) => selected.has(namespace.name)).length;
 }

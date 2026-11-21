@@ -17,7 +17,10 @@ subjects whose names match; a console command or a tab opened by name still reac
 - **Database tree.** **Topics** with their full names, folded on the part before the first `.`
   when two or more topics share it (and not every topic does), each with its partition count and
   an estimated message count, such as `12 partitions · ~3.4 M messages`. **Show Internal Topics**
-  lists Kafka's own. **Consumer groups** with their state and total lag; a lag above the data
+  lists Kafka's own. **Manage Shown Topics…**, on the data source or a topic, picks which topics
+  the tree lists, with a search box and **All topics** to list every one again; the data source
+  row then reads `3 of 120`. Topics created later stay hidden until you pick them, and a console
+  command or a tab opened by name still reaches any topic. **Consumer groups** with their state and total lag; a lag above the data
   source's **Lag warning** shows a warning sign and the word _lagging_. **Brokers**, the controller
   marked. **Subjects** of the Schema Registry, with their latest version and type.
 - **Reading a topic never joins a group.** A topic tab reads partitions directly, so it commits no

@@ -129,6 +129,21 @@ describe("datasource store", () => {
     );
   });
 
+  it("givenShownTopics_whenSavedAndLoaded_thenRoundTrip", async () => {
+    const { files, store: first } = store();
+    const filtered = { ...LOCAL_PG, shownTopics: ["orders.v1", "audit.log"] };
+    await first.save({ folders: [], datasources: [filtered, LOCAL_PG] });
+
+    const reloaded = await createDatasourceStore({ directory: DIRECTORY, files }).load();
+
+    expect(reloaded.datasources).toEqual([filtered, LOCAL_PG]);
+    expect(reloaded.datasources[1]).not.toHaveProperty("shownTopics");
+    expect(toDatasource(filtered, LOCAL_PG.id, POSTGRES_MANIFEST.connection.fields).shownTopics).toEqual([
+      "orders.v1",
+      "audit.log",
+    ]);
+  });
+
   it("givenBrand_whenDatasourcesSavedAndLoaded_thenKept", async () => {
     const { files, store: first } = store();
     const tidb = { ...LOCAL_PG, pluginId: "mysql", brand: "tidb" };

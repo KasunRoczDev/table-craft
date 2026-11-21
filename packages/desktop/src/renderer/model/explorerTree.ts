@@ -27,6 +27,7 @@ import {
 import {
   EMPTY_STREAMS,
   lagWarningOf,
+  shownTopicFilter,
   streamRows,
   type DatasourceStreams,
   type StreamTreeNode,
@@ -536,7 +537,11 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
       keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
     };
     const streams = builder.input.streams?.[datasource.id] ?? EMPTY_STREAMS;
-    const options = { showInternal: builder.input.showSystem, lagWarning: lagWarningOf(datasource.config) };
+    const options = {
+      showInternal: builder.input.showSystem,
+      lagWarning: lagWarningOf(datasource.config),
+      shown: shownTopicFilter(datasource),
+    };
     streamRows(sink, datasource.id, streams, options, depth + 1);
     return;
   }

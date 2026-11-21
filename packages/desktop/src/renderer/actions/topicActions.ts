@@ -21,6 +21,7 @@ import { DEFAULT_DRAFT, type ReadDraft } from "@table-craft/desktop/renderer/mod
 import { writeClipboard } from "@table-craft/desktop/renderer/state/clipboard.js";
 import { useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
 import { topicFormatKey, useLayout } from "@table-craft/desktop/renderer/state/layout.js";
+import { useManageShownSchemasDialog } from "@table-craft/desktop/renderer/state/manageShownSchemasDialog.js";
 import { useModal } from "@table-craft/desktop/renderer/state/modal.js";
 import { rowAt } from "@table-craft/desktop/renderer/state/resultTab.js";
 import { toError } from "@table-craft/desktop/renderer/state/resultWindows.js";
@@ -66,6 +67,7 @@ export const TOPIC_ACTION_IDS = {
   openMessageInConsole: "topic.openMessageInConsole",
   openAt: "topic.openAt",
   toggleInternal: "topic.toggleInternal",
+  manageShown: "topic.manageShown",
 } as const;
 
 /** A message to open the topic at, as the Live Tail's row action names it. */
@@ -657,6 +659,17 @@ export const TOPIC_ACTIONS: readonly AnyAction[] = [
     category: "Streams",
     available: streams,
     run: () => useLayout.getState().toggleSystemSchemas(),
+  }),
+  defineAction({
+    id: TOPIC_ACTION_IDS.manageShown,
+    title: "Manage Shown Topics…",
+    category: "Streams",
+    available: streams,
+    when: (context) => context.datasource !== null && !context.datasource.view.ephemeral,
+    run: (context) => {
+      if (context.datasource !== null)
+        useManageShownSchemasDialog.getState().show(context.datasource.view.id, "topics");
+    },
   }),
 ];
 
