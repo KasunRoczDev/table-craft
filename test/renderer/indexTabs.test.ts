@@ -79,11 +79,18 @@ const HISTOGRAM: SearchHistogram = {
 interface EngineOptions {
   readonly timeField?: string | null;
   readonly refuse?: boolean;
+  /** Requests the cluster refuses for want of a privilege, as per-index-pattern permissions do. */
+  readonly deny?: readonly string[];
 }
 
-function searchEngine({ timeField = "@timestamp", refuse = false }: EngineOptions = {}) {
+const DENIED = "This user lacks the privilege for indices:data/read/search (read or all): unauthorized";
+
+function searchEngine({ timeField = "@timestamp", refuse = false, deny = [] }: EngineOptions = {}) {
   let searches = 0;
   const call = vi.fn((type: string, _params?: unknown): Promise<unknown> => {
+    if (deny.includes(type)) {
+      return Promise.reject(new EngineRequestError({ code: "statementFailed", message: DENIED, hint: "Fix it." }));
+    }
     if (type === "session.open") {
       const opened: OpenedSession = {
         sessionId: "s1",
@@ -197,6 +204,41 @@ describe("index tabs", () => {
     const tab = tabs.getState().tabs["index-0"];
     expect(tab?.queryError?.message).toBe("Failed to parse query");
     expect(tab).toMatchObject({ error: null, status: "ready", result: null });
+  });
+
+  it("givenSearchForbidden_whenRun_thenThePrivilegeShowsInlineAndTheOtherViewsKeepWorking", async () => {
+    const engine = searchEngine({ deny: ["indices.open", "indices.histogram"] });
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    await Promise.resolve();
+    const tab = tabs.getState().tabs["index-0"];
+    expect(tab?.queryError?.message).toBe(DENIED);
+    expect(tab).toMatchObject({ error: null, status: "ready", histogramError: null, kind: "alias" });
+    tabs.getState().setAnalyzeDraft("index-0", { field: "message", text: "The" });
+    await tabs.getState().analyze("index-0");
+    expect(tabs.getState().tabs["index-0"]?.analysis).toHaveLength(2);
+  });
+
+  it("givenHistogramForbidden_whenRun_thenHitsStandAndTheRefusalShowsInline", async () => {
+    const engine = searchEngine({ deny: ["indices.histogram"] });
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    await vi.waitFor(() => expect(tabs.getState().tabs["index-0"]?.histogramError?.message).toBe(DENIED));
+    const tab = tabs.getState().tabs["index-0"];
+    expect(tab).toMatchObject({ error: null, queryError: null, status: "ready", histogram: null });
+    expect(tab?.result?.windows[0]).toHaveLength(2);
+  });
+
+  it("givenAnalyzeForbidden_whenAnalyzed_thenTheRefusalShowsInTheAnalyzeViewOnly", async () => {
+    const engine = searchEngine({ deny: ["indices.analyze"] });
+    const tabs = store(engine);
+    await tabs.getState().open("index-0", TARGET);
+    tabs.getState().setAnalyzeDraft("index-0", { field: "message", text: "The" });
+    await tabs.getState().analyze("index-0");
+    const tab = tabs.getState().tabs["index-0"];
+    expect(tab?.analyzeError?.message).toBe(DENIED);
+    expect(tab).toMatchObject({ error: null, queryError: null, status: "ready", analyzing: false });
+    expect(tab?.result?.windows[0]).toHaveLength(2);
   });
 
   it("givenAnalyzeDraft_whenAnalyzed_thenStepsKept", async () => {
