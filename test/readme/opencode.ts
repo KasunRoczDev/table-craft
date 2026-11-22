@@ -59,7 +59,7 @@ function text(value: unknown): string {
 const CODE_MODE_TOOL = "execute";
 const MCP_CALL = /tools\.(\w+)\.(\w+)\(/g;
 const STRING_ARGUMENT = (key: string) => new RegExp(`${key}\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
-const SHOWN_ARGUMENTS = ["sql", "table", "schema", "datasource"] as const;
+const SHOWN_ARGUMENTS = ["sql", "table", "schema", "index", "datasource"] as const;
 const NAMES_SHOWN = 4;
 
 /**
@@ -111,6 +111,7 @@ function summary(answer: Record<string, unknown>): string | null {
   if (Array.isArray(answer.tables)) return names(answer.tables, "name");
   if (Array.isArray(answer.schemas)) return names(answer.schemas, "schema");
   if (Array.isArray(answer.items)) return names(answer.items, "path");
+  if (typeof answer.index === "string" && answer.searched === true) return `${answer.index} open and searched`;
   const table = record(answer.table);
   if (Array.isArray(table.columns)) return `${String(table.columns.length)} columns: ${names(table.columns, "name")}`;
   // Code mode returns what the script built, often an object holding several answers.
