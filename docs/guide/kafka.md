@@ -9,6 +9,8 @@ machine running TableCraft must reach those addresses; an SSH tunnel to the boot
 would not, and the form offers none. A **Schema Registry URL**, with basic authentication if it asks
 for one, lets TableCraft decode and encode Avro, Protobuf and JSON Schema messages.
 
+![An orders topic read and filtered to one customer, an Avro message decoded through the Schema Registry, then a consumer group lagging behind](../media/kafka.gif)
+
 TableCraft checks on connect that the brokers answer the requests it needs, and names the missing
 one when they do not. On a cluster shared by many teams, the advanced **Name filter** (globs
 separated by commas, such as `orders.*, payments.*`) lists only the topics, consumer groups and

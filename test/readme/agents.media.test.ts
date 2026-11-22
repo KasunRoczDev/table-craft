@@ -5,16 +5,19 @@
  * transcript drawn over the window shows what it called and said, the side of the conversation the
  * app's window does not hold. The third is the same run in the OpenCode TUI, in a Warp window filmed
  * beside the app (`warp.ts`, macOS only). The fourth, in Warp too, has OpenCode draft and edit a
- * console of its own and open a table filtered (plan 156). Recorded by `bun run readme:media` like
- * the others.
+ * console of its own and open a table filtered (plan 156). The fifth, transcribed like the second, has
+ * it search the demo Elasticsearch and open an index tab on what it found (plan 167). Recorded by
+ * `bun run readme:media` like the others.
  */
 import type { ElectronApplication, Page } from "playwright-core";
 import { beforeAll, expect } from "vitest";
+import { LIVE_LOG_ALIAS } from "../e2e/elasticsearchLive.js";
 import { freePort } from "../e2e/mcpAgent.js";
 import { chooseOption, editorTabs, findAction, LAUNCH_TIMEOUT_MS, optionValue, showServices } from "../e2e/harness.js";
 import { callLine, EVENT_LOG, opencodeModel, OpencodeFolder, requireOpencode, resultLine } from "./opencode.js";
 import { clickVisibly, pause, pointAt } from "./pace.js";
 import { connect, datasourceRow, mediaSuite, PASSWORD, READ_PAUSE_MS, scene, SHOP } from "./scenes.js";
+import { loadShopElasticsearch, SHOP_SEARCH_DATASOURCE, stopShopElasticsearch } from "./shopServers.js";
 import { endCaptures, openWarp, placeBeside, recordBeside, requireWarp, type WarpTerminal } from "./warp.js";
 
 const CLIENT = "OpenCode";
@@ -28,6 +31,10 @@ const CONSOLES_PROMPT =
   "(its customer_revenue view has their spend), " +
   "then edit that console to add each one's city. Then open the orders table filtered to the top customer. " +
   "Do not run the console.";
+const SEARCH_PROMPT =
+  "In TableCraft's search datasource, find which pods logged errors to checkout-logs in the last hour, " +
+  "then open checkout-logs in TableCraft showing the last hour's errors, newest first. " +
+  "Use only the tablecraft tools.";
 /** A model thinks for seconds with nothing on screen moving; the GIF holds such a frame this long. */
 const MAX_THINKING_SECONDS = 1;
 const AGENT_SCENE_TIMEOUT_MS = 300_000;
@@ -293,6 +300,48 @@ mediaSuite("README agent media", () => {
       await showAgentConsole(page);
     },
   });
+
+  scene("agents-elasticsearch", {
+    withoutShop: true,
+    alsoSaved: [{ ...SHOP_SEARCH_DATASOURCE, agentAccess: "read" }],
+    settings: () => ({ mcp: { enabled: true, port, clients: [{ name: OPENCODE_CLIENT, allowed: true }] } }),
+    prepare: loadShopElasticsearch,
+    maxFrameSeconds: MAX_THINKING_SECONDS,
+    timeoutMs: AGENT_SCENE_TIMEOUT_MS,
+    setup: async ({ app, page }) => {
+      requireOpencode();
+      await expect.poll(() => chip(page).isVisible(), { timeout: LAUNCH_TIMEOUT_MS }).toBe(true);
+      folder = new OpencodeFolder(await copiedConfig(app, page));
+    },
+    teardown: async () => {
+      await folder?.dispose();
+      folder = null;
+      stopShopElasticsearch();
+    },
+    run: async ({ page }) => {
+      await say(page, "prompt", SEARCH_PROMPT);
+      let shown = Promise.resolve();
+      const show = (kind: LineKind, line: string) => {
+        shown = shown.then(() => say(page, kind, line));
+      };
+      const agent = folder!.run(SEARCH_PROMPT, (event) => {
+        if (event.kind === "error") show("wait", event.message);
+        else if (event.kind === "text") show("reply", event.text);
+        else {
+          show("call", callLine(event.tool, event.input));
+          show(event.failed ? "wait" : "ok", resultLine(event.output));
+        }
+      });
+      try {
+        expect(await agent.exited, `OpenCode failed; its events are in ${EVENT_LOG}`).toBe(0);
+        await shown;
+      } finally {
+        agent.stop();
+      }
+      await pause(page, READ_PAUSE_MS);
+      await showAgentIndex(page);
+    },
+  });
 });
 
 /**
@@ -351,6 +400,23 @@ async function showAgentConsole(page: Page): Promise<void> {
   await expect.poll(() => drafted.getAttribute("aria-selected")).toBe("true");
   await pointAt(page, drafted.getByTestId("tab-agent"));
   await pause(page, READ_PAUSE_MS);
+}
+
+/**
+ * Ends on the index tab the agent opened, its query and time range the agent's. The transcript
+ * goes first: it covers the tab's search bar.
+ */
+async function showAgentIndex(page: Page): Promise<void> {
+  const tab = page.getByTestId("index-tab").filter({ visible: true });
+  await tab.waitFor({ timeout: LAUNCH_TIMEOUT_MS });
+  await expect.poll(() => tab.getByTestId("index-header").textContent()).toContain(LIVE_LOG_ALIAS);
+  await page.evaluate(`document.getElementById(${JSON.stringify(TRANSCRIPT_ID)})?.remove()`);
+  await pause(page);
+  await pointAt(page, tab.getByTestId("index-query"));
+  await pause(page, READ_PAUSE_MS);
+  await pointAt(page, tab.getByTestId("index-range"));
+  await pause(page, READ_PAUSE_MS);
+  await pointAt(page, tab.getByTestId("index-header"));
 }
 
 /** Ends on the write in the Services tree, where the app logs every call an agent made. */

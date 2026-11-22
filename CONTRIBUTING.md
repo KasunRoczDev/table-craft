@@ -245,9 +245,11 @@ platform. `verify` and the macOS packages must pass; Windows and Linux are best-
   images, links and anchors, the shortcut table, the settings table, the themes, the plugin
   capabilities and the scripts above.
 - Re-record a GIF with `bun run readme:media` when the scene it shows changed
-  ([036](docs/decisions/036-readme-media-is-recorded-by-a-script.md)). The `agents-approval` scene
-  runs the real `opencode` CLI, so it needs OpenCode signed in to a model; `README_OPENCODE_MODEL`
-  picks it. `agents-warp` runs the OpenCode TUI in a Warp window beside the app and films it, so it
+  ([036](docs/decisions/036-readme-media-is-recorded-by-a-script.md)). The `kafka`, `elasticsearch`
+  and `agents-elasticsearch` scenes start disposable `table-craft-readme-*` containers of their own
+  (`test/readme/shopServers.ts`) and remove them after. The `agents-approval` and
+  `agents-elasticsearch` scenes run the real `opencode` CLI, so they need OpenCode signed in to a
+  model; `README_OPENCODE_MODEL` picks it. `agents-warp` runs the OpenCode TUI in a Warp window beside the app and films it, so it
   also needs macOS, Warp, and Screen Recording allowed for the terminal running the suite.
 - The README opens with a demo video cut by `bun run demo:video` into
   `dist/demo-video/tablecraft-demo.mp4`. [scripts/demo-video/storyboard.ts](scripts/demo-video/storyboard.ts)

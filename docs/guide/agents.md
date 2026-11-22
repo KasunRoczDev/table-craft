@@ -67,6 +67,8 @@ TableCraft, and every agent statement is kept in the query history, tagged with 
 
   ![OpenCode in a terminal drafts a console, edits it and opens orders filtered](../media/agents-consoles.gif)
 
+  ![OpenCode searches the checkout logs on Elasticsearch, then opens the index on the last hour's errors](../media/agents-elasticsearch.gif)
+
 - **Watching.** The chip's popover lists connected clients and their last call, with Pause, Agent
   Activity (every call this run, filtered by client and outcome) and Settings. Services shows an
   **Agents** node with each statement still running and a Cancel. A call's time leaves out the

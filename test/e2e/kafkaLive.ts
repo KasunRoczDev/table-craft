@@ -135,7 +135,7 @@ export function avroOrder(schemaId: number, order: { id: string; customer: strin
   return Buffer.concat([header, avroString(order.id), avroString(order.customer), avroDouble(order.amount)]);
 }
 
-function toProduce(topic: string, message: SeedMessage): MessageToProduce {
+export function toProduce(topic: string, message: SeedMessage): MessageToProduce {
   return {
     topic,
     ...(message.partition === undefined ? {} : { partition: message.partition }),

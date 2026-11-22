@@ -92,7 +92,8 @@ async function bodyOf(request: IncomingMessage): Promise<Record<string, unknown>
   return text === "" ? {} : (JSON.parse(text) as Record<string, unknown>);
 }
 
-export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
+/** Listens on `port` when given, so a datasource saved before the mock starts can name its URL. */
+export async function startSchemaRegistryMock(options: { readonly port?: number } = {}): Promise<SchemaRegistryMock> {
   const schemas = new Map<number, StoredSchema>();
   const subjects = new Map<string, StoredVersion[]>();
   const levels = new Map<string, string>();
@@ -313,7 +314,10 @@ export async function startSchemaRegistryMock(): Promise<SchemaRegistryMock> {
       },
     );
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(options.port ?? 0, "127.0.0.1", resolve);
+  });
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${String(port)}`,
