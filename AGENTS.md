@@ -49,8 +49,10 @@ unset). The next run recreates and reseeds them. Never take down another checkou
 - `bun run readme:media` - record the GIFs of the README and the guide into `docs/media/` (decision 036): builds the app,
   reloads the demo `shop` database in the `test:db:postgres` Postgres and the demo keys in db 3 of
   the `test:db:redis` Redis, starts a disposable etcd with the `/shop/` keys of
-  `test/readme/shop.etcd` for `etcd.gif`, and drives one scene per GIF. Needs Docker, ffmpeg and a display, and
-  `agents-approval` the `opencode` CLI signed in to a model (`README_OPENCODE_MODEL`, default
+  `test/readme/shop.etcd` for `etcd.gif`, a disposable Kafka with an in-process Schema Registry for
+  `kafka.gif` and a disposable Elasticsearch for `elasticsearch.gif` and `agents-elasticsearch.gif`
+  (`test/readme/shopServers.ts`), and drives one scene per GIF. Needs Docker, ffmpeg and a display, and
+  `agents-approval` and `agents-elasticsearch` the `opencode` CLI signed in to a model (`README_OPENCODE_MODEL`, default
   `anthropic/claude-sonnet-5-5`), `agents-warp` that and Warp on macOS, Screen Recording allowed for
   the terminal; `README_MEDIA=explain,grid` re-records only those. Re-record after a UI change a GIF shows
 - `bun run demo:video` - the README's demo video: records the scenes of
