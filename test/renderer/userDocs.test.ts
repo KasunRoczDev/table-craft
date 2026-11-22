@@ -69,9 +69,6 @@ const MENU_PATH_SEPARATOR = "→";
 const OTHER_MENU_SEPARATORS = /›|»|\s>\s/;
 /** Lines that open a list, table, heading, quote, image or HTML block rather than a prose paragraph. */
 const NOT_PROSE = /^(\s*[-*+] |\s*\d+\. |\||#|>|!\[|<|\s{2,}\S)/;
-const NOT_YET_IN_TASK_STYLE = new Set<string>(
-  ["elasticsearch", "etcd", "plugins", "redis"].map((page) => `docs/guide/${page}.md`),
-);
 
 const RANGES: Readonly<Record<string, NumberRange>> = {
   "editor.format.indentWidth": INDENT_WIDTH_RANGE,
@@ -326,7 +323,7 @@ describe("user docs", () => {
   });
 
   it("givenGuidePage_whenParagraphsCounted_thenEachStaysWithinTheWordCap", () => {
-    for (const file of guidePages().filter((page) => !NOT_YET_IN_TASK_STYLE.has(page))) {
+    for (const file of guidePages()) {
       for (const paragraph of proseParagraphs(read(file))) {
         const words = wordCount(paragraph);
         expect(
