@@ -3,6 +3,8 @@
 The console's editor completes names, functions and your own snippets as you type, and jumps from a
 name to where it is defined. Completion runs in the engine against a cache of the catalog.
 
+![Completion and navigation](../media/completion.gif)
+
 ## Completion
 
 ### Complete a name
@@ -44,15 +46,12 @@ another. TableCraft runs the `USE` or `SET search_path` for you.
 Choose **Go to Declaration** or press `⌘B`. On an alias it moves the caret to where the alias is
 defined, and on a table it opens the table's DDL.
 
-![Completion and navigation](../media/completion.gif)
-
 See [Completion and navigation](../design/specification.md#completion-and-navigation).
 
 ## Snippets
 
 A snippet is a template you insert from completion by typing its prefix. The list starts empty.
-Open **Find Action** and choose **Snippets…** to create, search, edit, preview or delete your
-templates.
+The **Snippets** dialog is where you create, search, edit, preview and delete your templates.
 
 ### Create a snippet
 
@@ -60,7 +59,7 @@ templates.
 2. Click **+ New Snippet**.
 3. Fill in **Name**, **Prefix** (the completion prefix) and **Snippet body**.
 4. Under **Applies to**, choose where the snippet works.
-5. Click **Create Snippet**.
+5. Click **Save**.
 
 The snippet now shows in completion when you type its prefix in a matching console.
 
@@ -103,7 +102,7 @@ A command language without a recognized highlighter uses plain text, with no SQL
 
 ![Snippets](../media/snippets.gif)
 
-### Where snippets are kept
+### Find the snippets file
 
 Snippets are saved in `snippets.json` in your [profile folder](data-and-privacy.md), separately from
 settings. Their bodies are plain text, so keep passwords and other secrets out of them.

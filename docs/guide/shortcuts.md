@@ -45,7 +45,7 @@ marked **Modified**, with a button that puts it back; **Restore Defaults** puts 
 Tab reaches the list, the arrow keys move between rows, Enter records a shortcut and Delete removes
 the row's last one.
 
-### Where shortcuts are kept
+### Find the shortcuts file
 
 The shortcuts live in `keymap` in [`settings.json`](settings.md#settings-file), which lists only the
 ones you changed; the table below shows the defaults.

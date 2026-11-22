@@ -3,9 +3,7 @@
 TableCraft ships its own Dark, Light and High contrast themes and 43 more ported from the
 [openchamber](https://github.com/openchamber/openchamber) palettes by way of preman.
 
-## Choosing a theme
-
-### Choose a theme
+## Choose a theme
 
 1. Open **Settings → Appearance → Theme**.
 2. Type to filter the list.

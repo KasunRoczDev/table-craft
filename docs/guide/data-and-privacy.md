@@ -1,7 +1,7 @@
 # Where your data lives
 
-TableCraft keeps what it saves in one profile folder on your machine. This page lists what is in it
-and what TableCraft sends over the network.
+TableCraft keeps what it saves in one profile folder on your machine. Besides your databases, it
+talks only to GitHub and the npm registry.
 
 ## Profile folder
 

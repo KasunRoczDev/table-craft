@@ -18,8 +18,8 @@ or with **None** in **Authentication**.
 
 ### Show only the keys under a prefix
 
-Type the prefix in **Namespace prefix**. The namespace is only a view and grants no permission: leases, users, roles and
-maintenance still act on the whole cluster, and the app says so each time.
+Type the prefix in **Namespace prefix**. The namespace is only a view and grants no permission:
+leases, users, roles and maintenance still act on the whole cluster, and the app says so each time.
 
 ### Read from the nearest member
 
@@ -31,7 +31,8 @@ answers alone, and results are marked as possibly stale.
 Keys sit in folders split on `/`, listed from the server 500 at a time per folder. Folders show
 their counts as they scroll into view, and a key with a lease shows its time to live beside it.
 
-You can filter by prefix, by range, by name among the loaded keys, or to leased keys only.
+To narrow the tree, use the filter row: filter by prefix, by range or by name among the loaded keys,
+or tick **Leased only**.
 
 ### List keys only when asked
 
@@ -40,8 +41,9 @@ Tick **Load keys only when asked** under Options in the Data Sources dialog. **K
 
 ### Delete keys
 
-Deleting a key or a folder previews the keys first, and fails if any of them changed since. A
-whole-keyspace or very large delete asks you to type the prefix.
+Right-click a key and choose **Delete Key**, or a folder and choose **Delete Keys Under Folder…**,
+then click **Delete**. The dialog previews the keys first, and the delete fails if any of them
+changed since. A whole-keyspace or very large delete asks you to type the prefix.
 
 ## Key editor
 
@@ -52,7 +54,8 @@ version, its create and mod revisions, and its lease. **Submit** writes one guar
 ### Merge a change someone else made
 
 When another client changed the key since you read it, the merge view shows theirs, yours and the
-result side by side. Choose **Save Merged**, **Discard mine, use theirs** or **Cancel**.
+result side by side. Choose **Save Merged** to submit the result, or **Discard mine, use theirs**
+to drop your edits and read their value again. **Cancel** closes the merge view.
 
 ### Restore an earlier version
 
@@ -109,7 +112,8 @@ operations, nested transactions included. The builder stays in step with the con
 
 ## Import and export
 
-You can export a key range to a file at one revision, and import one back. An interrupted run
+To export a key range to a file at one revision, choose **Export Key Range to JSON…**, and to
+import one back, **Import Keys from JSON…**. An interrupted run
 resumes after the last confirmed chunk. Files are chosen in the system dialog and never overwrite an
 existing one.
 

@@ -99,8 +99,8 @@ unsaved edits.
 To run `.sql` files without opening them, right-click a data source or schema in the Database pane
 and choose **Run SQL Script…**. The files are streamed, so a large dump does not fill memory.
 
-Progress shows under **SQL Scripts** in Services, where you can cancel the run. Failures ask Skip,
-Skip All, Stop or Retry, as in a console.
+Progress shows under **SQL Scripts** in Services, where you can cancel the run. Failures ask
+**Skip**, **Skip All**, **Stop** or **Retry**, as in a console.
 
 ## Tabs and split view
 
@@ -148,9 +148,9 @@ Defaults** goes back to Settings.
 Both commands work on the statement at the caret:
 
 - **Explain Plan** (`⇧⌘E`): shows how the database would run the statement, as a tree with
-  estimated rows and cost.
+  estimated rows and cost. Use it when you want the plan without running the statement.
 - **Explain Analyse**: runs the statement and adds actual rows, time and loops. It asks first when
-  the statement writes.
+  the statement writes. Use it when you need real timings and can afford to run the statement.
 
 PostgreSQL, MySQL, TiDB and Oracle support both. Oracle's Explain Analyse needs
 `SELECT_CATALOG_ROLE`. SQLite has Explain Plan only.

@@ -7,10 +7,11 @@ console runs SQL and PL/SQL.
 
 ## Connect
 
-1. In **Connect by**, pick **Service name** or **SID**, and fill in the one you picked.
-2. Optionally, pick a **Role**: SYSDBA, SYSOPER or SYSBACKUP.
-3. For SSL, set **SSL mode** to _Verify CA_ or _Verify full_ and give the server's CA file. The
-   connection then goes over TCPS.
+1. In **Connect by**, pick **Service name** or **SID**.
+2. Type the service name or SID in **Service**.
+3. Optionally, pick a **Role**: SYSDBA, SYSOPER or SYSBACKUP.
+4. For SSL, set **SSL mode** to _Verify CA_ or _Verify full_ and give the server's CA file in **SSL
+   root certificate**. The connection then goes over TCPS.
 
 Or paste `oracle://user@host:1521/FREEPDB1` to fill the form in.
 

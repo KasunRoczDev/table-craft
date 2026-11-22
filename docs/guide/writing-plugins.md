@@ -1,7 +1,8 @@
 # Writing plugins
 
-Plugin authors start here: what a manifest declares, the contract suite a plugin should pass, and
-how the plugin API stays compatible. To install or manage plugins, see [Plugins](plugins.md).
+A plugin declares what it can do in its manifest, should pass the contract suite, and builds on a
+plugin API that stays backward compatible within a major version. To install or manage plugins, see
+[Plugins](plugins.md).
 
 ## Capabilities
 

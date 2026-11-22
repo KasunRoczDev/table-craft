@@ -12,12 +12,9 @@ See [Settings and appearance](../design/specification.md#settings-and-appearance
 
 ### Choose a theme
 
-1. Open **Settings → Appearance**.
-2. Open the theme dropdown and type to filter by name or source. The theme under the arrow keys or
-   the mouse previews live.
-3. Press Enter or click to keep it. Escape puts the previous one back.
-
-Follow system picks Dark, Light or High contrast from the operating system. Themes and density
+Pick a theme in **Settings → Appearance**, as [Themes](themes.md#choose-a-theme) shows. Type in
+the theme dropdown to filter by name or source; the theme under the arrow keys or the mouse
+previews live. Follow system picks Dark, Light or High contrast from the operating system. Themes and density
 change live.
 
 ### Zoom the editor font

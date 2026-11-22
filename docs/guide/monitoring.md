@@ -39,8 +39,8 @@ the tab says which grant to ask for.
 
 ### Find a session
 
-Filter by **Hide idle**, **Hide system** or **Blocked only**, or search. Refresh reads the list
-again, and Auto-refresh does so every few seconds.
+Filter by **Hide idle**, **Hide system** or **Blocked only**, or search. **Refresh Sessions** reads
+the list again, and **Auto-Refresh Sessions** does so every few seconds.
 
 ### Stop or inspect a session
 

@@ -1,9 +1,11 @@
 # Redis
 
 The Redis plugin connects to Redis 5.0 or later, as a single server, through Sentinel or as a
-cluster. It [downloads the first time you add a Redis data
+cluster, and [downloads the first time you add a Redis data
 source](plugins.md#databases-in-the-box-and-on-demand). Each database lists its keys in the Database
 pane, a key opens in its own tab, and the console runs commands.
+
+![Browsing the Redis key tree and editing a key in its tab](../media/redis-keys.gif)
 
 ## Connect
 
@@ -67,12 +69,11 @@ counts the TTL down and shows the key's length, memory and encoding.
 ### Edit a key
 
 1. Edit cells, or add and delete rows.
-2. Preview the commands.
-3. Submit them, as one `MULTI`.
+2. Choose **Preview Pending Changes** to read the commands.
+3. Click **Submit**.
 
-If another client changed the key since you read it, you choose to reload or overwrite.
-
-![Browsing the Redis key tree and editing a key in its tab](../media/redis-keys.gif)
+The commands run as one `MULTI`. If another client changed the key since you read it, a banner
+offers **Reload** or **Overwrite**.
 
 ## Console
 

@@ -7,6 +7,8 @@ tab of their own, and an import reads a file into a table.
 
 The grid shows the first page of a result, 500 rows by default.
 
+![Result grid](../media/grid.gif)
+
 ### Fetch more rows
 
 To read past the first page, click **Fetch Next Page** or **Fetch All**.
@@ -23,7 +25,8 @@ sort. `⌥`-click another header to add a second key.
 
 ### Open a value
 
-To read long text or JSON, double-click a cell or press `⇧↩`. The value panel opens. Drag its left edge to widen it, and it keeps that width.
+To read long text or JSON, double-click a cell or press `⇧↩`. The value panel opens. Drag its left
+edge to widen it, and it keeps that width.
 
 The panel shows JSON formatted and coloured. That covers a `json` or `jsonb` column, and a text
 column whose value is a JSON object or array, such as a `varchar` holding
@@ -64,8 +67,6 @@ A finished export stays on the chip for a few seconds, and a failed one turns th
 open it. The grid an export drains shows its rows, clock and a **Cancel** of its own, and Services
 lists the same tasks under **Exports**.
 
-![Result grid](../media/grid.gif)
-
 ### Find in the fetched rows
 
 1. Click in the grid and choose **Find in Result** or press `⌘F`.
@@ -103,7 +104,7 @@ To turn records into columns, choose **Transpose** or press `⌥⌘T`. It helps 
 Choose **Show Chart**, click **Chart** in the grid's toolbar, or press `⌥⌘C`. The rows you have
 fetched are drawn as a chart, in a console result and in the table editor alike.
 
-The first chart is picked from the columns:
+TableCraft picks the kind from the columns:
 
 - a date and a number: a line over time
 - a text column and a number: a bar per value
@@ -182,7 +183,7 @@ An import reads a CSV or TSV file into a table, or into a new one.
 ### Import a file
 
 1. Choose **Import Data from File…** on a table, or **Import Data into New Table…** on a schema.
-2. Pick the file.
+2. Click **Browse…** and pick the file.
 3. Set the delimiter, quote, encoding (UTF-8 or UTF-16, detected by its BOM), header and NULL text.
    The preview shows the first rows with what you chose.
 4. Check how the columns map, by name. For a new table, check the column types it inferred and the
@@ -198,8 +199,9 @@ By default an import is all or nothing: a bad row, a cancel or a dropped connect
 everything back.
 
 - **Commit every N rows**: keeps what was written, and **Resume** carries on from the first row that
-  was not.
-- **Skip**: sets bad rows aside in `<file>.rejected.csv`, with the reason for each.
+  was not. Use it when a large file should not start over after a dropped connection.
+- **Skip up to N rows**: sets bad rows aside in `<file>.rejected.csv`, with the reason for each. Use
+  it when a few bad rows should not stop the rest.
 
 ![Import](../media/import.gif)
 

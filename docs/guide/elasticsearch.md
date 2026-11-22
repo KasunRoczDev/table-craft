@@ -33,8 +33,6 @@ Pick the **TLS** mode:
 The advanced fields take a CA file and a client certificate and key. A cluster behind a proxy that
 serves it under a path, such as `/es`, takes that path in the advanced **Path prefix**.
 
-### How TableCraft reads the version
-
 On connect, TableCraft reads the cluster's version and adapts to it: mapping types on 6.x, the
 shape of hit totals, the date histogram's interval and the SQL endpoint.
 
@@ -68,9 +66,7 @@ names fold on the part before the first `.` when two or more share it.
 Past 200 indices, a filter row sits at the top of the data source's indices. On a smaller cluster,
 choose **Filter Indices…** in the command palette to show it.
 
-1. Type part of a name, or `*` for any characters: `logs-*-2026`.
-2. Press Escape to clear the filter.
-
+Type part of a name, or `*` for any characters: `logs-*-2026`. Press Escape to clear the filter.
 While the filter is set, only the matches stay, inside their families and folders, opened, with
 `12 of 8,760` beside the box.
 
@@ -87,9 +83,9 @@ the time, the level, the message and a few keyword fields. A field missing from 
 
 ### Search an index
 
-1. In the query bar, keep **Lucene** and type a query: `category:coffee AND price:[* TO 20]`. Every
-   term is required unless you write `OR`.
-2. Or pick **DSL** before the query and type a Query DSL object: `{"term": {"sku": "p-1"}}`.
+1. In the query bar, pick **Lucene** or **DSL**.
+2. Type the query. Lucene reads `category:coffee AND price:[* TO 20]`, and every term is required
+   unless you write `OR`. DSL takes a Query DSL object: `{"term": {"sku": "p-1"}}`.
 3. Pick a field to sort on, and its order.
 4. Press Enter or click **Run**.
 
@@ -132,14 +128,11 @@ as JSON.
 
 ### Analyze text
 
-1. Open **Analyze** and pick a text field.
-2. Type some text.
-
-Each step of the field's analyzer shows what it makes of the text: the tokenizer, then each token
+Open **Analyze**, pick a text field and type some text. Each step of the field's analyzer shows what it makes of the text: the tokenizer, then each token
 filter in turn, with the tokens a step dropped struck out. When a query finds nothing because a
 filter dropped a short word, this view shows why.
 
-### Missing permissions
+### Find a missing privilege
 
 A view the signed-in user may not read, such as an index's settings, says so inside that view with
 the cluster's reason, which names the missing privilege. The rest of the tab and the tree keep
@@ -179,7 +172,7 @@ SELECT category, COUNT(*) AS n FROM products GROUP BY category;
   endpoint. On OpenSearch, a line starting with `source=` goes to PPL. Their answers show as a grid.
 - Any other answer shows as JSON in Output.
 
-### Requests that change data
+### Run a request that changes data
 
 Reads run at once. `DELETE <index>` deletes the index and every document in it, so TableCraft asks
 you to type the data source's name first, as it does for a `DROP` in SQL. Deleting `_all`, a data

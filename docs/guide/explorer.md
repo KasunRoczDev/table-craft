@@ -57,6 +57,13 @@ Every change shows the DDL it will run first, and **Open in Console** takes it t
 Drop and Truncate name the object and its row count, and **Cascade** is a checkbox where the
 database has it.
 
+### Change a table
+
+1. Right-click a table in the Database pane and choose **Modify Table…**, or press `⌘F6`.
+2. Change the design in the dialog's tabs.
+3. Read the DDL in the preview under them.
+4. Click **Apply**, or **Open in Console** to run the DDL yourself.
+
 On PostgreSQL and SQLite the change runs in one transaction, so a failing statement leaves nothing
 changed. MySQL commits each DDL statement, and its preview says so. SQLite rebuilds a table for a
 change its `ALTER TABLE` cannot make.

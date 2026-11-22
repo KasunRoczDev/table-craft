@@ -51,11 +51,13 @@ versions too, check **Get beta versions** in **Settings → Advanced**.
 ### Install a missing plugin
 
 A saved data source whose plugin is missing shows greyed in the Database pane with **Install**.
+Click **Install**. The data source shows **Installing…** with the download's progress, and **Retry**
+if it fails.
 
 After an update from a version that had PostgreSQL built in, TableCraft installs it in the
 background on the first start, with no question.
 
-### Plugins built for another plugin API
+### Update a plugin built for an older API
 
 A downloaded plugin built for an older plugin API than this TableCraft cannot run, so it is treated
 as missing. TableCraft downloads the build for this version as soon as it starts, even with
@@ -71,13 +73,13 @@ Updates**.
 
 ### Manage plugins
 
-**Settings → Plugins** lists:
+**Settings → Plugins** lists three kinds of plugin:
 
-- the built-in plugins,
-- the downloaded ones, with their version, **Update** and **Remove**. Remove is refused while a
-  data source uses the plugin, and names it.
-- your own, with **Remove**, which moves the plugin's folder to the Trash. A copy of your own that a
-  downloaded plugin of the same id shadows can always be removed.
+- Built-in plugins ship with TableCraft.
+- Downloaded plugins show their version, **Update** and **Remove**. Remove is refused while a data
+  source uses the plugin, and names it.
+- Your own plugins show **Remove**, which moves the plugin's folder to the Trash. A copy of your
+  own that a downloaded plugin of the same id shadows can always be removed.
 
 With **Check for updates automatically** on, downloaded plugins are checked every 2 hours, and a
 newer compatible version is used from the next connection.

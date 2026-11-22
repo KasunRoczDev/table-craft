@@ -3,7 +3,10 @@
 The Kafka plugin [downloads the first time you add a Kafka data
 source](plugins.md#databases-in-the-box-and-on-demand). Topics, consumer groups, brokers and
 Schema Registry subjects list in the Database pane. A topic opens in a tab that reads its messages,
-a group in a tab that shows its lag, and the console takes `kcat`-shaped commands.
+a group in a tab that shows its lag, and the console takes `kcat`-shaped commands. See
+[decision 169](../decisions/169-stream-services-are-capabilities-with-their-own-tree.md) and
+[decision 171](../decisions/171-the-kafka-plugin-has-its-own-schema-registry-client.md) for the
+design.
 
 ![An orders topic read and filtered to one customer, an Avro message decoded through the Schema Registry, then a consumer group lagging behind](../media/kafka.gif)
 
@@ -43,10 +46,10 @@ The tree has four folders:
 
 1. On the data source or a topic, choose **Manage Shown Topics…**.
 2. Pick the topics, with the search box to find them.
-3. To list every topic again, choose **All topics**.
 
 The data source row then reads `3 of 120`. Topics created later stay hidden until you pick them, and
-a console command or a tab opened by name still reaches any topic.
+a console command or a tab opened by name still reaches any topic. To list every topic again, choose
+**All topics**.
 
 ## Topic tab
 
@@ -99,7 +102,7 @@ the message at that group's committed offset says so.
 - **Copy Message as JSON** copies all of it.
 - **Open Message in Console** writes the `consume` command that reads it again.
 
-### Large messages
+### Read a large message
 
 A message whose key, value or headers run past 1,024 characters shows its first 1,024 characters in
 the grid, ending in `…`. The whole message waits in a temporary file on your disk. The message
@@ -113,7 +116,7 @@ To keep whole messages in memory instead, up to 128 MB a read, turn **Keep large
 off in **Settings → Data Editor** (`data.spillMessages`)
 ([decision 172](../decisions/172-large-stream-messages-spill-to-a-temporary-file.md)).
 
-### Partitions, configs and consumers
+### Check partitions, configs and consumers
 
 - **Partitions** lists leaders, replicas, in-sync replicas (an under-replicated partition says so)
   and watermarks, with **Add Partitions…** and **Delete Records…**.
@@ -218,9 +221,6 @@ The console takes `kcat`-shaped commands with completion: `topics`, `describe`, 
 
 Commands that change the cluster are refused on a read-only data source, and deleting asks you to
 confirm.
-
-See [decision 169](../decisions/169-stream-services-are-capabilities-with-their-own-tree.md) and
-[decision 171](../decisions/171-the-kafka-plugin-has-its-own-schema-registry-client.md).
 
 ## Limits
 

@@ -13,11 +13,14 @@ tabs.
 ### Connect to a database
 
 1. In the Data Sources dialog, click **Add data source**.
-2. Fill in the connection fields. To fill them in at once, paste a connection URL into the URL row
-   or into **Host**, such as `postgresql://alice:secret@db.example.com:5432/sales?sslmode=require`.
-3. Click **Test Connection** before you save.
+2. Pick the database.
+3. Fill in the connection fields.
+4. Click **Test Connection**. It shows the server version and the round trip time.
+5. Click **OK**.
 
-Test Connection shows the server version and the round trip time.
+The dialog saves the data source and closes. To fill in the fields at once in step 3, paste a
+connection URL into the URL row or into **Host**, such as
+`postgresql://alice:secret@db.example.com:5432/sales?sslmode=require`.
 
 ![Connections](../media/connections.gif)
 
@@ -127,7 +130,7 @@ How passwords come along depends on the app:
 
 Untick **Import passwords** to bring none. A data source without a password asks for it on connect.
 
-### What does not import
+### Check what does not import
 
 A few connections do not import fully:
 

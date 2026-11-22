@@ -26,13 +26,14 @@ itself.
 Each data source starts **Off** for agents. Pick its level in the **Data source access** table of
 **Settings → MCP Server**:
 
-- **Off**: agents do not see the data source.
+- **Off**: agents do not see the data source. Use it when the data source should stay out of
+  agents' reach.
 - **Ask before reads**: agents browse schemas, tables, columns and key names. Every query that
   returns rows, and every key value, waits for you to allow it, and writes are refused. Use it when
   the rows themselves are sensitive.
 - **Read only**: agents list schemas and tables, describe a table, read its DDL, run `SELECT`s, and
   explain and format SQL. Their statements run in a read-only session, and anything else is
-  refused.
+  refused. Use it when an agent only needs to read.
 - **Ask before writes**: everything Read only allows, and the agent can also propose one change at
   a time, which runs only after you allow it. Use it when you want an agent to fix data while you
   check each statement.
@@ -50,10 +51,10 @@ minute is denied.
 
 1. Click the amber MCP chip to open the request.
 2. Read the statement and the agent's reason for it.
-3. Choose **Allow Once**, or **Deny**.
+3. Click **Allow Once**.
 
-The statement runs and its result goes back to the agent. A write request can go to **Open in
-Console** instead, where you run it yourself.
+The statement runs and its result goes back to the agent. Click **Deny** to refuse it instead. A
+write request can go to **Open in Console**, where you run it yourself.
 
 ![OpenCode reads freely and asks before it writes](../media/agents-approval.gif)
 
@@ -95,8 +96,10 @@ names the client, the data source and what it asks, and the dock icon counts wha
 the notification brings the window forward with the request open, and you answer there. The
 notification never shows the statement, the key or the agent's reason.
 
-To turn notifications off, clear **Notify me when an agent waits for an answer** in **Settings →
-MCP Server** (`mcp.notifications`). Your system's notification settings apply too.
+### Turn off notifications
+
+Clear **Notify me when an agent waits for an answer** in **Settings → MCP Server**
+(`mcp.notifications`). Your system's notification settings apply too.
 
 ## Per data source
 
@@ -141,8 +144,9 @@ reads the query bar is only filled in for you to run.
 
 ![OpenCode searches the checkout logs on Elasticsearch, then opens the index on the last hour's errors](../media/agents-elasticsearch.gif)
 
-To keep the window where it is, turn **Let agents bring TableCraft forward** off in **Settings →
-MCP Server** (`mcp.allowFocus`).
+### Keep the window where it is
+
+Turn **Let agents bring TableCraft forward** off in **Settings → MCP Server** (`mcp.allowFocus`).
 
 ## Watching
 
