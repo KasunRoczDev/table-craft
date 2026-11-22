@@ -12,24 +12,43 @@ nothing is only reachable by a chord.
 
 See [Shell and actions](../design/specification.md#shell-and-actions).
 
-## Change a shortcut
+## Keymap
 
-**Settings → Keymap** lists every action with its shortcuts, grouped by category. Type to filter
-by name or category, or turn on **Find by Shortcut** (the keyboard button) and press a chord to see
-which actions hold it. The **+** on a row records the next chord you press; Escape cancels. A chord
-needs `⌘`, `⌃` or `⌥` (`Ctrl` or `Alt` on Windows and Linux) unless it is an F key, and chords the
-system or the app menu keep, such as `⌘Q` or `Alt+F4`, are refused with the reason. When another
-action holds the chord where both could fire, the page names it and offers **Reassign**, which takes
-the chord from it. The X on a chord removes it, so an action can have several shortcuts or none. A
-changed action is marked **Modified**, with a button that puts it back; **Restore Defaults** puts
-back every one. From the keyboard, Tab reaches the list, the arrow keys move between rows, Enter
-records a shortcut and Delete removes the row's last one.
+**Settings → Keymap** lists every action with its shortcuts, grouped by category.
 
-Changes apply at once, to the menus, tooltips and Find Action too. The SQL editor keeps its own
-keys while it has focus, such as `⌘D` for Select Next Occurrence; a shortcut on one of them works
-everywhere else, and the page says so. The shortcuts live in `keymap` in
-[`settings.json`](settings.md#settings-file), which lists only the ones you changed; the table
-below shows the defaults.
+### Find an action or a chord
+
+To find an action, type part of its name or category. To see which actions hold a chord, turn on
+**Find by Shortcut** (the keyboard button) and press the chord.
+
+### Change a shortcut
+
+1. Open **Settings → Keymap** and find the action.
+2. Click **+** on its row and press the chord you want. Escape cancels.
+3. If another action holds the chord where both could fire, the page names it. Click **Reassign** to
+   take the chord from it.
+
+The chord applies at once, to the menus, tooltips and Find Action too.
+
+A chord needs `⌘`, `⌃` or `⌥` (`Ctrl` or `Alt` on Windows and Linux) unless it is an F key. Chords
+the system or the app menu keep, such as `⌘Q` or `Alt+F4`, are refused with the reason. The SQL
+editor keeps its own keys while it has focus, such as `⌘D` for Select Next Occurrence; a shortcut on
+one of them works everywhere else, and the page says so.
+
+### Remove or restore a shortcut
+
+The X on a chord removes it, so an action can have several shortcuts or none. A changed action is
+marked **Modified**, with a button that puts it back; **Restore Defaults** puts back every one.
+
+### Use the page from the keyboard
+
+Tab reaches the list, the arrow keys move between rows, Enter records a shortcut and Delete removes
+the row's last one.
+
+### Where shortcuts are kept
+
+The shortcuts live in `keymap` in [`settings.json`](settings.md#settings-file), which lists only the
+ones you changed; the table below shows the defaults.
 
 ## Keyboard shortcuts
 
