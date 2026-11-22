@@ -70,18 +70,7 @@ const OTHER_MENU_SEPARATORS = /›|»|\s>\s/;
 /** Lines that open a list, table, heading, quote, image or HTML block rather than a prose paragraph. */
 const NOT_PROSE = /^(\s*[-*+] |\s*\d+\. |\||#|>|!\[|<|\s{2,}\S)/;
 const NOT_YET_IN_TASK_STYLE = new Set<string>(
-  [
-    "completion",
-    "data",
-    "elasticsearch",
-    "etcd",
-    "explorer",
-    "monitoring",
-    "plugins",
-    "redis",
-    "settings",
-    "shortcuts",
-  ].map((page) => `docs/guide/${page}.md`),
+  ["elasticsearch", "etcd", "plugins", "redis"].map((page) => `docs/guide/${page}.md`),
 );
 
 const RANGES: Readonly<Record<string, NumberRange>> = {
