@@ -107,7 +107,7 @@ const SESSION_TTL_SECONDS = 3600;
 const JSON_SUFFIX = ".json";
 const JSON_INDENT = 2;
 
-function docker(args: string[]): string {
+export function docker(args: string[]): string {
   return execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
