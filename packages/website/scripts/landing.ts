@@ -111,6 +111,16 @@ export const HIGHLIGHTS: readonly Highlight[] = [
     href: docsRoute("etcd"),
   },
   {
+    title: "Apache Kafka without a consumer group",
+    text: "Reads that never join a group, Avro and Protobuf through the Schema Registry, consumer lag and offset resets.",
+    href: docsRoute("kafka"),
+  },
+  {
+    title: "Elasticsearch and OpenSearch, time first",
+    text: "Index tabs open on the last 15 minutes with a histogram, Lucene or query DSL, mappings and analyzers.",
+    href: docsRoute("elasticsearch"),
+  },
+  {
     title: "Plugins for any database",
     text: "Every database is a plugin, loaded the same way yours would be. Write one against a versioned API and a contract suite.",
     href: docsRoute("writing-plugins"),
@@ -133,4 +143,6 @@ export const DATABASES: readonly Database[] = [
   { name: "DuckDB", tint: "yellow", builtIn: false },
   { name: "Redis", tint: "red", builtIn: false },
   { name: "etcd", tint: "green", builtIn: false },
+  { name: "Apache Kafka", tint: "violet", builtIn: false },
+  { name: "Elasticsearch, OpenSearch", tint: "yellow", builtIn: false },
 ];
