@@ -63,6 +63,12 @@ const VERIFY_SCRIPTS = ["lint", "format:check", "typecheck", "test"];
 const USER_THEME_CHOICE = "user:<file stem>";
 const RANGE_DASH = "–";
 const MIN_SHORTCUT_ROWS = 25;
+/** Decision 176: about six lines at the guide's wrap width; a longer paragraph is a task or a list waiting to be split. */
+const GUIDE_PARAGRAPH_WORDS = 120;
+const MENU_PATH_SEPARATOR = "→";
+const OTHER_MENU_SEPARATORS = /›|»|\s>\s/;
+/** Lines that open a list, table, heading, quote, image or HTML block rather than a prose paragraph. */
+const NOT_PROSE = /^(\s*[-*+] |\s*\d+\. |\||#|>|!\[|<|\s{2,}\S)/;
 
 const RANGES: Readonly<Record<string, NumberRange>> = {
   "editor.format.indentWidth": INDENT_WIDTH_RANGE,
@@ -136,6 +142,30 @@ function section(file: string, title: string): string {
   const { line, level } = all[start] as Heading;
   const end = all.slice(start + 1).find((heading) => heading.level <= level)?.line;
   return markdown.split("\n").slice(line, end).join("\n");
+}
+
+/** The page's text outside fenced code, split at blank lines. */
+function blocks(markdown: string): string[] {
+  let inFence = false;
+  const kept = markdown.split("\n").map((line) => {
+    if (line.trimStart().startsWith(FENCE)) {
+      inFence = !inFence;
+      return "";
+    }
+    return inFence ? "" : line;
+  });
+  return kept
+    .join("\n")
+    .split(/\n\s*\n/)
+    .filter((block) => block.trim() !== "");
+}
+
+function proseParagraphs(markdown: string): string[] {
+  return blocks(markdown).filter((block) => !NOT_PROSE.test(block));
+}
+
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter((word) => word !== "").length;
 }
 
 function images(markdown: string): string[] {
@@ -289,6 +319,29 @@ describe("user docs", () => {
         titles.map((heading) => heading.line),
         `${file} opens with its one # title`,
       ).toEqual([0]);
+    }
+  });
+
+  it("givenGuidePage_whenParagraphsCounted_thenEachStaysWithinTheWordCap", () => {
+    for (const file of guidePages()) {
+      for (const paragraph of proseParagraphs(read(file))) {
+        const words = wordCount(paragraph);
+        expect(
+          words,
+          `${file}: a ${String(words)}-word paragraph starting "${paragraph.slice(0, 60)}"; split it into tasks, steps or a list`,
+        ).toBeLessThanOrEqual(GUIDE_PARAGRAPH_WORDS);
+      }
+    }
+  });
+
+  it("givenGuidePage_whenMenuPathsRead_thenEachUsesTheArrow", () => {
+    for (const file of guidePages()) {
+      for (const block of blocks(read(file)).filter((text) => !/^[|>]/.test(text))) {
+        const prose = block.replace(/`[^`]*`/g, "");
+        expect(OTHER_MENU_SEPARATORS.exec(prose)?.[0], `${file}: write menu paths with ${MENU_PATH_SEPARATOR}`).toBe(
+          undefined,
+        );
+      }
     }
   });
 

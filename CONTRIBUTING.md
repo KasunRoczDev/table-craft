@@ -274,6 +274,47 @@ platform. `verify` and the macOS packages must pass; Windows and Linux are best-
 - `docs/plans/` and `docs/evidence/` are local working files and are never committed
   ([035](docs/decisions/035-plans-and-evidence-stay-local.md)).
 
+### Write the guide
+
+A guide page is read by someone who wants one answer, so it is written as tasks they can follow
+([176](docs/decisions/176-the-guide-is-written-as-tasks.md)):
+
+- Open with one or two sentences on what the feature is and where it sits in the window, then the
+  GIF of its main scene.
+- A `##` heading names an area with a noun ("Result grid", "Sessions"). Keep the text of one that
+  exists: links, the website and old release notes point at its anchor, and the tests find some
+  tables by it. A `###` heading names a task with a verb, in sentence case ("Change the access
+  level").
+- A task with three or more actions is a numbered list, one action per step, ending with what you
+  see. Name the control first and the shortcut second: "Click **Run** or press `⌘↩`." A task with
+  one or two actions stays a sentence: "To pin a result tab, right-click it and choose **Pin
+  Tab**."
+- Modes, levels and options are a list of `**Name**` and what it does, with "Use it when ..." where
+  the choice is not obvious. Settings stay in the table under [Settings file](docs/guide/settings.md#settings-file).
+- Say a limit where it applies, in one plain sentence. A plugin page opens with what it is, then
+  `## Connect`, one `##` per area it adds and `## Limits`.
+- Write menu paths with `→`: **Settings → MCP Server**. Put a GIF right after the task it shows.
+- Write to the reader in the present tense, with TableCraft or the control as the subject. Skip
+  openers such as "In TableCraft, you can", "This section describes" and "Note that".
+- Keep prose paragraphs under 120 words; `userDocs.test.ts` checks this and the arrows.
+
+The transactions part of the console page, before:
+
+> Switch Tx: Auto to Tx: Manual to work in a transaction, then click Commit or Rollback. While a
+> transaction is open, the mode turns amber and the title bar shows Commit and Rollback, so you can
+> end it from any tab.
+
+After:
+
+> ### Work in a transaction
+>
+> 1. On the console toolbar, switch **Tx: Auto** to **Tx: Manual**.
+> 2. Run your statements.
+> 3. Click **Commit** or **Rollback**.
+>
+> While a transaction is open, the mode turns amber and the title bar shows Commit and Rollback, so
+> you can end it from any tab.
+
 ## Writing a plugin
 
 [Writing plugins](docs/guide/writing-plugins.md) covers the manifest, the capabilities and how the

@@ -1,31 +1,80 @@
 # Settings and appearance
 
-**Settings…** (`⌘,`) has pages for Appearance, Keymap, Editor, Data Editor, Plugins, MCP and Advanced; the X in its corner,
-Close or Escape shuts it. Numbers show their digit separators until you edit them. The theme is a
-dropdown: type to filter by name or source, and the theme under the arrow keys or the mouse
-previews live; Enter or a click keeps it, Escape puts the previous one back. Themes and density
-change live; Follow system picks Dark, Light or High contrast from the operating system. `⌘=`, `⌘-` and
-`⌘0` zoom the editor font. Menus, popovers and dialogs fade in briefly and close at once; **Motion**
-turns that down to Reduced or Off, or follows the operating system's Reduce Motion (System).
-**Window style** draws the editor and each tool window as a rounded island on the window frame,
-the way JetBrains' Islands theme does (Islands, the default), or as flat panes split by lines
-(Classic); it changes live and works with every theme.
+**Settings…** (`⌘,`) has pages for Appearance, Keymap, Editor, Data Editor, Plugins, MCP Server and
+Advanced. To close it, click the X in its corner or **Close**, or press Escape. Numbers show their
+digit separators until you edit them.
 
 ![Settings and appearance](../media/settings.gif)
 
 See [Settings and appearance](../design/specification.md#settings-and-appearance).
 
+## Appearance
+
+### Choose a theme
+
+Pick a theme in **Settings → Appearance**, as [Themes](themes.md#choose-a-theme) shows. Type in
+the theme dropdown to filter by name or source; the theme under the arrow keys or the mouse
+previews live. Follow system picks Dark, Light or High contrast from the operating system. Themes and density
+change live.
+
+### Zoom the editor font
+
+`⌘=`, `⌘-` and `⌘0` zoom the editor font.
+
+### Turn down motion
+
+Menus, popovers and dialogs fade in briefly and close at once. To turn that down, set **Motion** to
+**Reduced** or **Off**, or to **System** to follow the operating system's Reduce Motion.
+
+### Choose a window style
+
+**Window style** changes live and works with every theme:
+
+- **Islands**: the default. Draws the editor and each tool window as a rounded island on the window
+  frame, the way JetBrains' Islands theme does.
+- **Classic**: draws them as flat panes split by lines.
+
+### Make your own theme
+
+1. Create a JSON file in `themes/` in your [profile folder](data-and-privacy.md).
+2. Name any bundled theme, by its id from [Themes](themes.md), as its `base`, and override any of its
+   colour tokens under `colors`.
+3. Click **Reload Themes** in the Settings dialog to pick up new or changed files.
+
+The theme appears as `user:<file stem>`, here `user:solarized`:
+
+```json
+{
+  "name": "Solarized Dark",
+  "base": "dark",
+  "colors": {
+    "canvas": "#002b36",
+    "panel": "#073642"
+  }
+}
+```
+
+A file that does not parse, or whose base is not a bundled theme, is listed under Your themes,
+disabled, with its errors.
+
 ## Notifications
 
-The bell on the right edge of the window holds what TableCraft has to tell you: the version you
-updated to, with its release notes; connections it found in DataGrip, TablePro or MySQL Workbench,
-with **Import…**; an optional plugin it updated in the background; and new features, each with a
-button that opens the place to try it. A blue dot on the bell means something new; it pulses three
-times when a notice arrives (not at all with **Motion** at Reduced or Off) and goes away when you
-open the bell. Nothing opens by itself. **Dismiss** removes one notice, **Dismiss All** every one,
-and using a notice's button settles it too; an import notice stays until you import those
-connections or dismiss it. A new profile counts the version and features it starts with as seen,
-so only connections found in other apps show on its first launch.
+The bell on the right edge of the window holds what TableCraft has to tell you:
+
+- the version you updated to, with its release notes
+- connections it found in DataGrip, TablePro or MySQL Workbench, with **Import…**
+- an optional plugin it updated in the background
+- new features, each with a button that opens the place to try it
+
+A blue dot on the bell means something new; it pulses three times when a notice arrives (not at all
+with **Motion** at Reduced or Off) and goes away when you open the bell. Nothing opens by itself. A
+new profile counts the version and features it starts with as seen, so only connections found in
+other apps show on its first launch.
+
+### Dismiss a notice
+
+To dismiss one notice, click **Dismiss**; **Dismiss all** removes every one. Using a notice's button
+settles it too. An import notice stays until you import those connections or dismiss it.
 
 ## Settings file
 
@@ -81,21 +130,3 @@ back to its default without affecting the others.
 | `mcp.port`                             | 1,024–65,535; the port it listens on, on 127.0.0.1 only                                                                        | 47,820                                         |
 | `mcp.rowCap`                           | 1–1,000; the most rows one agent answer carries                                                                                | 100                                            |
 | `mcp.statementTimeoutSeconds`          | 1–3,600; an agent's statement running longer is stopped, by the database too where it can                                      | 120                                            |
-
-A theme of your own is a JSON file in `themes/` in the profile folder. It names any bundled theme,
-by its id from [Themes](themes.md), as its base and overrides any of its colour tokens; it then
-appears as `user:<file stem>`, here `user:solarized`:
-
-```json
-{
-  "name": "Solarized Dark",
-  "base": "dark",
-  "colors": {
-    "canvas": "#002b36",
-    "panel": "#073642"
-  }
-}
-```
-
-A file that does not parse, or whose base is not a bundled theme, is listed under Your themes,
-disabled, with its errors. **Reload Themes** in the Settings dialog picks up new or changed files.
