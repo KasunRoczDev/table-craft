@@ -71,7 +71,6 @@ const OTHER_MENU_SEPARATORS = /›|»|\s>\s/;
 const NOT_PROSE = /^(\s*[-*+] |\s*\d+\. |\||#|>|!\[|<|\s{2,}\S)/;
 const NOT_YET_IN_TASK_STYLE = new Set<string>(
   [
-    "agents",
     "completion",
     "data",
     "elasticsearch",
