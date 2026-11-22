@@ -12,6 +12,8 @@ client certificate and key. A cluster behind a proxy that serves it under a path
 `/es`, takes that path in the advanced **Path prefix**. TableCraft talks to the node you name and
 never discovers the others.
 
+![A products index searched with a Lucene query, then a log alias over the last hour with its histogram, filtered to errors](../media/elasticsearch.gif)
+
 On connect TableCraft reads the cluster's version and adapts to it: mapping types on 6.x, the shape
 of hit totals, the date histogram's interval and the SQL endpoint. When `GET /` is refused or
 times out, as it can behind a gateway or proxy, it asks the node it reached
