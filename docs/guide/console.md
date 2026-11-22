@@ -30,7 +30,7 @@ The console underlines where the database says the statement went wrong. The err
 the results with Go to Error and Run Again, and `F2` and `⇧F2` step through the marks.
 
 When one of several statements fails, the run asks whether to Skip it, Skip All failures, Stop or
-Retry. To decide in advance, set When a statement fails in Settings > Advanced > Running.
+Retry. To decide in advance, set When a statement fails in **Settings → Advanced → Running**.
 
 ## Inspections
 
@@ -39,8 +39,8 @@ underlined in red, risky code such as a `DELETE` without `WHERE` in amber, and r
 greyed out.
 
 Hover a mark for its message, or press `⌥↩` at the caret for fixes. Suppress for statement adds a
-`-- noinspection <Id>` comment above the statement. Turn checks off in Settings > Editor >
-Inspections.
+`-- noinspection <Id>` comment above the statement. Turn checks off in **Settings → Editor →
+Inspections**.
 
 ![Inspections and a failing statement](../media/inspections.gif)
 
@@ -53,7 +53,7 @@ the data source is disconnected.
 ## Files
 
 Open File… (`⌘O`) opens `.sql` files from disk, such as your project's migrations. Each file
-remembers its data source and schema, and File > Recent Files lists the last ten.
+remembers its data source and schema, and **File → Recent Files** lists the last ten.
 
 TableCraft also opens `.sql` files from your system: **Open With** in Finder or Windows Explorer,
 your Linux file manager, or `TableCraft report.sql` in a terminal. The file opens as a file console

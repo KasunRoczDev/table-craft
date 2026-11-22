@@ -20,10 +20,10 @@ databases and their key counts; each database then waits behind a **Scan** (Redi
 
 Each data source shows the logo of the database it is: MySQL, MariaDB or TiDB (whichever the server
 says it is on connect), PostgreSQL, SQLite or Redis, in the tree, the Data Sources dialog and the
-Services tool window. **View → Brand Icons**, **Toggle Brand Icons** in Find Action, or Settings ›
-Appearance › Data sources turns them off for the generic database glyph and the product's name.
-Logos take their brand's colour, fitted to the theme; Settings › Appearance › Data sources › Logo
-colour draws them in gray instead.
+Services tool window. **View → Brand Icons**, **Toggle Brand Icons** in Find Action, or **Settings →
+Appearance → Data sources** turns them off for the generic database glyph and the product's name.
+Logos take their brand's colour, fitted to the theme; **Settings → Appearance → Data sources → Logo
+colour** draws them in gray instead.
 
 **New Console** on a database, schema, table, column or routine opens a console already switched to
 the database or schema that holds it, as the console's schema switcher would; on a data source, or

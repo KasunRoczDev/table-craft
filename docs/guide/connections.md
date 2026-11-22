@@ -65,8 +65,8 @@ Connections send a TCP keepalive every 30 seconds (change it under Advanced). An
 its session before the next run and reconnects if it dropped, and a running statement fails within
 one keepalive interval when the network goes away.
 
-A statement timeout cancels a console statement that runs too long. Set it in Settings > Editor >
-Running, or for one data source under Advanced. Tick Also have the database stop it so MySQL,
+A statement timeout cancels a console statement that runs too long. Set it in **Settings → Editor →
+Running**, or for one data source under Advanced. Tick Also have the database stop it so MySQL,
 MariaDB, TiDB or PostgreSQL stop the statement even when TableCraft cannot reach the server.
 
 Exports and imports ignore the statement timeout. TableCraft never replaces an open transaction
@@ -76,7 +76,7 @@ silently: if its connection drops, the error tells you its changes are gone.
 
 TableCraft can copy your connections from these apps. It only reads their files.
 
-1. Choose File > Import Data Sources…, or click the import button beside Add in the Data Sources
+1. Choose **File → Import Data Sources…**, or click the import button beside Add in the Data Sources
    dialog.
 2. Pick an app TableCraft found on this computer, or click From a file… to choose an exported file.
 3. Tick the connections to bring over. Each row shows the address, user, folder and where the
@@ -118,7 +118,7 @@ TableCraft writes `tablecraft-datasources.json` with folders, colours, comments,
 tunnels. Passwords are encrypted with the passphrase, which TableCraft does not store, so send it to
 the other person separately.
 
-Import the file with File > Import Data Sources… > From a file…. Agent access is never imported;
+Import the file with **File → Import Data Sources… → From a file…**. Agent access is never imported;
 turn it on in the data source's properties.
 
 To share quickly, Copy Data Sources (`Mod+C` in the Database tool window) copies the selection
