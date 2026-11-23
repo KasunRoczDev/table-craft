@@ -2,7 +2,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { DatasourceView } from "@table-craft/desktop/preload/bridge.js";
 import type { EngineError } from "@table-craft/desktop/engine/protocol.js";
-import { setShownNamespaces, setShownTopics } from "@table-craft/desktop/renderer/actions/datasourceCommands.js";
+import {
+  setShownIndices,
+  setShownNamespaces,
+  setShownTopics,
+} from "@table-craft/desktop/renderer/actions/datasourceCommands.js";
 import {
   Button,
   Check,
@@ -11,6 +15,8 @@ import {
   OVERLAY_CLASS,
 } from "@table-craft/desktop/renderer/dialogs/parts.js";
 import { EMPTY_CATALOG, topLevelNamespaces } from "@table-craft/desktop/renderer/model/explorerTree.js";
+import { EMPTY_INDICES } from "@table-craft/desktop/renderer/model/indexTree.js";
+import { shownIndexEntries, type ShownIndexEntry } from "@table-craft/desktop/renderer/model/shownIndices.js";
 import {
   matchingNamespaces,
   matchPositions,
@@ -22,13 +28,18 @@ import { EMPTY_STREAMS } from "@table-craft/desktop/renderer/model/streamTree.js
 import { Highlighted } from "@table-craft/desktop/renderer/panes/explorerLabels.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
 import { useManageShownSchemasDialog } from "@table-craft/desktop/renderer/state/manageShownSchemasDialog.js";
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { cn } from "@table-craft/desktop/renderer/ui/cn.js";
 import {
+  AliasIcon,
   DatabaseIcon,
+  DataStreamIcon,
+  IndexFamilyIcon,
   SchemaIcon,
   SearchIcon,
+  SearchIndexIcon,
   SpinnerIcon,
   TopicIcon,
 } from "@table-craft/desktop/renderer/ui/icons.js";
@@ -38,19 +49,29 @@ const SEARCH_FIELD_ID = "manage-shown-schemas-search";
 const ROW_CHECKBOX = "input[type=checkbox]:not(:disabled)";
 const BADGE_CLASS = "shrink-0 rounded bg-raised px-1 text-ink-muted";
 
-const GLYPHS = { database: DatabaseIcon, schema: SchemaIcon, topic: TopicIcon } as const;
+const GLYPHS = {
+  database: DatabaseIcon,
+  schema: SchemaIcon,
+  topic: TopicIcon,
+  index: SearchIndexIcon,
+  family: IndexFamilyIcon,
+  dataStream: DataStreamIcon,
+  alias: AliasIcon,
+} as const;
 
 interface ShownItem {
   readonly name: string;
   readonly glyph: keyof typeof GLYPHS;
   readonly badges: readonly string[];
+  /** Other names the search finds the row by. */
+  readonly searchAlso?: readonly string[];
 }
 
 /** What one kind of allow-list calls its items and where it reads and saves them. */
 interface ShownList {
   readonly title: string;
   readonly dialog: string;
-  /** Plural, lower case: "schemas", "databases", "topics". */
+  /** Plural, lower case: "schemas", "databases", "topics", "indices". */
   readonly noun: string;
   readonly allLabel: string;
   readonly searchLabel: string;
@@ -59,6 +80,8 @@ interface ShownList {
   readonly loading: boolean;
   readonly error: EngineError | null;
   readonly initial: readonly string[] | undefined;
+  /** What happens to items created later once some are ticked, when it differs from "they stay hidden". */
+  readonly laterNote?: string;
   readonly save: (names: readonly string[] | undefined) => Promise<boolean>;
 }
 
@@ -235,7 +258,7 @@ function Editor({ list: spec }: { readonly list: ShownList }) {
         <p className="text-ink-muted">
           {all
             ? `The tree lists every one, including ${noun} created later. Untick ${spec.allLabel} to pick.`
-            : `The tree lists only the ticked ${noun}; ones created later stay hidden.`}
+            : (spec.laterNote ?? `The tree lists only the ticked ${noun}; ones created later stay hidden.`)}
         </p>
         <ul
           ref={list}
@@ -372,6 +395,55 @@ function TopicsEditor({ view }: { readonly view: DatasourceView }) {
   );
 }
 
+function indexBadges(entry: ShownIndexEntry): string[] {
+  return [
+    ...(entry.kind === "family" ? [`${String(entry.members)} ${entry.members === 1 ? "index" : "indices"}`] : []),
+    ...entry.writeAliases.map((alias) => `alias ${alias}`),
+    ...(entry.hidden ? ["hidden"] : []),
+  ];
+}
+
+function IndicesEditor({ view }: { readonly view: DatasourceView }) {
+  const indices = useIndices((state) => state.indices[view.id] ?? EMPTY_INDICES);
+
+  useEffect(() => {
+    const current = useIndices.getState().indices[view.id] ?? EMPTY_INDICES;
+    if (current.targets === null && !current.loading) void useIndices.getState().synchronize(view.id);
+  }, [view.id]);
+
+  const items = useMemo(
+    () =>
+      shownIndexEntries(indices.targets ?? []).map((entry): ShownItem => ({
+        name: entry.name,
+        glyph: entry.kind === "family" ? "family" : entry.kind,
+        badges: indexBadges(entry),
+        searchAlso: entry.writeAliases,
+      })),
+    [indices.targets],
+  );
+  return (
+    <Editor
+      list={{
+        title: `Manage Shown Indices — ${view.name}`,
+        dialog: "Manage Shown Indices",
+        noun: "indices",
+        allLabel: "All indices",
+        searchLabel: "Search indices",
+        listLabel: "Indices",
+        items,
+        loading: indices.targets === null && indices.error === null,
+        error: indices.error,
+        initial: view.shownIndices,
+        laterNote:
+          "The tree lists only the ticked indices; a ticked family (name-*) keeps its new rollovers and write alias, other new ones stay hidden.",
+        save: (names) => setShownIndices(view, names),
+      }}
+    />
+  );
+}
+
+const EDITORS = { schemas: SchemasEditor, topics: TopicsEditor, indices: IndicesEditor } as const;
+
 export function ManageShownSchemasDialog() {
   const datasourceId = useManageShownSchemasDialog((state) => state.datasourceId);
   const session = useManageShownSchemasDialog((state) => state.session);
@@ -379,7 +451,7 @@ export function ManageShownSchemasDialog() {
   const view = useDatasources((state) =>
     datasourceId === null ? undefined : state.datasources.find((datasource) => datasource.id === datasourceId),
   );
-  const Content = subject === "topics" ? TopicsEditor : SchemasEditor;
+  const Content = EDITORS[subject];
   return (
     <Dialog.Root
       open={view !== undefined}

@@ -20,6 +20,8 @@ Typing in the tree starts speed search, `F1` shows Quick Documentation for the s
 On a server with many databases, **Manage Shown Schemas…** on a data source picks which databases or
 schemas the tree lists, as DataGrip does. The data source then shows how many of them it lists, such
 as `3 of 40`. Ones created later stay hidden until you pick them, unless **All schemas** is on.
+Kafka and Elasticsearch data sources have **Manage Shown Topics…** and **Manage Shown Indices…**
+instead.
 
 ### Browse keys on Redis or etcd
 

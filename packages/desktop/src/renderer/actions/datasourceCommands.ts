@@ -181,9 +181,17 @@ export async function setShownTopics(
   return saveShown(view, "shownTopics", shownTopics, "Could not save the shown topics");
 }
 
+/** Saves which indices, aliases, data streams and families a search datasource's tree lists. */
+export async function setShownIndices(
+  view: DatasourceView,
+  shownIndices: readonly string[] | undefined,
+): Promise<boolean> {
+  return saveShown(view, "shownIndices", shownIndices, "Could not save the shown indices");
+}
+
 async function saveShown(
   view: DatasourceView,
-  field: "shownNamespaces" | "shownTopics",
+  field: "shownNamespaces" | "shownTopics" | "shownIndices",
   names: readonly string[] | undefined,
   failure: string,
 ): Promise<boolean> {

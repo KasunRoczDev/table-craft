@@ -144,6 +144,21 @@ describe("datasource store", () => {
     ]);
   });
 
+  it("givenShownIndices_whenSavedAndLoaded_thenRoundTrip", async () => {
+    const { files, store: first } = store();
+    const filtered = { ...LOCAL_PG, shownIndices: ["orders-*", "orders-read"] };
+    await first.save({ folders: [], datasources: [filtered, LOCAL_PG] });
+
+    const reloaded = await createDatasourceStore({ directory: DIRECTORY, files }).load();
+
+    expect(reloaded.datasources).toEqual([filtered, LOCAL_PG]);
+    expect(reloaded.datasources[1]).not.toHaveProperty("shownIndices");
+    expect(toDatasource(filtered, LOCAL_PG.id, POSTGRES_MANIFEST.connection.fields).shownIndices).toEqual([
+      "orders-*",
+      "orders-read",
+    ]);
+  });
+
   it("givenBrand_whenDatasourcesSavedAndLoaded_thenKept", async () => {
     const { files, store: first } = store();
     const tidb = { ...LOCAL_PG, pluginId: "mysql", brand: "tidb" };

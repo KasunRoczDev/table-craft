@@ -421,6 +421,11 @@ export interface Datasource {
    * allow-list like `shownNamespaces`, kept apart because agents read that one as namespace paths.
    */
   readonly shownTopics?: readonly string[] | undefined;
+  /**
+   * The indices, aliases, data streams and index families (`orders-*`) a search datasource's tree
+   * lists (decision 117); absent lists them all. A family entry keeps its later rollovers shown.
+   */
+  readonly shownIndices?: readonly string[] | undefined;
   /** What agents may do here over MCP (decision 127); absent is `off`. */
   readonly agentAccess?: AgentAccess | undefined;
   /** The top-level namespaces agents see; absent, the shown ones. */

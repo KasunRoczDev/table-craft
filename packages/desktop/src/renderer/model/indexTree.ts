@@ -149,9 +149,15 @@ export function indexFilterCount(node: Pick<IndexFilterNode, "matched" | "total"
   return `${node.matched.toLocaleString("en-US")} of ${node.total.toLocaleString("en-US")}`;
 }
 
-/** Whether the tree shows its filter field: on a large listing, or while a filter applies. */
-export function showsIndexFilter(indices: DatasourceIndices): boolean {
-  return indices.filter.trim() !== "" || (indices.targets?.length ?? 0) > INDEX_FILTER_THRESHOLD;
+/** Keeps the targets Manage Shown Indices picked (decision 117); null keeps them all. */
+export type ShownTargetFilter = ((target: SearchTarget) => boolean) | null;
+
+/**
+ * Whether the tree shows its filter field: on a large listing, or while a filter applies. `listed`
+ * is how many targets Manage Shown Indices leaves, every one when it picks none.
+ */
+export function showsIndexFilter(indices: DatasourceIndices, listed: number = indices.targets?.length ?? 0): boolean {
+  return indices.filter.trim() !== "" || listed > INDEX_FILTER_THRESHOLD;
 }
 
 export function searchTargetRowKey(sink: Pick<IndexRowSink, "keyOf">, name: string): string {
@@ -370,8 +376,15 @@ const sortedByName = (targets: readonly SearchTarget[]) => [...targets].sort((a,
  * streams, Aliases, and the hidden system indices in a section of their own, never mixed in. A
  * large listing leads with a filter field (plan 166); while it holds text, only the matching
  * targets stay, in the families and folders they belong to, every row on the way to them opened.
+ * `shown` trims the listing first, so the filter, its count and its threshold see only what is left.
  */
-export function indexRows(sink: IndexRowSink, datasourceId: string, indices: DatasourceIndices, depth: number): void {
+export function indexRows(
+  sink: IndexRowSink,
+  datasourceId: string,
+  indices: DatasourceIndices,
+  depth: number,
+  shown: ShownTargetFilter = null,
+): void {
   if (indices.targets === null) {
     if (indices.error !== null) {
       const error: ErrorNode = { kind: "error", datasourceId, error: indices.error };
@@ -384,20 +397,21 @@ export function indexRows(sink: IndexRowSink, datasourceId: string, indices: Dat
   }
   const base: IndexNodeBase = { datasourceId, path: [] };
   const matches = indexFilterMatcher(indices.filter);
-  const kept = indices.targets.filter((target) => matches(target.name));
+  const listed = shown === null ? indices.targets : indices.targets.filter(shown);
+  const kept = listed.filter((target) => matches(target.name));
   const open = indices.filter.trim() !== "";
-  if (showsIndexFilter(indices)) {
+  if (showsIndexFilter(indices, listed.length)) {
     const filter: IndexFilterNode = {
       ...base,
       kind: "indexFilter",
       filter: indices.filter,
       matched: kept.length,
-      total: indices.targets.length,
+      total: listed.length,
     };
     sink.push(filter, depth, indexFilterKey(sink), "", false);
   }
-  const shown = kept.filter((target) => !target.hidden);
-  const of = (kind: SearchTarget["kind"]) => shown.filter((target) => target.kind === kind);
+  const visible = kept.filter((target) => !target.hidden);
+  const of = (kind: SearchTarget["kind"]) => visible.filter((target) => target.kind === kind);
   const aliases = of("alias");
   const plain = of("index");
   if (section(sink, base, "indices", plain.length, depth, open)) {
@@ -435,8 +449,13 @@ export function indexRows(sink: IndexRowSink, datasourceId: string, indices: Dat
 }
 
 /** The status bar's index part: `12 indices`; null before anything is listed. */
-export function indexStatusText(indices: DatasourceIndices | undefined): string | null {
+export function indexStatusText(
+  indices: DatasourceIndices | undefined,
+  shown: ShownTargetFilter = null,
+): string | null {
   if (indices?.targets == null) return null;
-  const count = indices.targets.filter((target) => target.kind === "index" && !target.hidden).length;
+  const count = indices.targets.filter(
+    (target) => target.kind === "index" && !target.hidden && (shown === null || shown(target)),
+  ).length;
   return plural(count, "index", "indices");
 }
