@@ -61,6 +61,20 @@ Indices that roll over (`logs-checkout-000411`, `logs-checkout-000412`) or carry
 (`audit-2026.11.20`, `logs-billing-2026-09-0001`) fold into one family row, newest first. Other
 names fold on the part before the first `.` when two or more share it.
 
+### Choose the indices the tree lists
+
+1. On the data source or an index, choose **Manage Shown Indices…**.
+2. Pick the indices, with the search box to find them.
+
+Indices that roll over or carry a date are one row, such as `orders-*`. Picking it keeps the
+indices it rolls over to later, and the alias that writes to it, which shows as `alias orders` on the
+row; searching for the alias finds it. Any other index, alias or data stream is a row of its own,
+and one created later stays hidden until you pick it.
+
+The data source row then reads `3 of 40`. A console request or a tab opened by name still reaches
+any index. To list every index again, choose **All indices**. Unlike the **Index filter**, which
+the connection applies for anyone using it, this choice changes only what the tree shows.
+
 ### Filter the tree
 
 Past 200 indices, a filter row sits at the top of the data source's indices. On a smaller cluster,
