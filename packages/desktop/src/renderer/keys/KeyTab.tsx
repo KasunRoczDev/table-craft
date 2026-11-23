@@ -1,5 +1,5 @@
 import { useCallback, type ReactNode } from "react";
-import { SEGMENT, SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
+import { SEGMENT, TOOLBAR_SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
 import type { EngineError } from "@table-craft/desktop/engine/protocol.js";
 import { ACTION_IDS } from "@table-craft/desktop/renderer/actions/appActions.js";
 import { useShortcut } from "@table-craft/desktop/renderer/actions/shortcuts.js";
@@ -399,7 +399,7 @@ export function KeyTab({ tabId }: { readonly tabId: string }) {
             <div className="flex min-w-0 flex-1 flex-col">
               {tab.historyAvailable ? (
                 <div className="flex h-tab shrink-0 items-center border-b border-line bg-canvas px-gap">
-                  <div className={SEGMENT_GROUP} role="group" aria-label="Key view">
+                  <div className={TOOLBAR_SEGMENT_GROUP} role="group" aria-label="Key view">
                     <button
                       type="button"
                       aria-pressed={tab.history?.mode !== "history"}
