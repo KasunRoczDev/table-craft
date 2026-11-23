@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { SEGMENT, SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
+import { SEGMENT, TOOLBAR_SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
 import type { ServerInfo, ServerNode, SlowCommand } from "@table-craft/desktop/engine/protocol.js";
 import { SERVER_ACTION_IDS, type SlowCommandArgs } from "@table-craft/desktop/renderer/actions/serverActions.js";
 import { useConsoleDatasource } from "@table-craft/desktop/renderer/console/useConsoleDatasource.js";
@@ -74,7 +74,7 @@ export function ServerTab({ tabId }: { readonly tabId: string }) {
     >
       <div className="flex h-tab shrink-0 items-center gap-gap border-b border-line bg-panel px-gap text-ink-muted">
         <ActionButton actionId={SERVER_ACTION_IDS.refresh} compact />
-        <div role="group" aria-label="Server view" className={cn(SEGMENT_GROUP, "self-center")}>
+        <div role="group" aria-label="Server view" className={TOOLBAR_SEGMENT_GROUP}>
           {SERVER_VIEWS.map((view) => (
             <button
               key={view}
