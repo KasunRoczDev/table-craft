@@ -12,6 +12,7 @@ import {
   type IndexView,
 } from "@table-craft/desktop/renderer/state/indexTabs.js";
 import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
+import { useManageShownSchemasDialog } from "@table-craft/desktop/renderer/state/manageShownSchemasDialog.js";
 import { useModal } from "@table-craft/desktop/renderer/state/modal.js";
 import { useTabs, type Tab } from "@table-craft/desktop/renderer/state/tabs.js";
 
@@ -28,6 +29,7 @@ export const INDEX_ACTION_IDS = {
   toggleSortOrder: "index.toggleSortOrder",
   searchAllTime: "index.searchAllTime",
   filter: "index.filter",
+  manageShown: "index.manageShown",
 } as const;
 
 const ALL_TIME = "all";
@@ -248,6 +250,17 @@ export const INDEX_ACTIONS: readonly AnyAction[] = [
     category: "Search",
     available: (context) => searches(context),
     run: filterIndices,
+  }),
+  defineAction({
+    id: INDEX_ACTION_IDS.manageShown,
+    title: "Manage Shown Indices…",
+    category: "Search",
+    available: searches,
+    when: (context) => context.datasource !== null && !context.datasource.view.ephemeral,
+    run: (context) => {
+      if (context.datasource !== null)
+        useManageShownSchemasDialog.getState().show(context.datasource.view.id, "indices");
+    },
   }),
   defineAction<OpenIndexArgs | undefined>({
     id: INDEX_ACTION_IDS.copyName,

@@ -43,6 +43,7 @@ import {
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { shownTopicCount } from "@table-craft/desktop/renderer/model/streamTree.js";
 import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
+import { shownIndexCount } from "@table-craft/desktop/renderer/model/shownIndices.js";
 import { activateIndexRow, indexMenuOf, indexRowAttributes } from "@table-craft/desktop/renderer/panes/indexRows.js";
 import { invoke, registry, subscribeToActions, useActionEnabled } from "@table-craft/desktop/renderer/actions/index.js";
 import { ROUTINE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/routineActions.js";
@@ -50,6 +51,7 @@ import { SERVER_ACTION_IDS } from "@table-craft/desktop/renderer/actions/serverA
 import { SESSIONS_ACTION_IDS } from "@table-craft/desktop/renderer/actions/sessionsActions.js";
 import { TABLE_ACTION_IDS } from "@table-craft/desktop/renderer/actions/tableActions.js";
 import { TOPIC_ACTION_IDS } from "@table-craft/desktop/renderer/actions/topicActions.js";
+import { INDEX_ACTION_IDS } from "@table-craft/desktop/renderer/actions/indexActions.js";
 import type { OpenTableArgs } from "@table-craft/desktop/renderer/actions/tableCommands.js";
 import { buildTree } from "@table-craft/desktop/renderer/model/datasourceTree.js";
 import { DRAG_OBJECT_TYPE, draggedObjectOf } from "@table-craft/desktop/renderer/model/dragObject.js";
@@ -157,6 +159,7 @@ const DATASOURCE_MENU = [
   KEY_ACTION_IDS.goTo,
   ACTION_IDS.manageShownSchemas,
   TOPIC_ACTION_IDS.manageShown,
+  INDEX_ACTION_IDS.manageShown,
   null,
   ACTION_IDS.datasourceProperties,
   ACTION_IDS.duplicateDatasource,
@@ -285,6 +288,7 @@ const HIDDEN_WHEN_DISABLED: ReadonlySet<string> = new Set([
   KEY_ACTION_IDS.loadMore,
   ACTION_IDS.manageShownSchemas,
   TOPIC_ACTION_IDS.manageShown,
+  INDEX_ACTION_IDS.manageShown,
   ...KEY_HIDDEN_WHEN_DISABLED,
   KEY_EDIT_ACTION_IDS.refreshFolder,
   ...DDL_SCRIPT_HIDDEN_WHEN_DISABLED,
@@ -370,7 +374,7 @@ function menuOf(node: ExplorerNode): readonly MenuEntry[] {
   return CATALOG_MENU;
 }
 
-/** "N of M" when Manage Shown Schemas or Topics hides some of what the datasource lists (decision 117). */
+/** "N of M" when Manage Shown Schemas, Topics or Indices hides some of what the datasource lists (decision 117). */
 function useShownText(node: ExplorerNode): string | null {
   const namespaces = useCatalog((state) =>
     node.kind === "datasource" ? (state.catalogs[node.datasource.id]?.namespaces ?? null) : null,
@@ -378,10 +382,14 @@ function useShownText(node: ExplorerNode): string | null {
   const topics = useStreams((state) =>
     node.kind === "datasource" ? (state.streams[node.datasource.id]?.topics ?? null) : null,
   );
+  const targets = useIndices((state) =>
+    node.kind === "datasource" ? (state.indices[node.datasource.id]?.targets ?? null) : null,
+  );
   const showSystem = useLayout((state) => state.layout.showSystemSchemas);
   if (node.kind !== "datasource") return null;
   const count =
     shownTopicCount(node.datasource, topics, showSystem) ??
+    shownIndexCount(node.datasource, targets) ??
     shownNamespaceCount(node.datasource, namespaces, showSystem);
   return count === null ? null : `${String(count.shown)} of ${String(count.total)}`;
 }

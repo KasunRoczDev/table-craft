@@ -11,9 +11,11 @@ const TARGET_MENU = [
   null,
   ACTION_IDS.synchronize,
   INDEX_ACTION_IDS.copyName,
+  null,
+  INDEX_ACTION_IDS.manageShown,
 ] as const;
 
-const INDEX_MENU = [ACTION_IDS.newConsole, null, ACTION_IDS.synchronize] as const;
+const INDEX_MENU = [ACTION_IDS.newConsole, null, ACTION_IDS.synchronize, null, INDEX_ACTION_IDS.manageShown] as const;
 
 /** An index tree row's context menu (decision 174); null for any other row. */
 export function indexMenuOf(node: ExplorerNode): readonly MenuEntry[] | null {

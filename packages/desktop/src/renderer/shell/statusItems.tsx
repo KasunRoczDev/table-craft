@@ -6,6 +6,7 @@ import { keyspaceStatusText } from "@table-craft/desktop/renderer/model/keyTree.
 import { streamStatusText } from "@table-craft/desktop/renderer/model/streamTree.js";
 import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
 import { indexStatusText } from "@table-craft/desktop/renderer/model/indexTree.js";
+import { shownIndexFilter } from "@table-craft/desktop/renderer/model/shownIndices.js";
 import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { useKeys } from "@table-craft/desktop/renderer/state/keys.js";
@@ -87,7 +88,7 @@ function DatasourceStatus() {
       : streams !== undefined
         ? streamStatusText(streams)
         : indices !== undefined
-          ? indexStatusText(indices)
+          ? indexStatusText(indices, shownIndexFilter(datasource))
           : keyspaceStatusText(keyspace, nodes ?? []);
   return (
     <span

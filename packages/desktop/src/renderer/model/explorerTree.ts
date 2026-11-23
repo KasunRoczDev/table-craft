@@ -30,6 +30,7 @@ import {
   type DatasourceKeyspace,
   type KeyTreeNode,
 } from "@table-craft/desktop/renderer/model/keyTree.js";
+import { shownIndexFilter } from "@table-craft/desktop/renderer/model/shownIndices.js";
 import {
   EMPTY_STREAMS,
   lagWarningOf,
@@ -563,7 +564,8 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
         push(builder, child, at, key, label, opens, open),
       keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
     };
-    indexRows(sink, datasource.id, builder.input.indices?.[datasource.id] ?? EMPTY_INDICES, depth + 1);
+    const indices = builder.input.indices?.[datasource.id] ?? EMPTY_INDICES;
+    indexRows(sink, datasource.id, indices, depth + 1, shownIndexFilter(datasource));
     return;
   }
   if (builder.input.browsesKeys?.(datasource) === true) {

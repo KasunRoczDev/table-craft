@@ -1,10 +1,10 @@
 import { create } from "zustand";
 
-/** What the dialog picks: a catalog's top-level namespaces, or a stream datasource's topics. */
-export type ShownSubject = "schemas" | "topics";
+/** What the dialog picks: a catalog's top-level namespaces, a stream datasource's topics, or a search datasource's indices. */
+export type ShownSubject = "schemas" | "topics" | "indices";
 
 export interface ManageShownSchemasDialogState {
-  /** The datasource whose shown schemas or topics the dialog edits; null while closed. */
+  /** The datasource whose shown schemas, topics or indices the dialog edits; null while closed. */
   readonly datasourceId: string | null;
   readonly subject: ShownSubject;
   /** Bumped on each open, so the dialog starts fresh. */

@@ -23,6 +23,12 @@ describe("manage shown schemas", () => {
     expect(matchingNamespaces(DATABASES, "")).toBe(DATABASES);
   });
 
+  it("givenItemWithOtherNames_whenQueryHoldsOne_thenItemMatches", () => {
+    const items = [{ name: "orders-*", searchAlso: ["orders-write"] }, { name: "products" }];
+    expect(matchingNamespaces(items, "WRITE").map((item) => item.name)).toEqual(["orders-*"]);
+    expect(matchingNamespaces(items, "prod").map((item) => item.name)).toEqual(["products"]);
+  });
+
   it("givenSelection_whenNamesToggled_thenOthersKept", () => {
     const selected = new Set(["Billing", "gone"]);
 

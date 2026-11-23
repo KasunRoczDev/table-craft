@@ -2,13 +2,16 @@ import type { Namespace } from "@table-craft/desktop/engine/protocol.js";
 
 interface Named {
   readonly name: string;
+  /** Other names the item answers to, as a family's write alias finds the family's row. */
+  readonly searchAlso?: readonly string[] | undefined;
 }
 
-/** The items whose name holds `query`, ignoring case; all of them for a blank query. */
+/** The items whose name, or one of their other names, holds `query`, ignoring case; all of them for a blank query. */
 export function matchingNamespaces<T extends Named>(namespaces: readonly T[], query: string): readonly T[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") return namespaces;
-  return namespaces.filter((namespace) => namespace.name.toLowerCase().includes(needle));
+  const holds = (name: string) => name.toLowerCase().includes(needle);
+  return namespaces.filter((namespace) => holds(namespace.name) || namespace.searchAlso?.some(holds) === true);
 }
 
 /** Where `name` holds `query`, ignoring case, as the indexes speed search marks; none for a blank query or no match. */

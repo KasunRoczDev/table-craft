@@ -20,6 +20,7 @@ import {
   searchTargetFacts,
   type DatasourceIndices,
 } from "@table-craft/desktop/renderer/model/indexTree.js";
+import { shownIndexFilter } from "@table-craft/desktop/renderer/model/shownIndices.js";
 
 function index(name: string, docs = "10", bytes = "2048", health: string | null = "green"): SearchTarget {
   return {
@@ -73,9 +74,13 @@ const INDICES: DatasourceIndices = {
   ],
 };
 
-function rows(indices: DatasourceIndices, expanded: readonly string[]): readonly ExplorerRow[] {
+function rows(
+  indices: DatasourceIndices,
+  expanded: readonly string[],
+  datasource: DatasourceView = DATASOURCE,
+): readonly ExplorerRow[] {
   return explorerRows({
-    tree: [{ kind: "datasource", datasource: DATASOURCE }],
+    tree: [{ kind: "datasource", datasource }],
     catalogs: {},
     expanded: new Set(["datasource:search", ...expanded]),
     collapsedFolders: new Set(),
@@ -276,5 +281,46 @@ describe("index tree", () => {
       "indexSection:Hidden",
       "  searchTarget:.kibana_1",
     ]);
+  });
+
+  it("givenShownList_whenBuildingRows_thenOnlyListedTargetsInSections", () => {
+    const datasource = { ...DATASOURCE, shownIndices: ["logs-checkout-*", "metrics-app"] };
+    const shown = rows(INDICES, [...OPEN_SECTIONS, key("indexFamily", "logs-checkout")], datasource);
+    expect(outline(shown)).toEqual([
+      "indexSection:Indices",
+      "  indexFamily:logs-checkout",
+      "    searchTarget:logs-checkout-000412",
+      "    searchTarget:logs-checkout-000411",
+      "    indexOlder:1 older",
+      "indexSection:Data streams",
+      "  searchTarget:metrics-app",
+      "indexSection:Aliases",
+      "  searchTarget:logs-checkout",
+    ]);
+    expect(shown.find((row) => row.node.kind === "indexSection")?.node).toMatchObject({ count: 3 });
+  });
+
+  it("givenShownListUnderThreshold_whenBuildingRows_thenNoFilterRow", () => {
+    const many = Array.from({ length: INDEX_FILTER_THRESHOLD + 1 }, (_, at) =>
+      index(`app-${String(at).padStart(4, "0")}`),
+    );
+    const datasource = { ...DATASOURCE, shownIndices: ["app-0000", "app-0001"] };
+    const shown = rows({ ...EMPTY_INDICES, targets: many }, OPEN_SECTIONS, datasource);
+    expect(outline(shown)).toEqual(["indexSection:Indices", "  searchTarget:app-0000", "  searchTarget:app-0001"]);
+    expect(showsIndexFilter({ ...EMPTY_INDICES, targets: many }, 2)).toBe(false);
+  });
+
+  it("givenShownListAndFilter_whenBuildingRows_thenFilterCountsOverListed", () => {
+    const datasource = { ...DATASOURCE, shownIndices: ["logs-checkout-*", "orders", "products"] };
+    const shown = rows({ ...INDICES, filter: "o" }, [], datasource);
+    expect(shown[1]?.node).toMatchObject({ kind: "indexFilter", matched: 6, total: 6 });
+    const narrow = rows({ ...INDICES, filter: "orders" }, [], datasource);
+    expect(narrow[1]?.node).toMatchObject({ kind: "indexFilter", matched: 1, total: 6 });
+  });
+
+  it("givenShownList_whenStatusText_thenCountsListedIndices", () => {
+    const datasource = { shownIndices: ["logs-checkout-*", "orders"] };
+    expect(indexStatusText(INDICES, shownIndexFilter(datasource))).toBe("4 indices");
+    expect(indexStatusText(INDICES, shownIndexFilter({}))).toBe("7 indices");
   });
 });
