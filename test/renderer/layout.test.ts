@@ -20,7 +20,7 @@ describe("layout", () => {
 
     const restored = createLayoutStore(storage).getState().layout;
 
-    expect(restored.visible).toEqual({ database: true, services: true, log: false, watch: false });
+    expect(restored.visible).toEqual({ database: true, services: true, log: false, watch: false, tail: false });
     expect(restored.sizes.database).toBe(35);
   });
 
@@ -43,15 +43,27 @@ describe("layout", () => {
     store.getState().toggle("services");
 
     store.getState().hideAll();
-    expect(store.getState().layout.visible).toEqual({ database: false, services: false, log: false, watch: false });
+    expect(store.getState().layout.visible).toEqual({
+      database: false,
+      services: false,
+      log: false,
+      watch: false,
+      tail: false,
+    });
     store.getState().hideAll();
-    expect(store.getState().layout.visible).toEqual({ database: true, services: true, log: false, watch: false });
+    expect(store.getState().layout.visible).toEqual({
+      database: true,
+      services: true,
+      log: false,
+      watch: false,
+      tail: false,
+    });
   });
 
   it("givenFreshProfile_whenLoaded_thenOnlyDatabaseOpen", () => {
     const layout = createLayoutStore(memoryStorage()).getState().layout;
 
-    expect(layout.visible).toEqual({ database: true, services: false, log: false, watch: false });
+    expect(layout.visible).toEqual({ database: true, services: false, log: false, watch: false, tail: false });
   });
 
   it("givenProductionWarningClosed_whenRelaunched_thenStillClosedUntilShown", () => {
@@ -102,12 +114,13 @@ describe("layout", () => {
 
     const layout = loadLayout(storage);
 
-    expect(layout.visible).toEqual({ database: false, services: true, log: false, watch: false });
+    expect(layout.visible).toEqual({ database: false, services: true, log: false, watch: false, tail: false });
     expect(layout.sizes).toEqual({
       database: 30,
       services: 20,
       log: DEFAULT_LAYOUT.sizes.log,
       watch: DEFAULT_LAYOUT.sizes.watch,
+      tail: DEFAULT_LAYOUT.sizes.tail,
     });
   });
 

@@ -1,16 +1,25 @@
 # Themes
 
 TableCraft ships its own Dark, Light and High contrast themes and 43 more ported from the
-[openchamber](https://github.com/openchamber/openchamber) palettes by way of preman. Each one is
-generated from its palette and checked: text, syntax and grid colours meet WCAG AA contrast on every
-surface they sit on (High contrast meets AAA for text), and the six data source colours stay apart
-from each other. The palettes and their licences are listed in
-[`packages/desktop/scripts/palettes/NOTICE`](../../packages/desktop/scripts/palettes/NOTICE).
+[openchamber](https://github.com/openchamber/openchamber) palettes by way of preman.
 
-Choose one in Settings → Appearance → **Theme**: type to filter the list, and the arrow keys preview
-each theme on the whole window before you pick it with `Enter`; `Escape` puts the previous one back.
+## Choose a theme
+
+1. Open **Settings → Appearance → Theme**.
+2. Type to filter the list.
+3. Press the arrow keys to preview each theme on the whole window.
+4. Press `Enter` to pick the theme, or `Escape` to put the previous one back.
+
+The whole window takes on the theme you picked.
 
 ![Themes](../media/themes.gif)
+
+## Theme list
+
+Each theme is generated from its palette and checked. Text, syntax and grid colours meet WCAG AA
+contrast on every surface they sit on, and High contrast meets AAA for text. The six data source
+colours stay apart from each other. The palettes and their licences are listed in
+[`packages/desktop/scripts/palettes/NOTICE`](../../packages/desktop/scripts/palettes/NOTICE).
 
 | Theme                     | Id                          | Scheme | Source                             | Licence    |
 | :------------------------ | :-------------------------- | :----- | :--------------------------------- | :--------- |

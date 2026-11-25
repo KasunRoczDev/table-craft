@@ -33,7 +33,18 @@ function textFromEnv(name: string, fallback: string): string {
 }
 
 /** Every server the suites can run against; SQLite is in-process and always runs. */
-export const DATABASE_IDS = ["mysql", "tidb", "mariadb", "postgres", "oracle", "mssql", "redis", "etcd"] as const;
+export const DATABASE_IDS = [
+  "mysql",
+  "tidb",
+  "mariadb",
+  "postgres",
+  "oracle",
+  "mssql",
+  "redis",
+  "etcd",
+  "kafka",
+  "elasticsearch",
+] as const;
 export type DatabaseId = (typeof DATABASE_IDS)[number];
 export const DATABASES_ENV = "TABLE_CRAFT_DATABASES";
 /**
@@ -404,6 +415,89 @@ export const ETCD_ROOT_USER = { user: "root", password: CREDENTIAL } as const;
 /** The `etcd` server's user that may only read keys under `/app/`. */
 export const ETCD_LIMITED_USER = { user: "limited", password: "limited" } as const;
 
+const DEFAULT_KAFKA_PORT = 59092;
+const DEFAULT_KAFKA_SASL_PORT = 59093;
+/** A shared remote Kafka named in the git-ignored `.env` replaces the `kafka` container (test/db/stack.ts). */
+export const KAFKA_REMOTE_ENV = "TABLE_CRAFT_KAFKA_REMOTE_BOOTSTRAP";
+/** Every topic and group the suites create starts with this, so they never touch one they did not make. */
+export const KAFKA_SCRATCH_PREFIX = "tc_run_";
+
+/** The remote Kafka's bootstrap list when `.env` names one, read when called. */
+export function kafkaRemoteBootstrap(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = (env[KAFKA_REMOTE_ENV] ?? "").trim();
+  return value === "" ? null : value;
+}
+
+function kafkaBootstrap(variable: string, port: string, fallback: number): string {
+  const value = process.env[variable];
+  if (value !== undefined && value !== "") return value;
+  return `${LOOPBACK}:${String(portFromEnv(port, fallback))}`;
+}
+
+/** PLAINTEXT to the remote Kafka when `.env` names one, otherwise to the `kafka` service. */
+export const KAFKA_CONFIG = {
+  bootstrapServers:
+    kafkaRemoteBootstrap() ??
+    kafkaBootstrap("TABLE_CRAFT_KAFKA_BOOTSTRAP", "TABLE_CRAFT_KAFKA_PORT", DEFAULT_KAFKA_PORT),
+  security: "PLAINTEXT",
+} as const;
+
+/** The `kafka` service's SASL_PLAINTEXT listener with the PLAIN user `table_craft`. */
+export const KAFKA_SASL_CONFIG = {
+  bootstrapServers: kafkaBootstrap(
+    "TABLE_CRAFT_KAFKA_SASL_BOOTSTRAP",
+    "TABLE_CRAFT_KAFKA_SASL_PORT",
+    DEFAULT_KAFKA_SASL_PORT,
+  ),
+  security: "SASL_PLAINTEXT",
+  saslMechanism: "PLAIN",
+  user: CREDENTIAL,
+  password: CREDENTIAL,
+} as const;
+
+const DEFAULT_ELASTICSEARCH_PORT = 59200;
+const DEFAULT_OPENSEARCH_PORT = 59203;
+const HTTPS_PORT = 443;
+const HTTP_PORT = 80;
+/**
+ * A shared remote cluster named in the git-ignored `.env`, which the Elasticsearch suite runs
+ * against besides the `elasticsearch` and `opensearch` services (test/db/elasticsearch.test.ts).
+ */
+export const ELASTICSEARCH_REMOTE_ENV = "TABLE_CRAFT_ELASTICSEARCH_REMOTE_URL";
+/** Every index and alias the suites create starts with this, so they never touch one they did not make. */
+export const ELASTICSEARCH_SCRATCH_PREFIX = "tc_run_";
+
+/** The remote cluster's URL when `.env` names one, read when called. */
+export function elasticsearchRemoteUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = (env[ELASTICSEARCH_REMOTE_ENV] ?? "").trim();
+  return value === "" ? null : value;
+}
+
+/** The plugin's connection config for a cluster URL such as `http://host:9200`. */
+export function elasticsearchConfigOf(url: string): Readonly<Record<string, unknown>> {
+  const parsed = new URL(url);
+  const https = parsed.protocol === "https:";
+  return {
+    host: parsed.hostname,
+    port: parsed.port === "" ? (https ? HTTPS_PORT : HTTP_PORT) : Number(parsed.port),
+    tlsMode: https ? "verify-full" : "disable",
+    ...(parsed.username === "" ? {} : { authMode: "basic", user: decodeURIComponent(parsed.username) }),
+    ...(parsed.password === "" ? {} : { password: decodeURIComponent(parsed.password) }),
+  };
+}
+
+/** The `elasticsearch` service: Elasticsearch 8 without security. */
+export const ELASTICSEARCH_CONFIG = {
+  host: hostFromEnv("TABLE_CRAFT_ELASTICSEARCH_HOST"),
+  port: portFromEnv("TABLE_CRAFT_ELASTICSEARCH_PORT", DEFAULT_ELASTICSEARCH_PORT),
+} as const;
+
+/** The `opensearch` service: OpenSearch 2 without its security plugin. */
+export const OPENSEARCH_CONFIG = {
+  host: hostFromEnv("TABLE_CRAFT_OPENSEARCH_HOST"),
+  port: portFromEnv("TABLE_CRAFT_OPENSEARCH_PORT", DEFAULT_OPENSEARCH_PORT),
+} as const;
+
 export function withWrongPassword<Config extends { readonly password: string }>(config: Config): Config {
   return { ...config, password: WRONG_PASSWORD };
 }
@@ -420,6 +514,10 @@ export const WITHOUT_ORACLE = !databaseEnabled("oracle");
 export const WITHOUT_MSSQL = !databaseEnabled("mssql");
 /** The etcd suites and scenarios skip unless `TABLE_CRAFT_DATABASES` selects it. */
 export const WITHOUT_ETCD = !databaseEnabled("etcd");
+/** The Kafka suites and scenarios skip unless `TABLE_CRAFT_DATABASES` selects it. */
+export const WITHOUT_KAFKA = !databaseEnabled("kafka");
+/** The Elasticsearch suites and scenarios skip unless `TABLE_CRAFT_DATABASES` selects it. */
+export const WITHOUT_ELASTICSEARCH = !databaseEnabled("elasticsearch");
 
 /** Whether a scenario on a datasource of `pluginId` skips, because its server is not selected. */
 export function serverSkipped(pluginId: string): boolean {
@@ -428,6 +526,8 @@ export function serverSkipped(pluginId: string): boolean {
     (pluginId === "redis" && WITHOUT_REDIS) ||
     (pluginId === "oracle" && WITHOUT_ORACLE) ||
     (pluginId === "mssql" && WITHOUT_MSSQL) ||
-    (pluginId === "etcd" && WITHOUT_ETCD)
+    (pluginId === "etcd" && WITHOUT_ETCD) ||
+    (pluginId === "kafka" && WITHOUT_KAFKA) ||
+    (pluginId === "elasticsearch" && WITHOUT_ELASTICSEARCH)
   );
 }

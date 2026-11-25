@@ -72,6 +72,7 @@ import { createElectronMcpNotices } from "@table-craft/desktop/main/mcpNoticesEl
 import { askMcpWindow } from "@table-craft/desktop/main/mcpWindows.js";
 import { FILE_ATTACHMENTS_FILE, createFileAttachments } from "@table-craft/desktop/main/fileAttachments.js";
 import { createSqlFileChannels } from "@table-craft/desktop/main/sqlFiles.js";
+import { installOpenFromOs } from "@table-craft/desktop/main/openFromOs.js";
 import { createLoneAlt, menuButtonAnchor, popupApplicationMenu } from "@table-craft/desktop/main/menuPopup.js";
 import { appPaths } from "@table-craft/desktop/main/paths.js";
 import { createPluginStore, type PluginStore } from "@table-craft/desktop/main/pluginStore/electron.js";
@@ -191,6 +192,7 @@ if (!primaryInstance) app.exit(0);
 let settingsService: SettingsService | null = null;
 let pluginStore: PluginStore | null = null;
 let mcpSupervisor: McpSupervisor | null = null;
+const openFromOs = installOpenFromOs(menuTarget);
 
 function mirrorToTerminal(record: LogRecord): void {
   if (!enabled(record.level, MIRROR_LEVEL)) return;
@@ -543,6 +545,8 @@ function createWindow(settings: SettingsService): void {
     });
     window.on("blur", () => loneAlt.reset());
   }
+  openFromOs.rendererLoading();
+  window.webContents.on("did-start-loading", () => openFromOs.rendererLoading());
   const sendState = () => window.webContents.send(CHANNELS.windowState, windowStateOf(window));
   window.on("enter-full-screen", sendState);
   window.on("leave-full-screen", sendState);
@@ -737,13 +741,6 @@ async function startUpdater(directory: string, settings: SettingsService): Promi
 /** Called with the saved settings after every write; the updater's schedule listens. */
 const settingsListeners: ((settings: SettingsChanged["settings"]) => void)[] = [];
 
-app.on("second-instance", () => {
-  const [window] = BrowserWindow.getAllWindows();
-  if (window === undefined) return;
-  if (window.isMinimized()) window.restore();
-  window.focus();
-});
-
 void app.whenReady().then(async () => {
   if (!primaryInstance) return;
   app.setAboutPanelOptions({ applicationName: APP_NAME, applicationVersion: appVersion });
@@ -907,6 +904,7 @@ void app.whenReady().then(async () => {
       attachments,
       choose: chooseSqlFiles,
       recentChanged: (recent) => menu.setRecent(recent),
+      launched: () => openFromOs.take(),
     }),
     history,
     settings,
@@ -1039,7 +1037,9 @@ void app.whenReady().then(async () => {
     },
   });
   menu.setRecent(await attachments.recent());
+  await openFromOs.launchedWith(process.argv, process.cwd());
   createWindow(settings);
+  openFromOs.windowsReady(() => createWindow(settings));
   void mcp.start();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(settings);

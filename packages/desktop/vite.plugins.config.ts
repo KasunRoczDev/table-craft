@@ -23,7 +23,16 @@ export const BUILT_IN_PLUGINS = ["sqlite", "mysql"] as const;
  * Published to npm and downloaded on demand (decisions 108-110). A development run and the smoke
  * harness load them from `dist/optional-plugins/`; the packaged app never does.
  */
-export const OPTIONAL_PLUGINS = ["postgres", "redis", "oracle", "mssql", "etcd", "duckdb"] as const;
+export const OPTIONAL_PLUGINS = [
+  "postgres",
+  "redis",
+  "oracle",
+  "mssql",
+  "etcd",
+  "duckdb",
+  "kafka",
+  "elasticsearch",
+] as const;
 type BuiltPlugin = (typeof BUILT_IN_PLUGINS)[number] | (typeof OPTIONAL_PLUGINS)[number];
 /** pg's optional libpq binding; pg only loads it when asked for `pg.native`, which no plugin does. */
 const OPTIONAL_DRIVER_MODULES = ["pg-native"];
@@ -135,6 +144,57 @@ function nativeBinding(id: BuiltPlugin, outDir: string): Plugin[] {
   ];
 }
 
+/**
+ * `@platformatic/wasm-utils` reads `native.wasm` beside itself with `readFileSync(new URL(…,
+ * import.meta.url))`, which the bundle inlines as a `data:` URL that `readFileSync` refuses. Its
+ * `./bundled` entry carries the same module in base64.
+ */
+const WASM_UTILS_PACKAGE = "@platformatic/wasm-utils";
+const WASM_UTILS_BUNDLED = `${WASM_UTILS_PACKAGE}/bundled`;
+/**
+ * `@platformatic/kafka`'s murmur2 partitioner takes mnemonist's LRU cache through
+ * `createRequire(import.meta.url)`, which the bundle cannot follow and a plugin package has no
+ * `node_modules` to answer at run time; an import puts it in the bundle.
+ */
+const MURMUR2_MODULE = /[\\/]@platformatic[\\/]kafka[\\/]dist[\\/]protocol[\\/]murmur2\.js$/;
+const MURMUR2_REQUIRE =
+  /const require = createRequire\(import\.meta\.url\);\s*const LRUCache = require\('mnemonist\/lru-cache\.js'\);/;
+/** mnemonist exports its single modules to `require` only; its ES entry re-exports them, and the bundle drops the rest. */
+const MURMUR2_IMPORT = "import { LRUCache } from 'mnemonist';";
+
+/** `code` of the murmur2 module with its `require` of mnemonist made an import; throws when the call moved. */
+export function importMurmur2Cache(code: string, id: string): string {
+  if (!MURMUR2_REQUIRE.test(code)) {
+    throw new Error(
+      `${id} no longer requires mnemonist/lru-cache.js; update MURMUR2_REQUIRE in vite.plugins.config.ts.`,
+    );
+  }
+  return code.replace(MURMUR2_REQUIRE, MURMUR2_IMPORT);
+}
+
+function bundledKafkaDriver(id: BuiltPlugin): Plugin[] {
+  if (id !== "kafka") return [];
+  let rewrote = false;
+  return [
+    {
+      name: "table-craft:bundled-kafka-driver",
+      enforce: "pre",
+      resolveId(source, importer, options) {
+        if (source !== WASM_UTILS_PACKAGE) return null;
+        return this.resolve(WASM_UTILS_BUNDLED, importer, { ...options, skipSelf: true });
+      },
+      transform(code, moduleId) {
+        if (!MURMUR2_MODULE.test(moduleId)) return null;
+        rewrote = true;
+        return { code: importMurmur2Cache(code, moduleId), map: null };
+      },
+      buildEnd() {
+        if (!rewrote) this.error(`The kafka build never met the murmur2 module (${String(MURMUR2_MODULE)}).`);
+      },
+    },
+  ];
+}
+
 function copyManifest(id: BuiltPlugin, outDir: string): Plugin {
   return {
     name: "table-craft:copy-plugin-manifest",
@@ -164,7 +224,12 @@ export default defineConfig(({ mode }) => {
   }
   const outDir = resolve(isBuiltInPlugin(mode) ? BUILT_IN_OUT_DIR : OPTIONAL_OUT_DIR, mode);
   return {
-    plugins: [...inlineProtos(mode), ...nativeBinding(mode, outDir), copyManifest(mode, outDir)],
+    plugins: [
+      ...inlineProtos(mode),
+      ...nativeBinding(mode, outDir),
+      ...bundledKafkaDriver(mode),
+      copyManifest(mode, outDir),
+    ],
     resolve: { alias: ALIASES, mainFields: NODE_MAIN_FIELDS, conditions: NODE_CONDITIONS },
     build: {
       target: BUILD_TARGET,

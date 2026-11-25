@@ -33,16 +33,17 @@ Read a reference only when the step needs it:
 | The plugin API                                    | `bun run api:check`                                                   |
 
 `test:db` starts MySQL, TiDB and MariaDB (decision 099). `TABLE_CRAFT_DATABASES`, a comma list of
-`mysql`, `tidb`, `mariadb`, `postgres`, `oracle`, `mssql`, `redis`, `etcd` or `all`, picks the servers
+`mysql`, `tidb`, `mariadb`, `postgres`, `oracle`, `mssql`, `redis`, `etcd`, `kafka`, `elasticsearch` or `all`, picks the servers
 `test/db/up.ts` starts and the suites that run; `test:db:postgres`, `test:db:oracle`,
-`test:db:mssql`, `test:db:redis`, `test:db:etcd`, `test:db:mariadb` and `test:db:all` set it. SQLite always runs.
+`test:db:mssql`, `test:db:redis`, `test:db:etcd`, `test:db:kafka`, `test:db:elasticsearch`, `test:db:mariadb` and `test:db:all` set it. SQLite always runs.
 Run the suite of every plugin you touched.
 
 ## 2. Prepare
 
 - **In a worktree**, copy the main checkout's `.env` into its root right after the worktree is made
   (`cp <main checkout>/.env .env`, when the main checkout has one), before any test. It names the
-  remote TiDB the suites use instead of the emulated container.
+  remote TiDB the suites use instead of the emulated container, and may name a remote Kafka
+  or Elasticsearch.
 - **Beside another checkout** whose suites may run at the same time, set `COMPOSE_PROJECT_NAME`
   and the port variables in
   [references/parallel-checkouts.md](references/parallel-checkouts.md) on every `test:db`,
@@ -59,7 +60,7 @@ container under Xvfb with its own keyring, so nothing takes the screen, keyboard
 
 - `bun run test:smoke:headless` runs the suites on in-memory SQLite;
   `bun run test:smoke:db:headless` adds MySQL and TiDB, and `test:smoke:db:headless:postgres`,
-  `:oracle`, `:mssql`, `:redis`, `:etcd` and `:all` add that server. The first line names the selected set.
+  `:oracle`, `:mssql`, `:redis`, `:etcd`, `:kafka`, `:elasticsearch` and `:all` add that server. The first line names the selected set.
 - Paths narrow the run like `vitest run`, and arguments starting with `-` go to Vitest:
   `bun run test:smoke:db:headless test/e2e/namespace.smoke.test.ts`.
 - Files run `TABLE_CRAFT_SMOKE_WORKERS` at a time, one display each (decision 096). Unset, that is

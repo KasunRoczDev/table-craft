@@ -60,6 +60,11 @@ import {
   type Transactions,
   type WireValue,
 } from "@table-craft/plugin-api";
+import { runSearchContract, type SearchFixture } from "./search.js";
+import { runStreamsContract, type StreamsFixture } from "./streams.js";
+
+export type { SearchContract, SearchFixture } from "./search.js";
+export type { StreamsContract, StreamsFixture } from "./streams.js";
 
 export interface ContractFixture {
   /** The plugin's parsed `table-craft-plugin.json`, whose connection form the suite checks. */
@@ -141,6 +146,10 @@ export interface ContractFixture {
   readonly commands?: CommandsFixture;
   /** Required when the plugin declares `keyValue` (decision 113). */
   readonly keyspace?: KeyspaceFixture;
+  /** Required when the plugin declares `topics` (plan 164); its hooks gate the cases that need them. */
+  readonly streams?: StreamsFixture;
+  /** Required when the plugin declares `searchIndices` (plan 165). */
+  readonly search?: SearchFixture;
   /**
    * Required when the plugin declares `sessions`, which also needs `statements.sleep`, and
    * `statements.write` where it declares `transactions`.
@@ -226,12 +235,15 @@ export interface CommandsFixture {
   readonly array: CommandRows;
   /** A command answered with a map. */
   readonly map: CommandRows;
-  /** A command answering bytes that are not UTF-8, and those bytes in hex. */
-  readonly binary: { readonly command: string; readonly hex: string };
+  /** A command answering bytes that are not UTF-8, and those bytes in hex; leave it out where no reply carries bytes. */
+  readonly binary?: { readonly command: string; readonly hex: string };
   /** A write a read-only session refuses, and the command name the refusal carries. */
   readonly write: { readonly command: string; readonly name: string };
-  /** A command classified costly, and the text of the first quick fix its problem offers. */
-  readonly costly: { readonly command: string; readonly fixed: string };
+  /**
+   * A command classified costly, and the text of the first quick fix its problem offers; leave it
+   * out where the language offers no fix.
+   */
+  readonly costly?: { readonly command: string; readonly fixed: string };
   /** A command classified destructive and confirmed by the datasource's name. */
   readonly confirmByName: string;
 }
@@ -534,6 +546,11 @@ function typeProbeOf(fixture: ContractFixture): NonNullable<ContractFixture["typ
   return fixture.typeProbe;
 }
 
+function required<T>(value: T | undefined, name: string): T {
+  if (value === undefined) throw new Error(`The fixture has no ${name}.`);
+  return value;
+}
+
 function commandsOf(fixture: ContractFixture): CommandsFixture {
   if (fixture.commands === undefined) throw new Error("A plugin that declares commands needs fixture.commands.");
   return fixture.commands;
@@ -781,6 +798,10 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         routineCall: ["sql", "schemaTree"],
         savepoints: ["sql", "transactions"],
         rowLimit: ["sql"],
+        topics: ["commands"],
+        consumerGroups: ["commands"],
+        schemaRegistry: ["commands"],
+        searchIndices: ["commands"],
       };
       for (const [capability, needed] of Object.entries(needs)) {
         if (declared.has(capability as Capability))
@@ -2409,8 +2430,8 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         });
       });
 
-      it("givenBinaryValue_whenExecute_thenBytesValue", async () => {
-        const { command, hex } = commandsOf(fixture).binary;
+      it.runIf(fixture.commands?.binary !== undefined)("givenBinaryValue_whenExecute_thenBytesValue", async () => {
+        const { command, hex } = required(commandsOf(fixture).binary, "commands.binary");
         await withSession(plugin, fixture, async (session) => {
           const result = await session.execute(command, [], { fullBytes: true });
           expect(result.reply?.value).toEqual({
@@ -2444,18 +2465,21 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         expect(classified.confirmByName).toBe(true);
       });
 
-      it("givenKeysPattern_whenClassify_thenCostlyWithScanFix", async () => {
-        const { command, fixed } = commandsOf(fixture).costly;
-        expect(language().classify(command).costly).toMatch(/\S/);
-        const problems = (await language().inspect?.({ text: command })) ?? [];
-        const fix = problems[0]?.fixes[0];
-        expect(fix).toBeDefined();
-        let text = command;
-        for (const edit of [...(fix?.edits ?? [])].sort((a, b) => b.from - a.from)) {
-          text = text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
-        }
-        expect(text).toBe(fixed);
-      });
+      it.runIf(fixture.commands?.costly !== undefined)(
+        "givenKeysPattern_whenClassify_thenCostlyWithScanFix",
+        async () => {
+          const { command, fixed } = required(commandsOf(fixture).costly, "commands.costly");
+          expect(language().classify(command).costly).toMatch(/\S/);
+          const problems = (await language().inspect?.({ text: command })) ?? [];
+          const fix = problems[0]?.fixes[0];
+          expect(fix).toBeDefined();
+          let text = command;
+          for (const edit of [...(fix?.edits ?? [])].sort((a, b) => b.from - a.from)) {
+            text = text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
+          }
+          expect(text).toBe(fixed);
+        },
+      );
 
       it("givenCommand_whenComplete_thenNeverRejects", async () => {
         await withSession(plugin, fixture, async (session) => {
@@ -2468,6 +2492,9 @@ export function runPluginContract(plugin: DatasourcePlugin, fixture: ContractFix
         });
       });
     });
+
+    runStreamsContract({ plugin, config: fixture.config, streams: fixture.streams });
+    runSearchContract({ plugin, config: fixture.config, search: fixture.search });
 
     describe.runIf(plugin.capabilities.includes("keyValue"))("keyValue", () => {
       function keyspaceFixture(): KeyspaceFixture {

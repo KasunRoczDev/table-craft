@@ -19,11 +19,26 @@ import {
   type TreeNode,
 } from "@table-craft/desktop/renderer/model/datasourceTree.js";
 import {
+  EMPTY_INDICES,
+  indexRows,
+  type DatasourceIndices,
+  type IndexTreeNode,
+} from "@table-craft/desktop/renderer/model/indexTree.js";
+import {
   EMPTY_KEYSPACE,
   keyspaceRows,
   type DatasourceKeyspace,
   type KeyTreeNode,
 } from "@table-craft/desktop/renderer/model/keyTree.js";
+import { shownIndexFilter } from "@table-craft/desktop/renderer/model/shownIndices.js";
+import {
+  EMPTY_STREAMS,
+  lagWarningOf,
+  shownTopicFilter,
+  streamRows,
+  type DatasourceStreams,
+  type StreamTreeNode,
+} from "@table-craft/desktop/renderer/model/streamTree.js";
 
 /** One namespace's catalog in the renderer: the last one read, and whether a read is running or failed. */
 export interface NamespaceState {
@@ -156,7 +171,8 @@ export type CatalogNode =
   | RoutineNode
   | SequenceNode;
 
-export type ExplorerNode = FolderNode | DatasourceNode | CatalogNode | KeyTreeNode | LoadingNode | ErrorNode;
+export type ExplorerNode =
+  FolderNode | DatasourceNode | CatalogNode | KeyTreeNode | StreamTreeNode | IndexTreeNode | LoadingNode | ErrorNode;
 
 export interface ExplorerRow {
   readonly node: ExplorerNode;
@@ -186,6 +202,14 @@ export interface ExplorerInput {
   readonly browsesKeys?: (datasource: DatasourceView) => boolean;
   /** Whether a keyspace lists its empty databases too (Show Empty Databases). */
   readonly showEmptyDatabases?: boolean;
+  /** Stream datasources' topics, groups and subjects (decision 169); absent, none. */
+  readonly streams?: Readonly<Record<string, DatasourceStreams>>;
+  /** Whether the datasource lists topics rather than namespaces (`topics`). */
+  readonly browsesStreams?: (datasource: DatasourceView) => boolean;
+  /** Search datasources' indices, aliases and data streams (decision 174); absent, none. */
+  readonly indices?: Readonly<Record<string, DatasourceIndices>>;
+  /** Whether the datasource lists indices rather than namespaces (`searchIndices`). */
+  readonly browsesIndices?: (datasource: DatasourceView) => boolean;
 }
 
 export function pathKey(path: readonly string[]): string {
@@ -292,6 +316,15 @@ export function keyTreeRowOf(
   return { kind, database, rest };
 }
 
+/** The kind and the parts after it a catalog row's key names, or null for any other key. */
+export function catalogRowOf(key: string): { readonly kind: string; readonly rest: readonly unknown[] } | null {
+  if (!key.startsWith(`${CATALOG_KEY_PREFIX}[`)) return null;
+  const parts: unknown = JSON.parse(key.slice(CATALOG_KEY_PREFIX.length));
+  if (!Array.isArray(parts)) return null;
+  const [, kind, ...rest] = parts as unknown[];
+  return typeof kind === "string" ? { kind, rest } : null;
+}
+
 function isPrefix(prefix: readonly string[], path: readonly string[]): boolean {
   return prefix.length < path.length && prefix.every((part, index) => path[index] === part);
 }
@@ -321,10 +354,12 @@ function push(
   key: string,
   label: string,
   expandable: boolean,
+  open = false,
 ): boolean {
   const expanded =
     expandable &&
-    (node.kind === "folder" ? !builder.input.collapsedFolders.has(node.path) : builder.input.expanded.has(key));
+    (open ||
+      (node.kind === "folder" ? !builder.input.collapsedFolders.has(node.path) : builder.input.expanded.has(key)));
   builder.rows.push({ node, depth, key, label, expandable, expanded });
   return expanded;
 }
@@ -509,6 +544,31 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
   const { datasource } = node;
   const expandable = builder.input.canExpand(datasource);
   if (!push(builder, node, depth, nodeKey(node), datasource.name, expandable)) return;
+  if (builder.input.browsesStreams?.(datasource) === true) {
+    const sink = {
+      push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean) =>
+        push(builder, child, at, key, label, opens),
+      keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
+    };
+    const streams = builder.input.streams?.[datasource.id] ?? EMPTY_STREAMS;
+    const options = {
+      showInternal: builder.input.showSystem,
+      lagWarning: lagWarningOf(datasource.config),
+      shown: shownTopicFilter(datasource),
+    };
+    streamRows(sink, datasource.id, streams, options, depth + 1);
+    return;
+  }
+  if (builder.input.browsesIndices?.(datasource) === true) {
+    const sink = {
+      push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean, open?: boolean) =>
+        push(builder, child, at, key, label, opens, open),
+      keyOf: (...parts: readonly unknown[]) => catalogKey(datasource.id, ...parts),
+    };
+    const indices = builder.input.indices?.[datasource.id] ?? EMPTY_INDICES;
+    indexRows(sink, datasource.id, indices, depth + 1, shownIndexFilter(datasource));
+    return;
+  }
   if (builder.input.browsesKeys?.(datasource) === true) {
     const sink = {
       push: (child: ExplorerNode, at: number, key: string, label: string, opens: boolean) =>
@@ -612,6 +672,14 @@ export function objectNameOf(node: ExplorerNode): string | null {
       return node.relation;
     case "keyEntry":
       return node.key.text;
+    case "topic":
+      return node.topic.name;
+    case "consumerGroup":
+      return node.group.id;
+    case "subject":
+      return node.subject.subject;
+    case "searchTarget":
+      return node.target.name;
     default:
       return null;
   }

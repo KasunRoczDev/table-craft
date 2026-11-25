@@ -40,6 +40,13 @@ import { useScripts, type ScriptsStore } from "@table-craft/desktop/renderer/sta
 import { serverTabOf, useServer, type ServerStore } from "@table-craft/desktop/renderer/state/server.js";
 import { sessionsTabOf, useSessions, type SessionsStore } from "@table-craft/desktop/renderer/state/sessions.js";
 import { keyTabsOf, useKeyTabs, type KeyTabsStore } from "@table-craft/desktop/renderer/state/keyTabs.js";
+import { topicTabsOf, useTopicTabs, type TopicTabsStore } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { groupTabsOf, useGroupTabs, type GroupTabsStore } from "@table-craft/desktop/renderer/state/groupTabs.js";
+import { useStreams, type StreamsStore } from "@table-craft/desktop/renderer/state/streams.js";
+import { useTail } from "@table-craft/desktop/renderer/tail/store.js";
+import { subjectTabsOf, useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
+import { indexTabsOf, useIndexTabs } from "@table-craft/desktop/renderer/state/indexTabs.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
 import { themeOf, useSettings, type SettingsStore } from "@table-craft/desktop/renderer/state/settings.js";
 import { tablesOf, useTables, type TablesStore } from "@table-craft/desktop/renderer/state/tables.js";
 import { useTabs, type TabsStore } from "@table-craft/desktop/renderer/state/tabs.js";
@@ -51,6 +58,9 @@ export interface WiredStores {
   readonly catalog?: CatalogStore;
   readonly keys?: KeysStore;
   readonly keyTabs?: KeyTabsStore;
+  readonly streams?: StreamsStore;
+  readonly topicTabs?: TopicTabsStore;
+  readonly groupTabs?: GroupTabsStore;
   readonly tables?: TablesStore;
   readonly ddl?: DdlStore;
   readonly diagrams?: DiagramsStore;
@@ -84,6 +94,9 @@ export function wireStores({
   catalog,
   keys,
   keyTabs,
+  streams,
+  topicTabs,
+  groupTabs,
   tables,
   ddl,
   diagrams,
@@ -107,8 +120,14 @@ export function wireStores({
     consoles.getState().detach(id, error);
     tables?.getState().detach(id, error);
     keyTabs?.getState().detach(id, error);
+    topicTabs?.getState().detach(id, error);
+    groupTabs?.getState().detach(id);
+    useSubjectTabs.getState().detach(id);
+    useIndexTabs.getState().detach(id, error);
     catalog?.getState().clear(id);
     keys?.getState().clear(id);
+    streams?.getState().clear(id);
+    useIndices.getState().clear(id);
   });
   const offRemoved = datasources.onRemoved((ids) => {
     for (const id of ids) {
@@ -137,6 +156,22 @@ export function wireStores({
         tabs.getState().close(keyId);
         keyTabs?.getState().close(keyId);
       }
+      for (const topicId of topicTabs === undefined ? [] : topicTabsOf(topicTabs.getState().tabs, id)) {
+        tabs.getState().close(topicId);
+        topicTabs?.getState().close(topicId);
+      }
+      for (const subjectId of subjectTabsOf(useSubjectTabs.getState().tabs, id)) {
+        tabs.getState().close(subjectId);
+        useSubjectTabs.getState().close(subjectId);
+      }
+      for (const indexId of indexTabsOf(useIndexTabs.getState().tabs, id)) {
+        tabs.getState().close(indexId);
+        useIndexTabs.getState().close(indexId);
+      }
+      for (const groupId of groupTabs === undefined ? [] : groupTabsOf(groupTabs.getState().tabs, id)) {
+        tabs.getState().close(groupId);
+        groupTabs?.getState().close(groupId);
+      }
       const sessionsId = sessions === undefined ? null : sessionsTabOf(sessions.getState().tabs, id);
       if (sessionsId !== null) {
         tabs.getState().close(sessionsId);
@@ -149,7 +184,7 @@ export function wireStores({
       }
     }
   });
-  const offAttached = catalog === undefined ? () => undefined : followAttaches(datasources, catalog, keys);
+  const offAttached = catalog === undefined ? () => undefined : followAttaches(datasources, catalog, keys, streams);
   const offRedescribes = catalog === undefined || ddl === undefined ? () => undefined : followRedescribes(ddl, catalog);
   const offDiagrams =
     catalog === undefined || diagrams === undefined ? () => undefined : followDiagramRedescribes(diagrams, catalog);
@@ -180,7 +215,12 @@ export function dropClosedExecutions(tabs: TabsStore, executions: ExecutionsStor
  * However a datasource got connected (a console, Connect, expanding its node), its tree opens on
  * the current namespace, described (plan 005, decision 7), or on the configured database's keys.
  */
-function followAttaches(datasources: DatasourcesStore, catalog: CatalogStore, keys?: KeysStore): () => void {
+function followAttaches(
+  datasources: DatasourcesStore,
+  catalog: CatalogStore,
+  keys?: KeysStore,
+  streams?: StreamsStore,
+): () => void {
   return datasources.subscribe((state, previous) => {
     for (const [id, connection] of Object.entries(state.connections)) {
       if (connection.status !== "connected" || previous.connections[id]?.status === "connected") continue;
@@ -188,6 +228,8 @@ function followAttaches(datasources: DatasourcesStore, catalog: CatalogStore, ke
       if (datasource === undefined) continue;
       const capabilities = capabilitiesOf(state.plugins, datasource.pluginId);
       if (capabilities.includes("keyValue")) void keys?.getState().expandDatasource(id);
+      if (capabilities.includes("topics")) void streams?.getState().expandDatasource(id);
+      if (capabilities.includes("searchIndices")) void useIndices.getState().expandDatasource(id);
       if (!capabilities.includes("schemaTree")) continue;
       void catalog.getState().expandDatasource(id);
     }
@@ -234,11 +276,13 @@ export function installDatasourceSync(onFirstList: () => void): () => void {
   const offCommandTxn = followCommandTxn(useDatasources, useConsoles, useCommandTxn);
   const offAdvancedDetached = useDatasources.onDetached((id) => {
     useWatch.getState().detach(id);
+    useTail.getState().detach(id);
     useKeyAdmin.getState().detach(id);
   });
   const offAdvancedRemoved = useDatasources.onRemoved((ids) => {
     for (const id of ids) {
       useWatch.getState().detach(id);
+      useTail.getState().detach(id);
       useKeyAdmin.getState().detach(id);
       for (const [tabId, tab] of Object.entries(useKeyAdmin.getState().tabs))
         if (tab.datasourceId === id) {
@@ -253,6 +297,8 @@ export function installDatasourceSync(onFirstList: () => void): () => void {
     for (const [id, entry] of Object.entries(useWatch.getState().entries))
       if (entry.summary.state !== "stopped") void useWatch.getState().poll(id);
     void useWatch.getState().exportPoll();
+    for (const [id, entry] of Object.entries(useTail.getState().entries))
+      if (entry.summary.state !== "stopped") void useTail.getState().poll(id);
     for (const [id, connection] of Object.entries(useDatasources.getState().connections)) {
       if (connection.status !== "connected") continue;
       const source = useDatasources.getState().datasources.find((source) => source.id === id);
@@ -271,6 +317,9 @@ export function installDatasourceSync(onFirstList: () => void): () => void {
     catalog: useCatalog,
     keys: useKeys,
     keyTabs: useKeyTabs,
+    streams: useStreams,
+    topicTabs: useTopicTabs,
+    groupTabs: useGroupTabs,
     tables: useTables,
     ddl: useDdl,
     diagrams: useDiagrams,

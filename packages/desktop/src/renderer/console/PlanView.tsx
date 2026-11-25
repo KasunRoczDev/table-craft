@@ -1,5 +1,5 @@
 import { useMemo, useRef, type KeyboardEvent } from "react";
-import { SEGMENT, SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
+import { SEGMENT, TOOLBAR_SEGMENT_GROUP } from "@table-craft/desktop/renderer/ui/Segmented.js";
 import { EXPLAIN_ACTION_IDS } from "@table-craft/desktop/renderer/actions/explainActions.js";
 import { invoke } from "@table-craft/desktop/renderer/actions/index.js";
 import { ActionButton } from "@table-craft/desktop/renderer/ui/ActionButton.js";
@@ -244,7 +244,7 @@ export function PlanView({ consoleId, plan }: { readonly consoleId: string; read
         </div>
       ) : null}
       <div className="flex h-tab shrink-0 items-center gap-gap border-b border-line bg-panel px-gap">
-        <div role="group" aria-label="Plan view" className={cn(SEGMENT_GROUP, "self-center")}>
+        <div role="group" aria-label="Plan view" className={TOOLBAR_SEGMENT_GROUP}>
           {VIEWS.map(({ view, label, actionId }) => (
             <button
               key={view}

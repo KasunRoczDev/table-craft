@@ -8,6 +8,7 @@ import {
   type ToolContext,
   type ToolResult,
 } from "@table-craft/desktop/mcp/toolKit.js";
+import type { McpIndexSearch } from "@table-craft/desktop/settings/mcp.js";
 
 const ONE_READ =
   "The filter must form one read: a WHERE condition and an ORDER BY list, with no other statement. Nothing was opened.";
@@ -82,6 +83,96 @@ export async function openTableFor(context: ToolContext, args: OpenTableArgs): P
       ...(note === null ? [] : [note]),
     ].join("\n"),
     { table: qualified, applied: filtered && !draftOnly, focused: focus },
+  );
+}
+
+export interface OpenIndexArgs {
+  readonly datasource: string;
+  readonly index: string;
+  readonly query?: string | undefined;
+  readonly language?: "lucene" | "dsl" | undefined;
+  readonly sort?: { readonly field: string; readonly order?: "asc" | "desc" | undefined } | null | undefined;
+  readonly range?: McpIndexSearch["range"] | undefined;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+  readonly focus?: boolean | undefined;
+}
+
+const DSL_QUERY =
+  'With language dsl the query is one Query DSL query object, such as {"match":{"message":"timeout"}}. Nothing was opened.';
+
+function isQueryObject(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function searchOf(args: OpenIndexArgs): McpIndexSearch {
+  const window =
+    args.from === undefined && args.to === undefined ? undefined : { from: args.from ?? null, to: args.to ?? null };
+  return {
+    ...(args.language === undefined ? {} : { language: args.language }),
+    ...(args.query === undefined ? {} : { query: args.query }),
+    ...(args.sort === undefined
+      ? {}
+      : { sort: args.sort === null ? null : { field: args.sort.field, order: args.sort.order ?? "desc" } }),
+    ...(args.range === undefined ? {} : { range: args.range }),
+    ...(window === undefined ? {} : { window }),
+  };
+}
+
+/**
+ * Opens an index, alias or data stream in the user's index tab (plan 165), or the tab already open
+ * on it, with the query bar set as asked, and searches. Hits are read in the user's session and
+ * never reach the agent; on an ask-before-reads datasource the bar is only filled in.
+ */
+export async function openIndexFor(context: ToolContext, args: OpenIndexArgs): Promise<ToolResult> {
+  const datasource = exposedDatasource(context, args.datasource);
+  const engine = await engineWith(context, datasource, ["searchIndices"]);
+  const language = args.language ?? "lucene";
+  if (args.query !== undefined && language === "dsl" && !isQueryObject(args.query))
+    throw new ToolFailure(DSL_QUERY, "refused");
+  const description = await engine.call("indices.describe", { target: args.index }).catch((cause: unknown) => {
+    const why = cause instanceof Error ? cause.message : String(cause);
+    throw new ToolFailure(`${datasource.name} could not describe "${args.index}": ${why} Nothing was opened.`);
+  });
+  if (args.sort != null) {
+    const field = description.fields.find((candidate) => candidate.path === args.sort?.field);
+    if (field?.aggregatable !== true)
+      throw new ToolFailure(
+        `"${args.sort.field}" is not a field ${args.index} can sort by; sortable fields have doc values, such as keyword, numeric and date fields. Nothing was opened.`,
+      );
+  }
+  const search = searchOf(args);
+  const changed = Object.keys(search).length > 0;
+  const draftOnly = changed && datasource.access === "askReads";
+  const { focus, note } = focusOf(context, args.focus);
+  answered(
+    await context.windows.ask("focused", {
+      kind: "openIndex",
+      datasourceId: datasource.id,
+      target: args.index,
+      search,
+      draftOnly,
+      focus,
+    }),
+  );
+  const timed = search.range !== undefined || search.window !== undefined;
+  const outcome = draftOnly
+    ? `Opened ${args.index} in the user's index tab with the query bar filled in, not searched: on this datasource the user runs it.`
+    : `Opened ${args.index} in the user's index tab and searched it.`;
+  return textResult(
+    [
+      `${outcome} The hits stay with the user; read them with run_query if you need them. Call open_index again to change the request.`,
+      ...(timed && description.timeField === null
+        ? [`${args.index} has no time field, so the time range is ignored.`]
+        : []),
+      ...(note === null ? [] : [note]),
+    ].join("\n"),
+    { index: args.index, timeField: description.timeField, searched: !draftOnly, focused: focus },
   );
 }
 

@@ -29,6 +29,7 @@ const INSTRUCTIONS = [
   "For Redis and other key-value datasources use scan_keys and get_key; run_query takes one command there.",
   "To hand a statement to the user instead of running it, use open_in_console; to change it afterwards, use edit_console on the handle it returned rather than opening another console.",
   "To show the user a table or an object, use open_table or reveal_in_explorer.",
+  "For Elasticsearch, OpenSearch and other search datasources, run_query takes one Dev Tools request such as GET logs-*/_search with its JSON body; to show the user an index's documents, use open_index, and call it again to change that tab's query, sort or time range.",
 ].join(" ");
 
 export const HTTP_OK = 200;

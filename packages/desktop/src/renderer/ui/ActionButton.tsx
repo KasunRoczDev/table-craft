@@ -16,6 +16,8 @@ export type ActionTone = "warning" | "success" | "danger";
 const PRIMARY_CLASS = `${FILLED_PRESS} flex h-row shrink-0 items-center gap-1 rounded bg-accent px-gap whitespace-nowrap text-accent-ink disabled:not-aria-busy:opacity-50`;
 const COMPACT_CLASS = `press flex h-row shrink-0 items-center rounded px-1 text-ink hover:bg-hover disabled:not-aria-busy:opacity-50 ${PRESSED_TOGGLE}`;
 const TEXT_CLASS = `${TEXT_PRESS} flex h-row shrink-0 items-center gap-1 rounded border border-line px-gap whitespace-nowrap text-ink hover:bg-hover disabled:not-aria-busy:opacity-50`;
+/** The flush rule: a text button filling its `h-row` strip is square and unframed, so it meets the strip's lines. */
+const INLINE_CLASS = `${TEXT_PRESS} flex h-full shrink-0 items-center gap-1 px-gap whitespace-nowrap text-ink hover:bg-hover disabled:not-aria-busy:opacity-50`;
 const WARNING_COMPACT_CLASS =
   "press flex h-row shrink-0 items-center rounded border border-warning px-1 text-warning hover:bg-hover disabled:not-aria-busy:opacity-50";
 const WARNING_TEXT_CLASS = `${TEXT_PRESS} flex h-row shrink-0 items-center gap-1 rounded border border-warning px-gap whitespace-nowrap text-warning hover:bg-hover disabled:not-aria-busy:opacity-50`;
@@ -31,10 +33,11 @@ const TEXT_ICON_TONE: Readonly<Record<Exclude<ActionTone, "warning">, string>> =
   danger: "text-danger",
 };
 
-function buttonClass(primary: boolean, compact: boolean, tone: ActionTone | undefined): string {
+/** `inline` is a text button's flush form; a compact or primary button ignores it. */
+export function buttonClass(primary: boolean, compact: boolean, tone: ActionTone | undefined, inline = false): string {
   if (primary) return PRIMARY_CLASS;
   if (tone === "warning") return compact ? WARNING_COMPACT_CLASS : WARNING_TEXT_CLASS;
-  if (!compact) return TEXT_CLASS;
+  if (!compact) return inline ? INLINE_CLASS : TEXT_CLASS;
   return tone === undefined ? COMPACT_CLASS : cn(COMPACT_CLASS, ICON_TONE[tone]);
 }
 
@@ -43,12 +46,15 @@ function buttonClass(primary: boolean, compact: boolean, tone: ActionTone | unde
  * the registry; a busy action spins at full strength once busy has lasted a moment. `compact` draws the icon alone, the title moving to the tooltip; `reason` replaces the
  * tooltip while the button is off, saying why; `hint` replaces it while on, saying what the action
  * does here. A click never takes focus, so Run leaves the caret
- * where it was (plan 015 decision 8); Tab still reaches the button.
+ * where it was (plan 015 decision 8); Tab still reaches the button. `inline` draws a text button
+ * flush with the `h-row` strip it fills; `args` go to the action, for its enabled state and its run.
  */
 export function ActionButton({
   actionId,
   primary = false,
   compact = false,
+  inline = false,
+  args,
   pressed,
   expanded,
   label,
@@ -56,10 +62,14 @@ export function ActionButton({
   hint,
   tone,
   icon,
+  testId,
 }: {
   readonly actionId: string;
   readonly primary?: boolean;
   readonly compact?: boolean;
+  readonly inline?: boolean;
+  /** What the action acts on, as a tab's own topic, so the button follows its tab and not the tree. */
+  readonly args?: unknown;
   readonly pressed?: boolean;
   /** Set on a button that opens a popover: whether it is open now. */
   readonly expanded?: boolean;
@@ -74,8 +84,9 @@ export function ActionButton({
   readonly tone?: ActionTone;
   /** Draws another glyph than the action's own, as the tab strip's New Console reads as `+`. */
   readonly icon?: ActionIcon;
+  readonly testId?: string;
 }) {
-  const enabled = useActionEnabled(actionId);
+  const enabled = useActionEnabled(actionId, args);
   const busy = useDelayedFlag(useActionBusy(actionId), BUSY_SPINNER_DELAY_MS);
   const confirmation = useCopyConfirmation();
   const shortcut = useShortcut(actionId);
@@ -99,14 +110,15 @@ export function ActionButton({
         aria-expanded={expanded}
         aria-busy={busy ? true : undefined}
         data-copied={copied ? "" : undefined}
+        data-testid={testId}
         // A disabled button gets no pointer events, so Radix never opens; the native tooltip still does.
         title={!enabled && reason != null ? reason : undefined}
-        className={cn("app-no-drag", buttonClass(primary, compact, tone))}
+        className={cn("app-no-drag", buttonClass(primary, compact, tone, inline))}
         disabled={!enabled}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
           if (copies) confirmation.arm();
-          invoke(actionId);
+          invoke(actionId, args);
         }}
       >
         {Icon === null ? null : (

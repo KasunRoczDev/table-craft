@@ -11,6 +11,9 @@ describe("README OpenCode transcript", () => {
       "tablecraft.describe_table products · tablecraft.run_query UPDATE products SET stock = 50",
     );
     expect(callLine("glob", { pattern: "**/*" })).toBe("glob");
+    expect(
+      callLine("execute", { code: 'tools.tablecraft.open_index({ datasource: "search", index: "checkout-logs" })' }),
+    ).toBe("tablecraft.open_index checkout-logs");
   });
 
   it("givenToolAnswers_whenResultLineBuilt_thenTheyAreSummarised", () => {
@@ -18,6 +21,9 @@ describe("README OpenCode transcript", () => {
     expect(resultLine('{"columns": [], "rows": [[1], [2]]}')).toBe("2 rows");
     expect(resultLine('{"s": {"tables": [{"name": "a"}, {"name": "b"}]}, "d": {"rows": []}}')).toBe("a, b · 0 rows");
     expect(resultLine("Unknown tool\nmore")).toBe("Unknown tool");
+    expect(resultLine('{"index": "checkout-logs", "timeField": "@timestamp", "searched": true}')).toBe(
+      "checkout-logs open and searched",
+    );
   });
 
   it("givenJsonEvents_whenParsed_thenToolsAndTextAreKept", () => {

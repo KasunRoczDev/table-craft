@@ -97,6 +97,25 @@ export const PLUGIN_CATALOG: readonly CatalogEntry[] = [
     approximateBytes: 29_000_000,
     platforms: NATIVE_PLATFORMS,
   },
+  {
+    id: "kafka",
+    name: "Apache Kafka",
+    packageName: officialPackage("kafka"),
+    brands: [{ id: "apachekafka", name: "Apache Kafka" }],
+    schemes: [],
+    approximateBytes: 1_200_000,
+  },
+  {
+    id: "elasticsearch",
+    name: "Elasticsearch",
+    packageName: officialPackage("elasticsearch"),
+    brands: [
+      { id: "elasticsearch", name: "Elasticsearch" },
+      { id: "opensearch", name: "OpenSearch" },
+    ],
+    schemes: [],
+    approximateBytes: 200_000,
+  },
 ];
 
 export function catalogEntry(id: string): CatalogEntry | undefined {

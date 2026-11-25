@@ -22,6 +22,7 @@ const { highlights } = Astro.props;
           aria-selected={index === 0 ? "true" : "false"}
           tabindex={index === 0 ? 0 : -1}
         >
+          <span class="tc-stage-meter" aria-hidden="true" />
           {highlight.tab ?? highlight.title}
         </button>
       ))
@@ -50,29 +51,65 @@ const { highlights } = Astro.props;
 </section>
 
 <script>
+  const PROGRESS = "--tc-progress";
+
   // Without the script every panel stands in the page, one after another, each with its heading.
   for (const stage of document.querySelectorAll<HTMLElement>("[data-stage]")) {
     const tabs = [...stage.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     const panels = [...stage.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    const videos = panels.map((panel) => panel.querySelector("video"));
+    let current = 0;
+    let frame = 0;
+    // The stage plays as a reel, each clip once and then the next tab, until the reader picks a tab;
+    // from then their pick loops, so the page never moves on under someone reading it.
+    let touring = true;
+
+    const meter = (): void => {
+      const video = videos[current];
+      if (!video || video.paused || !(video.duration > 0)) {
+        frame = 0;
+        return;
+      }
+      tabs[current]?.style.setProperty(PROGRESS, String(video.currentTime / video.duration));
+      frame = requestAnimationFrame(meter);
+    };
     const select = (chosen: number, focus: boolean): void => {
+      current = chosen;
       tabs.forEach((tab, index) => {
         const active = index === chosen;
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
+        tab.style.setProperty(PROGRESS, "0");
         panels[index]?.toggleAttribute("data-active", active);
-        const video = panels[index]?.querySelector("video");
+        const video = videos[index];
         if (video && !active) video.pause();
         if (video && active) video.currentTime = 0;
       });
       if (focus) tabs[chosen]?.focus();
     };
+    const choose = (chosen: number, focus: boolean): void => {
+      touring = false;
+      for (const video of videos) if (video) video.loop = true;
+      select(chosen, focus);
+    };
+
+    videos.forEach((video, index) => {
+      if (!video) return;
+      video.loop = false;
+      video.addEventListener("playing", () => {
+        if (index === current && frame === 0) frame = requestAnimationFrame(meter);
+      });
+      video.addEventListener("ended", () => {
+        if (touring && index === current) select((index + 1) % tabs.length, false);
+      });
+    });
     tabs.forEach((tab, index) => {
-      tab.addEventListener("click", () => select(index, false));
+      tab.addEventListener("click", () => choose(index, false));
       tab.addEventListener("keydown", (event) => {
         const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
         if (step === 0) return;
         event.preventDefault();
-        select((index + step + tabs.length) % tabs.length, true);
+        choose((index + step + tabs.length) % tabs.length, true);
       });
     });
     stage.dataset["tabsReady"] = "";
@@ -98,6 +135,9 @@ const { highlights } = Astro.props;
     display: flex;
   }
   .tc-stage-tabs button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     flex: none;
     height: 2.5rem;
     padding-inline: 1rem;
@@ -118,6 +158,18 @@ const { highlights } = Astro.props;
   .tc-stage-tabs button[aria-selected="true"] {
     background: var(--tc-raised);
     color: var(--tc-ink);
+  }
+  /* How far the playing clip has run, filling its tab as a scrubber would. */
+  .tc-stage-meter {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in srgb, var(--tc-accent) 18%, transparent);
+    transform: scaleX(var(--tc-progress, 0));
+    transform-origin: left;
+  }
+  .tc-stage-tabs button[aria-selected="false"] .tc-stage-meter {
+    visibility: hidden;
   }
   .tc-stage-tabs button:focus-visible {
     outline: 2px solid var(--tc-accent);

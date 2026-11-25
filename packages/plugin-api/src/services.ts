@@ -1,5 +1,6 @@
 import type { DefinitionReader, Introspector, Routine } from "./catalog.js";
 import type { ExplainedPlan, Explainability, ExplainOptions } from "./explain.js";
+import type { GroupManager } from "./groups.js";
 import type { Keyspace } from "./keyspace.js";
 import type {
   AccessManager,
@@ -31,7 +32,10 @@ import type {
   SqlLanguage,
   Transactions,
 } from "./plugin.js";
+import type { SchemaRegistry } from "./schemaRegistry.js";
 import type { ServerSessions } from "./sessions.js";
+import type { IndexBrowser } from "./searchIndices.js";
+import type { TopicBrowser } from "./topics.js";
 
 /** The `cancel` service: stops the running statement (decision 131). */
 export interface Canceller {
@@ -172,7 +176,7 @@ export interface SessionServices {
   readonly cancel: Canceller;
   /** A new session's introspector; calls queue on the session. */
   readonly schemaTree: Introspector;
-  readonly databases?: DatabaseDiscovery;
+  readonly databases: DatabaseDiscovery;
   readonly ddl: DefinitionReader;
   /** A new session starts in `auto`. */
   readonly transactions: Transactions;
@@ -192,6 +196,11 @@ export interface SessionServices {
   readonly access: AccessManager;
   readonly coordination: CoordinationViewer;
   readonly bulkTransfer: KeyTransfer;
+  readonly topics: TopicBrowser;
+  readonly consumerGroups: GroupManager;
+  /** Present on every session of a plugin declaring it, `available: false` without a registry. */
+  readonly schemaRegistry: SchemaRegistry;
+  readonly searchIndices: IndexBrowser;
 }
 
 /** What each capability brings to a SQL language (decision 155). */
@@ -232,6 +241,10 @@ const SESSION_KEYS: Readonly<Record<SessionCapability, true>> = {
   access: true,
   coordination: true,
   bulkTransfer: true,
+  topics: true,
+  consumerGroups: true,
+  schemaRegistry: true,
+  searchIndices: true,
 };
 
 const LANGUAGE_KEYS: Readonly<Record<LanguageCapability, true>> = {

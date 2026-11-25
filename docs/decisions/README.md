@@ -160,3 +160,12 @@ started, not when it is merged.
 | 165 | [TableCraft is GPL-3.0-or-later and its plugin API is MIT](165-tablecraft-is-gpl-3-and-its-plugin-api-is-mit.md)                                                       |
 | 166 | [The website is built from the guide and the app tokens](166-the-website-is-built-from-the-guide-and-the-app-tokens.md)                                                |
 | 167 | [Approvals show the statement formatted](167-approvals-show-the-statement-formatted.md)                                                                                |
+| 168 | [TableCraft is an alternate handler for .sql files](168-tablecraft-is-an-alternate-sql-handler.md)                                                                     |
+| 169 | [Stream services are capabilities with their own tree](169-stream-services-are-capabilities-with-their-own-tree.md)                                                    |
+| 170 | [Browsing a topic never joins a consumer group](170-browsing-a-topic-never-joins-a-group.md)                                                                           |
+| 171 | [The Kafka plugin has its own Schema Registry client](171-the-kafka-plugin-has-its-own-schema-registry-client.md)                                                      |
+| 172 | [Large stream messages spill to a temporary file](172-large-stream-messages-spill-to-a-temporary-file.md)                                                              |
+| 173 | [The Elasticsearch plugin speaks REST without a driver](173-the-elasticsearch-plugin-speaks-rest-without-a-driver.md)                                                  |
+| 174 | [Search indices are a capability with their own tree](174-search-indices-are-a-capability-with-their-own-tree.md)                                                      |
+| 175 | [Search pages past the first come from a point in time](175-search-pages-past-the-first-come-from-a-point-in-time.md)                                                  |
+| 176 | [The guide is written as tasks](176-the-guide-is-written-as-tasks.md)                                                                                                  |

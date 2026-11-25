@@ -76,6 +76,11 @@ export interface DataSettings {
   /** The largest file, in MiB, Load from File puts into a bytes cell. */
   readonly blobLimitMb: number;
   readonly watchRetention: number;
+  /**
+   * Keep the full key, value and headers of a stream message larger than its preview in a temporary
+   * file, and only the preview in memory (decision 172); off keeps whole messages in memory.
+   */
+  readonly spillMessages: boolean;
 }
 
 /** The selection aggregates the grid can show, in the order it shows them. */
@@ -383,6 +388,7 @@ export const DEFAULT_SETTINGS: Settings = {
     aggregates: AGGREGATE_NAMES,
     blobLimitMb: 16,
     watchRetention: 10_000,
+    spillMessages: true,
   },
   log: {
     level: "info",
@@ -658,6 +664,7 @@ export function readSettings(input: unknown): Settings {
       watchRetention: inRange(data.watchRetention, WATCH_RETENTION_RANGE)
         ? data.watchRetention
         : defaults.data.watchRetention,
+      spillMessages: typeof data.spillMessages === "boolean" ? data.spillMessages : defaults.data.spillMessages,
     },
     log: {
       level: LOG_LEVEL_CHOICES.includes(log.level as LogLevelChoice)

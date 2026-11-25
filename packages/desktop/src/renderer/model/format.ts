@@ -218,6 +218,19 @@ export function connectionText(connection: Connection): string {
   return CONNECTION_TEXT[connection.status];
 }
 
+/**
+ * The product a connection reached: the brand it reported (`OpenSearch` through the Elasticsearch
+ * plugin), else the plugin's name; null when the plugin is unknown.
+ */
+export function productName(
+  plugin:
+    { readonly name: string; readonly brands: readonly { readonly id: string; readonly name: string }[] } | undefined,
+  brandId: string | null,
+): string | null {
+  if (plugin === undefined) return null;
+  return plugin.brands.find((brand) => brand.id === brandId)?.name ?? plugin.name;
+}
+
 /** `PostgreSQL 17.4`, once a connect has reported a version. */
 export function serverText(pluginName: string | null, connection: Connection): string | null {
   if (connection.serverVersion === null) return null;

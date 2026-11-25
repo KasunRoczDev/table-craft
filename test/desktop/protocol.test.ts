@@ -127,6 +127,51 @@ import {
   type CancelReach,
   type ServerTimeout,
   type Session,
+  MESSAGE_FORMATS,
+  SEARCH_ID_COLUMN,
+  SEARCH_INDEX_COLUMN,
+  SEARCH_PAGE_LIMIT,
+  SEARCH_QUERY_LANGUAGES,
+  SEARCH_SOURCE_COLUMN,
+  SEARCH_TARGET_KINDS,
+  type AnalyzeRequest,
+  type AnalyzeStep,
+  type SearchHistogram,
+  type SearchRequest,
+  type SearchShards,
+  type SearchTarget,
+  type SearchTargetDescription,
+  type SearchTotal,
+  SCHEMA_TYPES,
+  TOPIC_MESSAGE_COLUMNS,
+  TOPIC_READ_LIMIT,
+  MESSAGE_PREVIEW_CHARS,
+  type CompatibilityCheck,
+  type ConfigChange,
+  type ConfigEntry,
+  type DeleteRecordsPreview,
+  type GroupDescription,
+  type GroupSummary,
+  type PartitionInfo,
+  type ProduceRecord,
+  type ProduceResult,
+  type RecordsBefore,
+  type RegisteredSchema,
+  type SpilledMessage,
+  type ResetPreview,
+  type ResetScope,
+  type ResetTarget,
+  type SchemaVersion,
+  type SubjectSummary,
+  type TailMessage,
+  type TopicCreate,
+  type TopicDescription,
+  type TopicRead,
+  type TopicReadRequest,
+  type TopicStart,
+  type TopicSummary,
+  type TopicTailRequest,
+  type TopicTailState,
 } from "@table-craft/plugin-api";
 import * as protocol from "@table-craft/desktop/engine/protocol.js";
 import * as bridge from "@table-craft/desktop/preload/bridge.js";
@@ -212,6 +257,25 @@ describe("engine protocol", () => {
     expectTypeOf<protocol.ViewState>().toEqualTypeOf<ViewState>();
     expectTypeOf<protocol.FoundMatch>().toEqualTypeOf<FoundMatch>();
     expectTypeOf<protocol.ResultWindow>().toEqualTypeOf<ResultWindow>();
+  });
+
+  it("givenSearchTypes_whenComparedWithPluginApi_thenIdentical", () => {
+    expect(protocol.SEARCH_TARGET_KINDS).toEqual(SEARCH_TARGET_KINDS);
+    expect(protocol.SEARCH_QUERY_LANGUAGES).toEqual(SEARCH_QUERY_LANGUAGES);
+    expect(protocol.SEARCH_PAGE_LIMIT).toBe(SEARCH_PAGE_LIMIT);
+    expect([protocol.SEARCH_ID_COLUMN, protocol.SEARCH_INDEX_COLUMN, protocol.SEARCH_SOURCE_COLUMN]).toEqual([
+      SEARCH_ID_COLUMN,
+      SEARCH_INDEX_COLUMN,
+      SEARCH_SOURCE_COLUMN,
+    ]);
+    expectTypeOf<protocol.SearchTarget>().toEqualTypeOf<SearchTarget>();
+    expectTypeOf<protocol.SearchTargetDescription>().toEqualTypeOf<SearchTargetDescription>();
+    expectTypeOf<protocol.SearchRequest>().toEqualTypeOf<SearchRequest>();
+    expectTypeOf<protocol.SearchTotal>().toEqualTypeOf<SearchTotal>();
+    expectTypeOf<protocol.SearchShards>().toEqualTypeOf<SearchShards>();
+    expectTypeOf<protocol.SearchHistogram>().toEqualTypeOf<SearchHistogram>();
+    expectTypeOf<protocol.AnalyzeStep>().toEqualTypeOf<AnalyzeStep>();
+    expectTypeOf<protocol.AnalyzeRequest>().toEqualTypeOf<AnalyzeRequest>();
   });
 
   it("givenProtocolWireTypes_whenComparedWithPluginApi_thenIdentical", () => {
@@ -344,6 +408,40 @@ describe("engine protocol", () => {
     expectTypeOf<protocol.KeyChange>().toEqualTypeOf<KeyChange>();
     expectTypeOf<protocol.KeyApplyOptions>().toEqualTypeOf<KeyApplyOptions>();
     expectTypeOf<protocol.KeyApplied>().toEqualTypeOf<KeyApplied>();
+  });
+
+  it("givenStreamTypes_whenComparedWithPluginApi_thenIdentical", () => {
+    expect(protocol.MESSAGE_FORMATS).toEqual(MESSAGE_FORMATS);
+    expect(protocol.TOPIC_MESSAGE_COLUMNS).toEqual(TOPIC_MESSAGE_COLUMNS);
+    expect(protocol.TOPIC_READ_LIMIT).toBe(TOPIC_READ_LIMIT);
+    expect(protocol.MESSAGE_PREVIEW_CHARS).toBe(MESSAGE_PREVIEW_CHARS);
+    expect(protocol.SCHEMA_TYPES).toEqual(SCHEMA_TYPES);
+    expectTypeOf<protocol.TopicSummary>().toEqualTypeOf<TopicSummary>();
+    expectTypeOf<protocol.PartitionInfo>().toEqualTypeOf<PartitionInfo>();
+    expectTypeOf<protocol.ConfigEntry>().toEqualTypeOf<ConfigEntry>();
+    expectTypeOf<protocol.TopicDescription>().toEqualTypeOf<TopicDescription>();
+    expectTypeOf<protocol.TopicStart>().toEqualTypeOf<TopicStart>();
+    expectTypeOf<protocol.TopicReadRequest>().toEqualTypeOf<TopicReadRequest>();
+    expectTypeOf<protocol.TopicReadInfo>().toEqualTypeOf<Omit<TopicRead, "result">>();
+    expectTypeOf<protocol.ProduceRecord>().toEqualTypeOf<ProduceRecord>();
+    expectTypeOf<protocol.ProduceResult>().toEqualTypeOf<ProduceResult>();
+    expectTypeOf<protocol.TopicCreate>().toEqualTypeOf<TopicCreate>();
+    expectTypeOf<protocol.ConfigChange>().toEqualTypeOf<ConfigChange>();
+    expectTypeOf<protocol.RecordsBefore>().toEqualTypeOf<RecordsBefore>();
+    expectTypeOf<protocol.DeleteRecordsPreview>().toEqualTypeOf<DeleteRecordsPreview>();
+    expectTypeOf<protocol.TopicTailRequest>().toEqualTypeOf<TopicTailRequest>();
+    expectTypeOf<protocol.TailMessage>().toEqualTypeOf<TailMessage>();
+    expectTypeOf<protocol.TopicTailState>().toEqualTypeOf<TopicTailState>();
+    expectTypeOf<protocol.GroupSummary>().toEqualTypeOf<GroupSummary>();
+    expectTypeOf<protocol.GroupDescription>().toEqualTypeOf<GroupDescription>();
+    expectTypeOf<protocol.ResetScope>().toEqualTypeOf<ResetScope>();
+    expectTypeOf<protocol.ResetTarget>().toEqualTypeOf<ResetTarget>();
+    expectTypeOf<protocol.ResetPreview>().toEqualTypeOf<ResetPreview>();
+    expectTypeOf<protocol.SubjectSummary>().toEqualTypeOf<SubjectSummary>();
+    expectTypeOf<protocol.SchemaVersion>().toEqualTypeOf<SchemaVersion>();
+    expectTypeOf<protocol.CompatibilityCheck>().toEqualTypeOf<CompatibilityCheck>();
+    expectTypeOf<protocol.RegisteredSchema>().toEqualTypeOf<RegisteredSchema>();
+    expectTypeOf<protocol.SpilledMessage>().toEqualTypeOf<SpilledMessage>();
   });
 
   it("givenCoreErrorCodes_whenComparedWithEngineErrorCodes_thenEveryOneIsCovered", () => {

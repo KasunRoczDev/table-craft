@@ -1,8 +1,13 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { useConsoleDatasource } from "@table-craft/desktop/renderer/console/useConsoleDatasource.js";
 import { pathKey } from "@table-craft/desktop/renderer/model/explorerTree.js";
-import { datasourceText, syncFailedText, syncText } from "@table-craft/desktop/renderer/model/format.js";
+import { datasourceText, productName, syncFailedText, syncText } from "@table-craft/desktop/renderer/model/format.js";
 import { keyspaceStatusText } from "@table-craft/desktop/renderer/model/keyTree.js";
+import { streamStatusText } from "@table-craft/desktop/renderer/model/streamTree.js";
+import { useStreams } from "@table-craft/desktop/renderer/state/streams.js";
+import { indexStatusText } from "@table-craft/desktop/renderer/model/indexTree.js";
+import { shownIndexFilter } from "@table-craft/desktop/renderer/model/shownIndices.js";
+import { useIndices } from "@table-craft/desktop/renderer/state/indices.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { useKeys } from "@table-craft/desktop/renderer/state/keys.js";
 import { useServer } from "@table-craft/desktop/renderer/state/server.js";
@@ -71,11 +76,20 @@ function DatasourceStatus() {
   const datasourceId = useActiveDatasourceId();
   const datasource = useDatasources((state) => datasourceById(state, datasourceId));
   const connection = useDatasources((state) => connectionOf(state, datasourceId ?? ""));
-  const pluginName = useDatasources((state) => pluginOf(state.plugins, datasource?.pluginId ?? "")?.name ?? null);
+  const plugin = useDatasources((state) => pluginOf(state.plugins, datasource?.pluginId ?? ""));
   const keyspace = useKeys((state) => (datasourceId === undefined ? undefined : state.keyspaces[datasourceId]));
   const nodes = useServer((state) => (datasourceId === undefined ? undefined : state.nodes[datasourceId]));
+  const streams = useStreams((state) => (datasourceId === undefined ? undefined : state.streams[datasourceId]));
+  const indices = useIndices((state) => (datasourceId === undefined ? undefined : state.indices[datasourceId]));
   if (datasource === undefined) return <span data-testid="status-datasource" />;
-  const keys = connection.status === "connected" ? keyspaceStatusText(keyspace, nodes ?? []) : null;
+  const keys =
+    connection.status !== "connected"
+      ? null
+      : streams !== undefined
+        ? streamStatusText(streams)
+        : indices !== undefined
+          ? indexStatusText(indices, shownIndexFilter(datasource))
+          : keyspaceStatusText(keyspace, nodes ?? []);
   return (
     <span
       data-testid="status-datasource"
@@ -84,7 +98,7 @@ function DatasourceStatus() {
     >
       <ConnectionDot datasourceId={datasourceId} status={connection.status} />
       <span className="truncate">
-        {datasourceText(datasource, pluginName, connection)}
+        {datasourceText(datasource, productName(plugin, connection.serverBrand), connection)}
         {keys === null ? "" : ` · ${keys}`}
       </span>
     </span>

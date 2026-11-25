@@ -13,7 +13,14 @@ export interface SegmentedOption<K extends string> {
  * Its `overflow-hidden` drops its automatic minimum size, so a grid that scrolls crushes its row;
  * wrap it in a plain block there.
  */
-export const SEGMENT_GROUP = "flex shrink-0 flex-wrap self-start overflow-hidden rounded border border-line";
+const SEGMENT_FRAME = "flex shrink-0 flex-wrap overflow-hidden rounded border border-line";
+export const SEGMENT_GROUP = cn(SEGMENT_FRAME, "self-start");
+
+/**
+ * A `SEGMENT_GROUP` centred in a toolbar row taller than a segment. Adding `self-center` to
+ * `SEGMENT_GROUP` does not work: `cn` does not merge, and the stylesheet's `self-start` wins.
+ */
+export const TOOLBAR_SEGMENT_GROUP = cn(SEGMENT_FRAME, "self-center");
 
 const SEGMENT_SHAPE = "flex h-segment cursor-default items-center px-gap whitespace-nowrap text-ink";
 

@@ -49,7 +49,7 @@ built into the first root and goes through the same loader as a user plugin. Eac
 ### Distribution
 
 SQLite and MySQL ship in the installer. Every other plugin TableCraft offers is optional
-(`OPTIONAL_PLUGINS` in `vite.plugins.config.ts`, today PostgreSQL, Redis, Oracle, SQL Server, etcd and DuckDB) and listed in a compiled-in
+(`OPTIONAL_PLUGINS` in `vite.plugins.config.ts`, today PostgreSQL, Redis, Oracle, SQL Server, etcd, DuckDB and Kafka) and listed in a compiled-in
 catalog (decision 108). Each release publishes it to npm as `@tablecraft-app/plugin-<id>` at the app's
 version, with `"tableCraft": { "id", "apiVersion" }` in its `package.json`, and attaches the
 `.tgz` to the GitHub release (decision 109). A plugin with a native driver, DuckDB, is one
@@ -2243,6 +2243,26 @@ the thick client is never loaded, and a server older than 12.1 is refused by nam
 | Cancel       | `ALTER SYSTEM CANCEL SQL` on a second connection, `break()` when that fails                                                                    |
 | Functions    | the whole _SQL Functions_ chapter (19c, 21c, 23ai ranges) checked against `manualIndex.ts`, plus members of supplied `DBMS_*`/`UTL_*` packages |
 
+## Kafka
+
+Plan 164, decisions 169 to 171. The optional `kafka` plugin uses `@platformatic/kafka` (pure
+JavaScript) and declares `commands`, `topics`, `consumerGroups`, `schemaRegistry`, `nodes`,
+`serverInfo`, `cancel` and `keepAlive`.
+
+| Area     | Kafka                                                                                                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect  | bootstrap servers; `PLAINTEXT`, `SSL` (mutual TLS with a client certificate), `SASL_PLAINTEXT`, `SASL_SSL` with PLAIN or SCRAM; no SSH                                                                                                                                                         |
+| Versions | the brokers' ApiVersions must cover every request the plugin sends; a missing one is named, never guessed past                                                                                                                                                                                 |
+| Tree     | Topics folded on `.`, Consumer groups with state and lag, Brokers from `nodes`, Subjects from the registry                                                                                                                                                                                     |
+| Reads    | Fetch per partition leader without a group (decision 170); latest N, earliest, latest, offset, timestamp or a group's committed offset                                                                                                                                                         |
+| Limits   | 500 rows by default, at most 50,000 a read; `maxScan` (100,000) bounds a filtered read, whose footer offers Scan Further                                                                                                                                                                       |
+| Large    | cells past `MESSAGE_PREVIEW_CHARS` (1,024) keep a preview in memory, 64 MB a read; whole cells in a temporary file (decision 172), 2 GB in all, 1 GB of disk kept free; copy, export and the message panel read whole cells back; `data.spillMessages` off keeps whole messages, 128 MB a read |
+| Formats  | Auto, String, JSON, Avro, Protobuf, JSON Schema, Hex, Base64, int32, int64, double; Auto reads the registry's magic byte and id                                                                                                                                                                |
+| Writes   | produce, create and delete topics, alter configs, add partitions, delete records; refused on a read-only data source                                                                                                                                                                           |
+| Groups   | lag per partition; offset reset previewed by token and applied only to an Empty group                                                                                                                                                                                                          |
+| Tail     | a live tail in the engine, a ring bounded by bytes and messages that counts what it drops; large messages' whole cells in a 512 MB rotating file, which Export and Copy (`topics.tailExtract`) read                                                                                            |
+| Registry | its own REST client (decision 171): subjects, versions, compatibility, check, register, delete                                                                                                                                                                                                 |
+
 ## Datasources and secrets
 
 Main owns the datasource list (decision 010) and every secret (decision 020). The renderer reads
@@ -3077,7 +3097,11 @@ refuses `notFound`, `ambiguous`, `stale` or `selectNotFound` without a change. `
 and `list_consoles` answer the session's own consoles. `open_table` opens the table editor with
 `where` and `orderBy` checked to form one read through `script.split`; on an `askReads`
 datasource they are only typed into the bars. `reveal_in_explorer` selects a schema, table or
-column in the Database pane. A window that does not answer within 5 seconds reads as silent, one
+column in the Database pane. `open_index` (`searchIndices`) opens an index, alias or data stream
+in the index view, or the tab already open on it, with an optional query (Lucene or a Query DSL
+object), sort on an aggregatable field, and a preset range or `from`/`to` ends that show as a
+custom range; it searches, and calling it again changes the request. The hits stay with the user;
+on an `askReads` datasource the query bar is only filled in. A window that does not answer within 5 seconds reads as silent, one
 that closed as gone. On a `commands` datasource `run_query`
 takes one command. **Resources** `tablecraft://<datasource>[/<schema>[/<table>]]` (list, two
 templates, read; an unexposed one answers -32002) and **prompts** `explore_datasource` and

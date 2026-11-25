@@ -1,0 +1,31 @@
+{
+  "name": "@table-craft/plugin-elasticsearch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional Elasticsearch and OpenSearch datasource plugin for table-craft",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./complete": "./src/complete.ts",
+    "./config": "./src/config.ts",
+    "./connect": "./src/connect.ts",
+    "./console": "./src/console.ts",
+    "./dialect": "./src/dialect.ts",
+    "./glob": "./src/glob.ts",
+    "./hits": "./src/hits.ts",
+    "./indices": "./src/indices.ts",
+    "./language": "./src/language.ts",
+    "./limits": "./src/limits.ts",
+    "./mapping": "./src/mapping.ts",
+    "./query": "./src/query.ts",
+    "./search": "./src/search.ts",
+    "./server": "./src/server.ts",
+    "./session": "./src/session.ts",
+    "./tls": "./src/tls.ts"
+  },
+  "dependencies": {
+    "@table-craft/plugin-api": "workspace:*"
+  }
+}

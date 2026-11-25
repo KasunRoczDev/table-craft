@@ -35,3 +35,14 @@ ones.
 - An ephemeral datasource (`TABLE_CRAFT_DATASOURCE`) cannot be filtered, as it is never saved.
 - The Properties dialog does not edit the list but carries it through a save, and Duplicate copies
   it.
+- A stream datasource (Kafka, decision 169) has topics, not namespaces, so **Manage Shown Topics…**
+  keeps the same allow-list in its own optional `shownTopics` (plan 166). Reusing
+  `shownNamespaces` would have the MCP server read topic names as schemas. The filter is the
+  tree's alone, after the plugin's **Name filter** and **Show Internal Topics**: an internal topic
+  stays hidden while that is off, even when picked.
+- A search datasource (Elasticsearch and OpenSearch, decision 174) keeps **Manage Shown Indices…**
+  in its own `shownIndices` (plan 169). Exact names would hide tomorrow's `logs-2026.11.24`, so an
+  entry is a name or a family, `orders-*`, which keeps every index sharing the base once its
+  rollover or date suffix is gone, and the alias whose write index is one of them. Only that `-*`
+  shape is read; a general glob would be a second filter beside the plugin's **Index filter**.
+  The filter applies after that one and before the tree's own filter field.

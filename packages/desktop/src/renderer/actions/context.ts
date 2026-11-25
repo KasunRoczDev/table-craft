@@ -37,6 +37,11 @@ import { useHostKeyPrompt } from "@table-craft/desktop/renderer/state/hostKeyPro
 import { useSecretPrompt } from "@table-craft/desktop/renderer/state/secretPrompt.js";
 import { useKeyTabs, type KeyTab } from "@table-craft/desktop/renderer/state/keyTabs.js";
 import { useServer, type ServerTab } from "@table-craft/desktop/renderer/state/server.js";
+import { useTopicTabs, type TopicTab } from "@table-craft/desktop/renderer/state/topicTabs.js";
+import { useGroupTabs, type GroupTab } from "@table-craft/desktop/renderer/state/groupTabs.js";
+import { useSubjectTabs } from "@table-craft/desktop/renderer/state/subjectTabs.js";
+import { useIndexTabs, type IndexTab } from "@table-craft/desktop/renderer/state/indexTabs.js";
+import { useStreamDialog } from "@table-craft/desktop/renderer/streams/dialogStore.js";
 import { useSessions, type SessionsTab } from "@table-craft/desktop/renderer/state/sessions.js";
 import { activeTab, useTabs, type Tab } from "@table-craft/desktop/renderer/state/tabs.js";
 import { useTables, type TableSession } from "@table-craft/desktop/renderer/state/tables.js";
@@ -72,6 +77,12 @@ const REGIONS: readonly FocusRegion[] = [
 ];
 
 export const REGION_ATTRIBUTE = "data-region";
+/** Marks a pane's own text field whose Escape clears it, as the speed search field does, rather than leaving the pane. */
+export const KEEPS_ESCAPE_ATTRIBUTE = "data-keeps-escape";
+
+function keepsEscape(): boolean {
+  return document.activeElement?.closest(`[${KEEPS_ESCAPE_ATTRIBUTE}]`) != null;
+}
 
 /** A datasource with what the window knows of it now. */
 export interface DatasourceTarget {
@@ -98,6 +109,12 @@ export interface ActionContext {
   readonly keyTab: KeyTab | null;
   /** The active tab's server figures, when the active tab is a Server tab (plan 058). */
   readonly serverTab: ServerTab | null;
+  /** The active tab's topic, when the active tab is a topic tab (plan 164). */
+  readonly topicTab?: TopicTab | null;
+  /** The active tab's consumer group, when the active tab is a group tab (plan 164). */
+  readonly groupTab?: GroupTab | null;
+  /** The active tab's index, alias or data stream, when the active tab is an index tab (plan 165). */
+  readonly indexTab?: IndexTab | null;
   /** The grid's result: the active console's shown result tab, or the active table's or key's rows. */
   readonly result: ResultTab | null;
   readonly datasources: readonly DatasourceView[];
@@ -122,7 +139,10 @@ export interface ActionContext {
   readonly toolWindows: Readonly<Record<ToolWindowId, boolean>>;
   /** The palette or any dialog is open; it owns the keyboard. */
   readonly paletteOpen: boolean;
-  /** The Database pane's speed search field is open; Escape closes it rather than leaving the pane. */
+  /**
+   * The Database pane's speed search field is open, or focus is in a field marked
+   * `KEEPS_ESCAPE_ATTRIBUTE` such as the index filter; Escape closes it rather than leaving the pane.
+   */
   readonly speedSearching: boolean;
   /** The main toolbar is the window's title bar (decision 034), rather than the system's. */
   readonly customTitleBar: boolean;
@@ -163,8 +183,22 @@ export function modalOpen(): boolean {
     useSecretPrompt.getState().pending !== null ||
     useHostKeyPrompt.getState().queue.length > 0 ||
     useModal.getState().pending !== null ||
-    useAdminSecret.getState().pending !== null
+    useAdminSecret.getState().pending !== null ||
+    useStreamDialog.getState().pending !== null
   );
+}
+
+/** What the window knows now of datasource `id`, for an action whose target is not `context.datasource`. */
+export function datasourceTarget(id: string | null | undefined): DatasourceTarget | null {
+  const datasources = useDatasources.getState();
+  const view = datasourceById(datasources, id);
+  return view === undefined
+    ? null
+    : {
+        view,
+        connection: connectionOf(datasources, view.id),
+        capabilities: capabilitiesOf(datasources.plugins, view.pluginId),
+      };
 }
 
 export function currentContext(tabId?: string): ActionContext {
@@ -179,6 +213,9 @@ export function currentContext(tabId?: string): ActionContext {
   const sessions = active?.kind === "sessions" ? (useSessions.getState().tabs[active.id] ?? null) : null;
   const keyTab = active?.kind === "key" ? (useKeyTabs.getState().tabs[active.id] ?? null) : null;
   const serverTab = active?.kind === "server" ? (useServer.getState().tabs[active.id] ?? null) : null;
+  const topicTab = active?.kind === "topic" ? (useTopicTabs.getState().tabs[active.id] ?? null) : null;
+  const groupTab = active?.kind === "group" ? (useGroupTabs.getState().tabs[active.id] ?? null) : null;
+  const indexTab = active?.kind === "index" ? (useIndexTabs.getState().tabs[active.id] ?? null) : null;
   const tabDatasourceId =
     console?.datasourceId ??
     table?.datasourceId ??
@@ -187,6 +224,10 @@ export function currentContext(tabId?: string): ActionContext {
     sessions?.datasourceId ??
     keyTab?.datasourceId ??
     serverTab?.datasourceId ??
+    topicTab?.datasourceId ??
+    groupTab?.datasourceId ??
+    indexTab?.datasourceId ??
+    (active?.kind === "subject" ? useSubjectTabs.getState().tabs[active.id]?.datasourceId : undefined) ??
     (active === null ? undefined : useKeyAdmin.getState().tabs[active.id]?.datasourceId);
   const focus = focusedRegion();
   const selected = selectedDatasourceId(datasources.selection);
@@ -211,19 +252,22 @@ export function currentContext(tabId?: string): ActionContext {
     sessions,
     keyTab,
     serverTab,
-    result: console === null ? (table?.result ?? keyTab?.result ?? null) : (activeResultOf(console) ?? null),
+    topicTab,
+    groupTab,
+    indexTab,
+    result:
+      console === null
+        ? (table?.result ??
+          keyTab?.result ??
+          (topicTab?.view === "messages" ? topicTab.result : null) ??
+          (indexTab?.view === "documents" ? indexTab.result : null) ??
+          null)
+        : (activeResultOf(console) ?? null),
     datasources: datasources.datasources,
     selection: datasources.selection,
     items,
     folders: datasources.folders,
-    datasource:
-      target === undefined
-        ? null
-        : {
-            view: target,
-            connection: connectionOf(datasources, target.id),
-            capabilities: capabilitiesOf(datasources.plugins, target.pluginId),
-          },
+    datasource: datasourceTarget(target?.id),
     capabilities:
       tabDatasourceId === undefined
         ? []
@@ -232,7 +276,7 @@ export function currentContext(tabId?: string): ActionContext {
     inDatabasePane: inTree,
     toolWindows: useLayout.getState().layout.visible,
     paletteOpen: modalOpen(),
-    speedSearching: useCatalog.getState().speedSearch !== null,
+    speedSearching: useCatalog.getState().speedSearch !== null || keepsEscape(),
     customTitleBar: useWindowState.getState().customTitleBar,
   };
 }

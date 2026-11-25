@@ -115,11 +115,15 @@ export class KeyOperationScope {
     if (this.sessions.delete(session)) await quietClose(session);
   }
 
-  /** Admin work is serialized once, never routed through the retrying helper. */
+  /**
+   * Admin work is serialized once, never routed through the retrying helper. A failed write is
+   * reported as possibly committed unless `notApplied` says the failure proves nothing changed.
+   */
   run<C extends SessionCapability, T>(
     capability: C,
     write: boolean,
     work: (service: SessionServices[C], session: Session) => Promise<T>,
+    notApplied: (cause: unknown) => boolean = definitelyNotApplied,
   ): Promise<T> {
     this.capability(capability);
     if (write) this.writable();
@@ -147,7 +151,7 @@ export class KeyOperationScope {
             await this.release(session);
           }
           if (cause instanceof EngineFailure) throw cause;
-          if (write && !definitelyNotApplied(cause)) {
+          if (write && !notApplied(cause)) {
             throw new EngineFailure({
               code: "statementFailed",
               message: "The mutation could not be confirmed and may have committed.",

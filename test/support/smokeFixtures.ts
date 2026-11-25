@@ -121,6 +121,8 @@ const SERVICES_OF: Readonly<Record<DatabaseId, readonly SeededService[]>> = {
   mssql: ["mssql"],
   redis: REDIS_SERVICES,
   etcd: ETCD_SERVICES,
+  kafka: [],
+  elasticsearch: [],
 };
 
 export function servicesOf(databases: readonly DatabaseId[]): SeededService[] {

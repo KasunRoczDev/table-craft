@@ -58,6 +58,9 @@ export interface FormDraft {
   readonly ssh: SshDraft;
   /** Manage Shown Schemas' choice (decision 117); the form does not edit it, only keeps it. */
   readonly shownNamespaces: readonly string[] | undefined;
+  /** Manage Shown Topics' and Manage Shown Indices' choices, kept the same way. */
+  readonly shownTopics: readonly string[] | undefined;
+  readonly shownIndices: readonly string[] | undefined;
   /** The product picked in New Data Source or last reported by the server; the form does not edit it. */
   readonly brand: string | undefined;
   readonly ephemeral: boolean;
@@ -236,6 +239,8 @@ export function draftFromView(view: DatasourceView, plugin: PluginInfo | undefin
     storedSecrets: view.storedSecrets,
     ssh: sshDraftOf(view.ssh),
     shownNamespaces: view.shownNamespaces,
+    shownTopics: view.shownTopics,
+    shownIndices: view.shownIndices,
     brand: view.brand,
     ephemeral: view.ephemeral,
     dirty: false,
@@ -280,6 +285,8 @@ export function newDraft(
     storedSecrets: [],
     ssh: BLANK_SSH,
     shownNamespaces: undefined,
+    shownTopics: undefined,
+    shownIndices: undefined,
     brand: brand?.id,
     ephemeral: false,
     dirty: true,
@@ -438,6 +445,8 @@ export function toSaveRequest(draft: FormDraft, plugin: PluginInfo | undefined):
       secretModes: Object.fromEntries(Object.entries(draft.secretModes).filter(([key]) => kept(key))),
       ...(tunnel ? { ssh: sshSettingsOf(draft.ssh) } : {}),
       ...(draft.shownNamespaces === undefined ? {} : { shownNamespaces: draft.shownNamespaces }),
+      ...(draft.shownTopics === undefined ? {} : { shownTopics: draft.shownTopics }),
+      ...(draft.shownIndices === undefined ? {} : { shownIndices: draft.shownIndices }),
       ...(draft.brand === undefined ? {} : { brand: draft.brand }),
     },
     secrets: Object.fromEntries(Object.entries(draft.secrets).filter(([key]) => kept(key))),

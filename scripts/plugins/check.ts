@@ -6,12 +6,13 @@
  * `bun scripts/plugins/check.ts [--from <dir>]`, `dist/plugin-packages/` by default.
  */
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { loadPlugins } from "../../packages/core/src/plugins/loader.js";
-import { API_VERSION, MANIFEST_FILE, type DatasourcePlugin } from "@table-craft/plugin-api";
+import { API_VERSION, isPluginError, MANIFEST_FILE, type DatasourcePlugin } from "@table-craft/plugin-api";
 import {
   catalogEntry,
   hostPlatform,
@@ -31,6 +32,19 @@ const NATIVE_SMOKE: Readonly<
 > = {
   duckdb: { config: { path: ":memory:" }, sql: "SELECT 42 AS answer", answer: 42 },
 };
+
+const LOOPBACK = "127.0.0.1";
+/**
+ * Plugins whose driver loads code at run time through `createRequire`, which a package without
+ * `node_modules` cannot answer: each connects to a server that takes the connection and never
+ * answers, so the driver validates its options and encodes its first request before it gives up.
+ */
+const OFFLINE_SMOKE: Readonly<Record<string, (port: number) => unknown>> = {
+  kafka: (port) => ({ bootstrapServers: `${LOOPBACK}:${String(port)}`, requestTimeout: 1 }),
+};
+const EXPECTED_FAILURE = "connectionFailed";
+const MODULE_MISSING = /Cannot find (?:module|package)|ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND/;
+const MAX_CAUSE_DEPTH = 8;
 
 export class PackageCheckError extends Error {
   override readonly name = "PackageCheckError";
@@ -73,6 +87,70 @@ async function runNative(
     fail(file, `does not run on this computer: ${cause instanceof Error ? cause.message : String(cause)}`);
   } finally {
     await session?.close();
+  }
+}
+
+function causeTexts(error: unknown, depth = 0): string[] {
+  if (depth > MAX_CAUSE_DEPTH || typeof error !== "object" || error === null) return [];
+  const { message, code, cause, errors } = error as {
+    message?: unknown;
+    code?: unknown;
+    cause?: unknown;
+    errors?: unknown;
+  };
+  return [
+    ...(typeof message === "string" ? [message] : []),
+    ...(typeof code === "string" ? [code] : []),
+    ...causeTexts(cause, depth + 1),
+    ...(Array.isArray(errors) ? errors.flatMap((inner) => causeTexts(inner, depth + 1)) : []),
+  ];
+}
+
+async function silentServer(): Promise<{ readonly port: number; close(): Promise<void> }> {
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((done) => server.listen(0, LOOPBACK, done));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("The silent server has no port.");
+  return {
+    port: address.port,
+    close: () =>
+      new Promise<void>((done) => {
+        for (const socket of sockets) socket.destroy();
+        server.close(() => done());
+      }),
+  };
+}
+
+/**
+ * Connects `plugin` with `config(port)` to a server that never answers. Passes only when the
+ * connect fails as a plain connection failure, not on a module the package does not carry.
+ */
+export async function runOffline(
+  file: string,
+  plugin: DatasourcePlugin,
+  config: (port: number) => unknown,
+): Promise<void> {
+  const server = await silentServer();
+  try {
+    let session: Awaited<ReturnType<DatasourcePlugin["connect"]>> | undefined;
+    try {
+      session = await plugin.connect(plugin.connectionSchema.parse(config(server.port)), { readOnly: true });
+    } catch (cause) {
+      const missing = causeTexts(cause).find((text) => MODULE_MISSING.test(text));
+      if (missing !== undefined) fail(file, `does not carry code its driver loads at run time: ${missing}`);
+      if (!isPluginError(cause) || cause.code !== EXPECTED_FAILURE) {
+        fail(file, `failed against a silent server with ${causeTexts(cause)[0] ?? String(cause)}`);
+      }
+      return;
+    }
+    await session.close();
+    fail(file, "connected to a server that never answered");
+  } finally {
+    await server.close();
   }
 }
 
@@ -119,6 +197,8 @@ export async function checkPackage(file: string, hostVersion = API_VERSION): Pro
     }
     const smoke = NATIVE_SMOKE[id];
     if (platform === hostPlatform() && smoke !== undefined) await runNative(file, loaded.plugin, smoke);
+    const offline = OFFLINE_SMOKE[id];
+    if (offline !== undefined) await runOffline(file, loaded.plugin, offline);
     return { file, name, version, pluginId: id };
   } finally {
     await rm(directory, { recursive: true, force: true });

@@ -57,6 +57,8 @@ export const CHANNELS = {
   hostKeyPrompt: "table-craft:ssh.host-key-prompt",
   /** Main to a window: a File → Recent Files item was picked; the payload is its absolute path (plan 041). */
   openRecentFile: "table-craft:sql-files.open-recent",
+  /** Main to a window: the OS asked to open files, after the window took the launch's; the payload is their absolute paths (plan 163). */
+  openLaunchedFiles: "table-craft:sql-files.open-launched",
   /** Main to every window: a plugin was installed, removed or is downloading; the payload is a `PluginsState`. */
   pluginsChanged: "table-craft:plugins.changed",
   /** Main to every window: the MCP server, its clients or its approvals changed; the payload is an `McpStatus`. */
@@ -114,6 +116,7 @@ export const INVOKE_CHANNELS = {
   statSqlFiles: "table-craft:sql-files.stat",
   attachSqlFile: "table-craft:sql-files.attach",
   recentSqlFiles: "table-craft:sql-files.recent",
+  launchedSqlFiles: "table-craft:sql-files.launched",
   historyRecord: "table-craft:history.record",
   historySearch: "table-craft:history.search",
   historyClear: "table-craft:history.clear",
@@ -414,6 +417,16 @@ export interface Datasource {
    * An allow-list, so a database created later on a shared server stays hidden until picked.
    */
   readonly shownNamespaces?: readonly string[] | undefined;
+  /**
+   * The topics a stream datasource's tree lists, by name (decision 117); absent lists them all. An
+   * allow-list like `shownNamespaces`, kept apart because agents read that one as namespace paths.
+   */
+  readonly shownTopics?: readonly string[] | undefined;
+  /**
+   * The indices, aliases, data streams and index families (`orders-*`) a search datasource's tree
+   * lists (decision 117); absent lists them all. A family entry keeps its later rollovers shown.
+   */
+  readonly shownIndices?: readonly string[] | undefined;
   /** What agents may do here over MCP (decision 127); absent is `off`. */
   readonly agentAccess?: AgentAccess | undefined;
   /** The top-level namespaces agents see; absent, the shown ones. */
@@ -882,6 +895,13 @@ export interface TableCraftBridge {
   recentSqlFiles(): Promise<InvokeResult<readonly string[]>>;
   /** Calls `listener` with the path of each File → Recent Files item picked. */
   onOpenRecentFile(listener: (path: string) => void): () => void;
+  /**
+   * The files the OS asked TableCraft to open (Open With, a double-click, the command line) before
+   * this window was ready; once called, later ones arrive through `onOpenLaunchedFiles`.
+   */
+  launchedSqlFiles(): Promise<InvokeResult<readonly string[]>>;
+  /** Calls `listener` with the absolute paths of each later Open With. */
+  onOpenLaunchedFiles(listener: (paths: readonly string[]) => void): () => void;
   /** Appends one run to the datasource's query history (decision 030). */
   historyRecord(entry: HistoryEntry): Promise<InvokeResult<null>>;
   /** The datasource's distinct statements containing `query`, case-insensitively, newest first. */

@@ -1,0 +1,135 @@
+import {
+  SEARCH_ID_COLUMN,
+  SEARCH_INDEX_COLUMN,
+  SEARCH_SOURCE_COLUMN,
+  type Column,
+  type Row,
+  type SearchField,
+  type TypeClass,
+  type WireValue,
+} from "@table-craft/plugin-api";
+import { jsonCell, previewText } from "./limits.js";
+import { valueFields } from "./mapping.js";
+
+export const SCORE_COLUMN = "_score";
+/** Up to this many value fields, every one is a column; past it the plugin picks a few. */
+export const ALL_FIELDS_LIMIT = 40;
+/** Columns a wide mapping starts with besides `_id` and `_source`. */
+const WIDE_COLUMNS = 8;
+/** Names a log line's message and level go by, in the order a column is picked. */
+const LOG_FIELDS = ["log.level", "level", "severity", "message", "msg"];
+
+const INTEGER_TYPES = new Set(["long", "integer", "short", "byte", "unsigned_long", "token_count"]);
+const FLOAT_TYPES = new Set(["double", "float", "half_float", "scaled_float"]);
+const JSON_TYPES = new Set(["object", "nested", "flattened", "geo_point", "geo_shape", "point", "shape", "join"]);
+
+export interface Hit {
+  readonly _id?: unknown;
+  readonly _index?: unknown;
+  readonly _score?: unknown;
+  readonly _source?: unknown;
+  readonly sort?: unknown;
+}
+
+export function typeClassOf(type: string): TypeClass {
+  if (INTEGER_TYPES.has(type)) return "integer";
+  if (FLOAT_TYPES.has(type)) return "float";
+  if (type === "boolean") return "boolean";
+  if (type === "date" || type === "date_nanos") return "temporal";
+  if (JSON_TYPES.has(type)) return "json";
+  return "text";
+}
+
+/**
+ * The fields a search shows when the request names none (plan 165): all of a narrow mapping, a few
+ * of a wide one. A time-series target leads with its time, level and message, the columns a log
+ * reader looks at first.
+ */
+export function defaultFields(fields: readonly SearchField[], timeField: string | null): string[] {
+  const values = valueFields(fields);
+  const limit = values.length <= ALL_FIELDS_LIMIT ? values.length : WIDE_COLUMNS;
+  const chosen: string[] = [];
+  const add = (path: string): void => {
+    if (!chosen.includes(path) && chosen.length < limit) chosen.push(path);
+  };
+  if (timeField !== null) {
+    add(timeField);
+    for (const name of LOG_FIELDS) if (values.some((field) => field.path === name)) add(name);
+  }
+  if (values.length <= ALL_FIELDS_LIMIT) for (const field of values) add(field.path);
+  else for (const field of values) if (field.type === "keyword") add(field.path);
+  return chosen;
+}
+
+/** Where `_id`, `_index` and `_score` sit: before the fields, or after them for a time series. */
+export const HIT_META_PLACES = ["first", "last"] as const;
+export type HitMetaPlace = (typeof HIT_META_PLACES)[number];
+
+export interface HitColumns {
+  readonly columns: readonly Column[];
+  readonly fields: readonly string[];
+  readonly withIndex: boolean;
+  readonly withScore: boolean;
+  readonly meta: HitMetaPlace;
+}
+
+export function hitColumns(
+  fields: readonly string[],
+  mapping: readonly SearchField[],
+  withIndex: boolean,
+  withScore: boolean,
+  meta: HitMetaPlace = "first",
+): HitColumns {
+  const byPath = new Map(mapping.map((field) => [field.path, field]));
+  const metaColumns: Column[] = [{ name: SEARCH_ID_COLUMN, type: "keyword", typeClass: "text" }];
+  if (withIndex) metaColumns.push({ name: SEARCH_INDEX_COLUMN, type: "keyword", typeClass: "text" });
+  if (withScore) metaColumns.push({ name: SCORE_COLUMN, type: "float", typeClass: "float" });
+  const fieldColumns: Column[] = fields.map((path) => {
+    const type = byPath.get(path)?.type ?? null;
+    return { name: path, type, typeClass: type === null ? "text" : typeClassOf(type) };
+  });
+  const columns = meta === "first" ? [...metaColumns, ...fieldColumns] : [...fieldColumns, ...metaColumns];
+  columns.push({ name: SEARCH_SOURCE_COLUMN, type: "json", typeClass: "json" });
+  return { columns, fields, withIndex, withScore, meta };
+}
+
+/**
+ * The value at a dotted path of a source: nested objects first, then a key that itself holds dots,
+ * as both shapes index the same; an array of objects yields the values it holds at the rest.
+ */
+export function valueAt(source: unknown, path: string): unknown {
+  if (typeof source !== "object" || source === null) return undefined;
+  const record = source as Record<string, unknown>;
+  if (path in record) return record[path];
+  const parts = path.split(".");
+  for (let take = parts.length - 1; take >= 1; take -= 1) {
+    const head = parts.slice(0, take).join(".");
+    if (!(head in record)) continue;
+    const rest = parts.slice(take).join(".");
+    const inner = record[head];
+    if (Array.isArray(inner)) {
+      const values = inner.map((item) => valueAt(item, rest)).filter((value) => value !== undefined);
+      return values.length === 0 ? undefined : values;
+    }
+    return valueAt(inner, rest);
+  }
+  return undefined;
+}
+
+/** A value as a cell; a text or JSON longer than `CELL_PREVIEW_CHARS` keeps only its start. */
+export function cellOf(value: unknown): WireValue {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") return previewText(value);
+  if (typeof value === "boolean" || typeof value === "number") return value;
+  return jsonCell(JSON.stringify(value));
+}
+
+export function hitRow(hit: Hit, shape: HitColumns): Row {
+  const meta: WireValue[] = [typeof hit._id === "string" ? hit._id : cellOf(hit._id)];
+  if (shape.withIndex) meta.push(cellOf(hit._index));
+  if (shape.withScore) meta.push(typeof hit._score === "number" ? hit._score : null);
+  const values = shape.fields.map((path) => cellOf(valueAt(hit._source, path)));
+  const row = shape.meta === "first" ? [...meta, ...values] : [...values, ...meta];
+  row.push(hit._source === undefined ? null : jsonCell(JSON.stringify(hit._source)));
+  return row;
+}

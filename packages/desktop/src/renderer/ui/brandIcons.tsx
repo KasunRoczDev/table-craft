@@ -1,4 +1,17 @@
-import { siDuckdb, siEtcd, siMariadb, siMongodb, siMysql, siPostgresql, siRedis, siSqlite, siTidb } from "simple-icons";
+import {
+  siApachekafka,
+  siDuckdb,
+  siElasticsearch,
+  siEtcd,
+  siMariadb,
+  siMongodb,
+  siMysql,
+  siOpensearch,
+  siPostgresql,
+  siRedis,
+  siSqlite,
+  siTidb,
+} from "simple-icons";
 import { brandInk } from "@table-craft/desktop/appearance/brandInk.js";
 import type { Brand, DatasourceView } from "@table-craft/desktop/preload/bridge.js";
 import { datasourceBrand } from "@table-craft/desktop/renderer/model/brand.js";
@@ -30,7 +43,10 @@ export const BRAND_GLYPHS: Readonly<Record<string, BrandGlyph>> = {
   [siSqlite.slug]: siSqlite,
   [siMongodb.slug]: siMongodb,
   [siEtcd.slug]: siEtcd,
+  [siApachekafka.slug]: siApachekafka,
   [siDuckdb.slug]: siDuckdb,
+  [siElasticsearch.slug]: siElasticsearch,
+  [siOpensearch.slug]: siOpensearch,
   [ORACLE_GLYPH.slug]: ORACLE_GLYPH,
   [SQL_SERVER_GLYPH.slug]: SQL_SERVER_GLYPH,
 };

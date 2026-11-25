@@ -2,13 +2,12 @@
   "id": "postgres",
   "name": "PostgreSQL",
   "version": "0.0.0",
-  "apiVersion": "2.3.0",
+  "apiVersion": "2.4.0",
   "entry": "index.js",
   "capabilities": [
     "sql",
     "cancel",
     "schemaTree",
-    "databases",
     "transactions",
     "ddl",
     "explain",
@@ -22,7 +21,8 @@
     "routineCall",
     "serverTimeout",
     "savepoints",
-    "rowLimit"
+    "rowLimit",
+    "databases"
   ],
   "highlight": "postgresql",
   "brands": [{ "id": "postgresql", "name": "PostgreSQL" }],

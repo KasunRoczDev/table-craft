@@ -4,8 +4,8 @@ TableCraft (this repository, `table-craft`) is a desktop database IDE in the spi
 DataGrip: connections, a database explorer, SQL consoles, a result grid and a table data editor.
 Users read "TableCraft"; identifiers keep `table-craft` (decision 037). It is a Bun workspace
 written in TypeScript, shipped as an Electron app. Databases are reached through datasource
-plugins loaded at runtime; MySQL and SQLite ship in the box, PostgreSQL, Oracle, SQL Server, DuckDB, Redis and etcd download on
-demand. Read `docs/design/specification.md` for the v1 scope and `docs/decisions/` before changing
+plugins loaded at runtime; MySQL and SQLite ship in the box, PostgreSQL, Oracle, SQL Server, DuckDB, Redis, etcd, Kafka and
+Elasticsearch download on demand. Read `docs/design/specification.md` for the v1 scope and `docs/decisions/` before changing
 the process model, the plugin contract, or where data lives.
 
 ## Commands
@@ -22,7 +22,7 @@ unset). The next run recreates and reseeds them. Never take down another checkou
 - `bun run test` - Vitest, unit tests plus the plugin contract suite against SQLite
 - `bun run test:db` - the contract suites against MySQL, TiDB and MariaDB in `docker compose`
   (decision 099); `TABLE_CRAFT_DATABASES` picks the servers, and `test:db:postgres`, `:oracle`,
-  `:mssql`, `:redis`, `:etcd` and `:all` set it. Run the one for a plugin you touch. A git-ignored `.env`
+  `:mssql`, `:redis`, `:etcd`, `:kafka`, `:elasticsearch` and `:all` set it. Run the one for a plugin you touch. A git-ignored `.env`
   names a shared remote TiDB the suites use instead of the container: never start a TiDB container
   by hand or pass `--profile tidb`, and never touch that server outside the run's own `tc_run_*`
   database. A worktree copies the main checkout's `.env` into its root
@@ -49,8 +49,10 @@ unset). The next run recreates and reseeds them. Never take down another checkou
 - `bun run readme:media` - record the GIFs of the README and the guide into `docs/media/` (decision 036): builds the app,
   reloads the demo `shop` database in the `test:db:postgres` Postgres and the demo keys in db 3 of
   the `test:db:redis` Redis, starts a disposable etcd with the `/shop/` keys of
-  `test/readme/shop.etcd` for `etcd.gif`, and drives one scene per GIF. Needs Docker, ffmpeg and a display, and
-  `agents-approval` the `opencode` CLI signed in to a model (`README_OPENCODE_MODEL`, default
+  `test/readme/shop.etcd` for `etcd.gif`, a disposable Kafka with an in-process Schema Registry for
+  `kafka.gif` and a disposable Elasticsearch for `elasticsearch.gif` and `agents-elasticsearch.gif`
+  (`test/readme/shopServers.ts`), and drives one scene per GIF. Needs Docker, ffmpeg and a display, and
+  `agents-approval` and `agents-elasticsearch` the `opencode` CLI signed in to a model (`README_OPENCODE_MODEL`, default
   `anthropic/claude-sonnet-5-5`), `agents-warp` that and Warp on macOS, Screen Recording allowed for
   the terminal; `README_MEDIA=explain,grid` re-records only those. Re-record after a UI change a GIF shows
 - `bun run demo:video` - the README's demo video: records the scenes of
@@ -82,9 +84,10 @@ unset). The next run recreates and reseeds them. Never take down another checkou
 
 CI (`.github/workflows/ci.yml`) runs `verify` (lint, format, typecheck, test, website:build, test:db) and the
 packaged suite on macOS arm64 and x64 (blocking), Windows and Linux (best-effort) on every push,
-plus `test:db:postgres`, `:oracle` and `:mssql` when `plugins/<id>/**`, the contract suite or
-`test/db/schema/<id>*` changed (PostgreSQL also on a tag), and `plugins` (pack, check, publish
-`--dry-run`), whose tarballs a tag attaches to the draft release.
+plus `test:db:postgres`, `:oracle`, `:mssql`, `:etcd`, `:kafka` and `:elasticsearch` when `plugins/<id>/**`, the
+contract suite, the compose stack or that server's seed and fixtures changed (PostgreSQL also on a
+tag), and `plugins` (pack, check with an offline connect of the Kafka package, publish `--dry-run`),
+whose tarballs a tag attaches to the draft release.
 
 Bun is the toolchain only. Electron runs Node, so nothing under `packages/*/src` or
 `plugins/*/src` may use `Bun.*` APIs, and drivers must be Node-compatible (decision 001).
@@ -199,7 +202,8 @@ packages/website/          @table-craft/website, the website: Astro and Starligh
                            `sync.ts` writes the git-ignored content. `src/pages/` the
                            landing, download and changelog pages
 plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql and
-                           sqlite built in, postgres, oracle, mssql, redis, etcd and duckdb optional (`BUILT_IN_PLUGINS`,
+                           sqlite built in, postgres, oracle, mssql, redis, etcd, duckdb, kafka and
+                           elasticsearch optional (`BUILT_IN_PLUGINS`,
                            `OPTIONAL_PLUGINS` in `vite.plugins.config.ts`, decision 108;
                            an optional one builds to `dist/optional-plugins/`, loads in
                            development runs and downloads from npm). Each depends on
@@ -216,7 +220,18 @@ plugins/<id>/              datasource plugins (@table-craft/plugin-<id>): mysql 
                            `index.js`, the driver loads only in `connect`, and
                            `plugins:pack` makes one package per platform
                            (`scripts/plugins/native.ts`); its function list comes from
-                           `scripts/vocabulary.ts`
+                           `scripts/vocabulary.ts`. `kafka` speaks `commands`, `topics`,
+                           `consumerGroups` and `schemaRegistry` (decisions 169-171): reads
+                           fetch partitions without a group (`read.ts`, `fetch.ts`),
+                           `formats.ts` decodes, `registryClient.ts` (with `registry.ts`,
+                           `codec.ts`) is its own Schema Registry client; the engine's
+                           `topicTails.ts` holds live tails. `elasticsearch` speaks
+                           `commands` and `searchIndices` (decisions 173, 174) over its own
+                           REST client (`client.ts`); `dialect.ts` adapts to 6.x-8.x and
+                           OpenSearch, `search.ts` reads page one as a plain search and
+                           `paging.ts` the rest from a point in time, or a scroll on older
+                           servers, released when the result goes (decision 175);
+                           `language.ts` reads Dev Tools requests, SQL and PPL
 scripts/agent-cost/        `report.ts`: steps, context and cost of an agent session, read
                            from the OpenCode session store
 scripts/api-report/        the plugin-api surface report and its check against the last
