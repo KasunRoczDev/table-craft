@@ -417,6 +417,8 @@ export interface Datasource {
    * An allow-list, so a database created later on a shared server stays hidden until picked.
    */
   readonly shownNamespaces?: readonly string[] | undefined;
+  /** Selected discovered databases, separate from schemas; absent hides discovered siblings by default. */
+  readonly shownDatabases?: readonly string[] | undefined;
   /**
    * The topics a stream datasource's tree lists, by name (decision 117); absent lists them all. An
    * allow-list like `shownNamespaces`, kept apart because agents read that one as namespace paths.
@@ -442,6 +444,8 @@ export interface Datasource {
   readonly agentTimeoutSeconds?: number | undefined;
   /** What the server last said about itself and its limits (decision 131); absent until it is reached. */
   readonly lastServer?: LastServer | undefined;
+  /** Session-only database sibling; settings and credentials remain owned by its source. */
+  readonly databaseSource?: { readonly sourceId: string; readonly database: string };
 }
 
 /** The apps whose saved connections TableCraft imports (plan 035), and its own exported files (plan 040). */
@@ -586,8 +590,6 @@ export interface ImportSummary {
 
 /** What the renderer sees of a datasource: its record, and which secrets have a stored value. */
 export interface DatasourceView extends Datasource {
-  /** Session-only database sibling; connection settings and stored credentials belong to this source. */
-  readonly databaseSourceId?: string;
   /** Secret keys with a value main can use without asking; never the values themselves. */
   readonly storedSecrets: readonly string[];
   /** From `TABLE_CRAFT_DATASOURCE` (decision 018): never written to disk, and not editable. */
@@ -597,6 +599,10 @@ export interface DatasourceView extends Datasource {
 export interface DatasourceList {
   /** Saved datasources in their stored order, after the ephemeral one when there is one. */
   readonly datasources: readonly DatasourceView[];
+  /** Registered database siblings, separate so connection management sees only saved sources. */
+  readonly discoveredDatabases: readonly DatasourceView[];
+  /** The full database picker contents for each source that supports database discovery. */
+  readonly databaseNames: readonly { readonly sourceId: string; readonly names: readonly string[] }[];
   /** Every folder path, empty ones included; siblings in the order the tree shows them (decision 145). */
   readonly folders: readonly string[];
   /** Set once when `datasources.json` could not be read and was backed up. */

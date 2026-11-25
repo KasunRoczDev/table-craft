@@ -152,15 +152,15 @@ describe("datasource service", () => {
   describe("discovered databases", () => {
     it("givenDatabaseNames_whenRegisteredTwice_thenIndependentEphemeralSourcesShareOnlyStoredCredentials", async () => {
       const { service: app, dependencies, files } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const first = app.addDatabases(source.id, ["table_craft", 'other "database', 'other "database']);
-      const second = app.addDatabases(source.id, ['other "database']);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ['other "database'] }, SECRET));
+      const first = await app.addDatabases(source.id, ["table_craft", 'other "database', 'other "database']);
+      const second = await app.addDatabases(source.id, ['other "database']);
       expect(second).toEqual(first);
       expect(first).toHaveLength(1);
-      const sibling = app.list().datasources.find((item) => item.id === first[0]);
+      const sibling = app.list().discoveredDatabases.find((item) => item.id === first[0]);
       expect(sibling).toMatchObject({
         ephemeral: true,
-        databaseSourceId: source.id,
+        databaseSource: { sourceId: source.id, database: 'other "database' },
         config: { database: 'other "database' },
       });
       await app.connect(first[0]!, {}, WINDOW);
@@ -185,14 +185,15 @@ describe("datasource service", () => {
               ssh: { enabled: true, host: "bastion", port: 22, user: "ssh-user", auth: "agent", keyPath: "" },
               secretModes: { password: mode },
               shownNamespaces: ["table_craft"],
+              shownDatabases: ["second"],
               agentAccess: "ask",
             },
             SECRET,
           ),
         );
-        const [id] = app.addDatabases(source.id, ["second"]);
-        const sibling = app.list().datasources.find((item) => item.id === id);
-        expect(sibling).toMatchObject({ storedSecrets: ["password"], folder: "Docker/Main/Local PG databases" });
+        const [id] = await app.addDatabases(source.id, ["second"]);
+        const sibling = app.list().discoveredDatabases.find((item) => item.id === id);
+        expect(sibling).toMatchObject({ storedSecrets: ["password"], folder: "Docker/Main" });
         expect(sibling?.shownNamespaces).toBeUndefined();
         expect(sibling?.agentAccess).toBeUndefined();
         await app.connect(id!, {}, WINDOW);
@@ -206,8 +207,8 @@ describe("datasource service", () => {
 
     it("givenDisconnectedChildren_whenSourcePluginChanges_thenRemovesStaleChildren", async () => {
       const { service: app } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const [id] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"] }, SECRET));
+      const [id] = await app.addDatabases(source.id, ["other"]);
       await app.save(saving({ ...REDIS_DRAFT, id: source.id }));
       expect(app.list().datasources.map((item) => item.id)).toEqual([source.id]);
       await expect(app.connect(id!, {}, WINDOW)).rejects.toThrow("No data source");
@@ -218,14 +219,14 @@ describe("datasource service", () => {
       { change: "read-only", draft: { ...PG_DRAFT, readOnly: true } },
     ])("givenDiscoveredDatabase_whenSource$changeChanges_thenRebuildsChild", async ({ draft }) => {
       const { service: app } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const [before] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"] }, SECRET));
+      const [before] = await app.addDatabases(source.id, ["other"]);
       await app.save(saving({ ...draft, id: source.id }, SECRET));
       expect(app.list().datasources.map((item) => item.id)).toEqual([source.id]);
-      const [after] = app.addDatabases(source.id, ["other"]);
-      expect(after).not.toBe(before);
-      expect(app.list().datasources.find((item) => item.id === after)).toMatchObject({
-        databaseSourceId: source.id,
+      const [after] = await app.addDatabases(source.id, ["other"]);
+      expect(after).toBe(before);
+      expect(app.list().discoveredDatabases.find((item) => item.id === after)).toMatchObject({
+        databaseSource: { sourceId: source.id, database: "other" },
         readOnly: draft.readOnly ?? false,
         config: { user: draft.config.user },
       });
@@ -233,47 +234,43 @@ describe("datasource service", () => {
 
     it("givenRunningChild_whenShownDatabasesChange_thenKeepsItsConnection", async () => {
       const { service: app } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const [id] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"] }, SECRET));
+      const [id] = await app.addDatabases(source.id, ["other"]);
       await app.connect(id!, {}, WINDOW);
       const updated = await app.save(saving({ ...PG_DRAFT, id: source.id, shownNamespaces: ["table_craft"] }));
       expect(updated.shownNamespaces).toEqual(["table_craft"]);
-      expect(app.list().datasources.find((item) => item.id === id)).toMatchObject({ databaseSourceId: source.id });
-      expect(app.addDatabases(source.id, ["other"])).toEqual([id]);
+      expect(app.list().discoveredDatabases.find((item) => item.id === id)).toMatchObject({
+        databaseSource: { sourceId: source.id, database: "other" },
+      });
+      expect(await app.addDatabases(source.id, ["other"])).toEqual([id]);
     });
 
-    it("givenRunningChild_whenSourceChangedOrDeleted_thenRefusesUntilDisconnected", async () => {
+    it("givenRunningChild_whenSourceChangedOrDeleted_thenStopsAndRemovesTheSibling", async () => {
       const { service: app, dependencies } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const [id] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"] }, SECRET));
+      const [id] = await app.addDatabases(source.id, ["other"]);
       await app.connect(id!, {}, WINDOW);
-      await expect(
-        app.save(saving({ ...PG_DRAFT, id: source.id, config: { ...PG_DRAFT.config, host: "new-host" } })),
-      ).rejects.toThrow("still connected");
-      await expect(app.delete({ ids: [source.id], folders: ["Docker/Main"] })).rejects.toThrow("still connected");
-      await expect(app.delete({ ids: [], folders: ["Docker/Main"] })).rejects.toThrow("not empty");
-      await disconnected(dependencies, app.disconnect(id!));
+      await app.save(saving({ ...PG_DRAFT, id: source.id, shownDatabases: ["other"], config: { ...PG_DRAFT.config, host: "new-host" } }));
+      expect(app.list().discoveredDatabases).toEqual([]);
+      expect(dependencies.forked.at(-1)?.killed).toBe(true);
       await app.delete({ ids: [source.id], folders: ["Docker/Main"] });
       expect(app.list().datasources).toEqual([]);
     });
 
     it("givenDroppedDatabases_whenRefreshed_thenRemovesOnlyDisconnectedChildren", async () => {
       const { service: app, dependencies } = await service();
-      const source = await app.save(saving(PG_DRAFT, SECRET));
-      const [live, dormant] = app.addDatabases(source.id, ["live", "dormant"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["live", "dormant"] }, SECRET));
+      const [live, dormant] = await app.addDatabases(source.id, ["live", "dormant"]);
       await app.connect(live!, {}, WINDOW);
-      app.addDatabases(source.id, []);
-      expect(app.list().datasources.map((item) => item.id)).toContain(live);
-      expect(app.list().datasources.map((item) => item.id)).not.toContain(dormant);
-      await disconnected(dependencies, app.disconnect(live!));
-      app.addDatabases(source.id, []);
-      expect(app.list().datasources.map((item) => item.id)).toEqual([source.id]);
+      await app.addDatabases(source.id, []);
+      expect(app.list().discoveredDatabases).toEqual([]);
+      expect(dependencies.forked.at(-1)?.killed).toBe(true);
     });
 
     it("givenPromptedSiblingPassword_whenConfirmed_thenStoresOnlyUnderOriginalSource", async () => {
       const { service: app } = await service();
-      const source = await app.save(saving({ ...PG_DRAFT, secretModes: { password: "untilRestart" } }));
-      const [id] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"], secretModes: { password: "untilRestart" } }));
+      const [id] = await app.addDatabases(source.id, ["other"]);
       await app.connect(id!, { password: SECRET }, WINDOW);
       await app.rememberServer(id!, seenAt(SEEN_AT));
       expect(app.list().datasources.find((item) => item.id === source.id)?.storedSecrets).toEqual(["password"]);
@@ -282,8 +279,8 @@ describe("datasource service", () => {
 
     it("givenNeverPassword_whenSiblingConnects_thenPromptsAndDoesNotFallBackToSourceDatabase", async () => {
       const { service: app, dependencies } = await service();
-      const source = await app.save(saving({ ...PG_DRAFT, secretModes: { password: "never" }, readOnly: true }));
-      const [id] = app.addDatabases(source.id, ["other"]);
+      const source = await app.save(saving({ ...PG_DRAFT, shownDatabases: ["other"], secretModes: { password: "never" }, readOnly: true }));
+      const [id] = await app.addDatabases(source.id, ["other"]);
       expect(await app.connect(id!, {}, WINDOW)).toEqual({ status: "needsSecrets", keys: ["password"] });
       await app.connect(id!, { password: SECRET }, WINDOW);
       expect(bootedConfig(dependencies)).toMatchObject({

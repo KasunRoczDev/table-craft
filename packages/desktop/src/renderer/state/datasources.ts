@@ -75,6 +75,7 @@ export interface SecretRequest {
 export interface DatasourcesState {
   readonly loaded: boolean;
   readonly datasources: readonly DatasourceView[];
+  readonly databaseNames: DatasourceList["databaseNames"];
   readonly plugins: readonly PluginInfo[];
   /** The plugins TableCraft can download, with each one's install progress (decision 110). */
   readonly catalog: readonly CatalogPlugin[];
@@ -248,7 +249,7 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
 
     function remember(id: string, opened: OpenedSession): void {
       const view = get().datasources.find((datasource) => datasource.id === id);
-      if (view === undefined || (view.ephemeral && view.databaseSourceId === undefined)) return;
+      if (view === undefined || (view.ephemeral && view.databaseSource === undefined)) return;
       const seen = serverSeenOf(opened, (dependencies.now ?? Date.now)());
       void dependencies.rememberServer(id, seen).catch(() => undefined);
     }
@@ -257,7 +258,7 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
       const source = get().datasources.find((item) => item.id === id);
       if (
         source === undefined ||
-        source.databaseSourceId !== undefined ||
+        source.databaseSource !== undefined ||
         !capabilitiesOf(get().plugins, source.pluginId).includes("databases") ||
         dependencies.addDatabases === undefined
       )
@@ -312,6 +313,7 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
     return {
       loaded: false,
       datasources: [],
+      databaseNames: [],
       plugins: [],
       catalog: [],
       registries: [],
@@ -326,7 +328,8 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
       folders: [],
 
       applyList(list) {
-        const known = new Set(list.datasources.map((datasource) => datasource.id));
+        const datasources = [...list.datasources, ...list.discoveredDatabases];
+        const known = new Set(datasources.map((datasource) => datasource.id));
         const removed = get()
           .datasources.map((datasource) => datasource.id)
           .filter((id) => !known.has(id));
@@ -337,7 +340,8 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
         );
         set({
           loaded: true,
-          datasources: list.datasources,
+          datasources,
+          databaseNames: list.databaseNames,
           folders: list.folders,
           encryption: list.encryption,
           warning: list.warning ?? get().warning,
@@ -425,12 +429,22 @@ export function createDatasourcesStore(dependencies: DatasourcesDependencies) {
       },
 
       async discoverDatabases(id) {
-        const sourceId = find(id).databaseSourceId ?? id;
-        const client = await get().connect(sourceId);
-        await discover(sourceId, client);
+        const source = find(id);
+        if (!capabilitiesOf(get().plugins, source.pluginId).includes("databases")) return;
+        const sourceId = source.databaseSource?.sourceId ?? id;
+        try {
+          const client = await get().connect(sourceId);
+          await discover(sourceId, client);
+        } catch (cause) {
+          set({ warning: `Could not discover databases for ${source.name}: ${toEngineError(cause).message}` });
+        }
       },
 
       async disconnect(id) {
+        if (find(id).databaseSource === undefined) {
+          const children = get().datasources.filter((datasource) => datasource.databaseSource?.sourceId === id);
+          for (const child of children) await get().disconnect(child.id);
+        }
         const wasLive = clients.has(id) && !languageOnly.has(id);
         detach(id, null);
         if (wasLive || get().connections[id]?.status === "connected") {

@@ -31,7 +31,12 @@ function row(rows: readonly ExplorerRow[], label: string): ExplorerRow | undefin
 
 describe("explorer tree", () => {
   it("shows selected PostgreSQL databases beneath one datasource", () => {
-    const sibling = view({ id: "other", name: "pg / other", databaseSourceId: "pg", config: { database: "other" } });
+    const sibling = view({
+      id: "other",
+      name: "pg / other",
+      databaseSource: { sourceId: "pg", database: "other" },
+      config: { database: "other" },
+    });
     const source = view({ id: "pg", name: "pg", shownNamespaces: ["other"] });
     const rows = explorerRows({
       tree: buildTree([source, sibling]),

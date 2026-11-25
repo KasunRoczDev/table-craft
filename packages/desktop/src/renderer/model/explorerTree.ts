@@ -600,7 +600,7 @@ function datasourceRows(builder: Builder, node: DatasourceNode, depth: number): 
     );
   }
   for (const child of builder.input.discoveredDatabases ?? []) {
-    if (child.databaseSourceId !== datasource.id) continue;
+    if (child.databaseSource?.sourceId !== datasource.id) continue;
     const database = child.config["database"];
     if (typeof database !== "string") continue;
     if (datasource.shownNamespaces !== undefined && !datasource.shownNamespaces.includes(database)) continue;

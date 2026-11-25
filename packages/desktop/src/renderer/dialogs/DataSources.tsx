@@ -604,7 +604,7 @@ function DraftForm({ draft, plugin, folders, onChange, onUrl, serverTimeout, end
 function Editor({ target }: { readonly target: DialogTarget }) {
   const allDatasources = useDatasources((state) => state.datasources);
   const datasources = useMemo(
-    () => allDatasources.filter((item) => item.databaseSourceId === undefined),
+    () => allDatasources.filter((item) => item.databaseSource === undefined),
     [allDatasources],
   );
   const plugins = useDatasources((state) => state.plugins);
