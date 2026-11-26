@@ -9,6 +9,8 @@ export interface MysqlCopyRequest {
   readonly sourcePath: readonly string[];
   readonly destinationPath: readonly string[];
   readonly mode: MysqlCopyMode;
+  /** Table names to transfer; omitted means every table. */
+  readonly selectedTables?: readonly string[];
   readonly onProgress?: (progress: {
     readonly completed: number;
     readonly total: number;
@@ -304,37 +306,44 @@ function assertSafeSource(
   return ordered;
 }
 
-async function readMetadata(client: EngineClient, sessionId: string, db: string) {
-  const routines = await queryRows(
-    client,
-    sessionId,
-    "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?",
-    [db],
-  );
-  const triggers = await queryRows(
-    client,
-    sessionId,
-    "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?",
-    [db],
-  );
-  const events = await queryRows(
-    client,
-    sessionId,
-    "SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?",
-    [db],
-  );
-  const columns = await queryRows(
-    client,
-    sessionId,
-    "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND GENERATION_EXPRESSION IS NOT NULL AND GENERATION_EXPRESSION <> ''",
-    [db],
-  );
-  const tables = await queryRows(
-    client,
-    sessionId,
-    "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
-    [db],
-  );
+async function readMetadata(client: EngineClient, sessionId: string, db: string, tableNames?: readonly string[]) {
+  const [routines, triggers, events] =
+    tableNames === undefined
+      ? await Promise.all([
+          queryRows(
+            client,
+            sessionId,
+            "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?",
+            [db],
+          ),
+          queryRows(
+            client,
+            sessionId,
+            "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?",
+            [db],
+          ),
+          queryRows(client, sessionId, "SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?", [db]),
+        ])
+      : [[], [], []];
+  const filter = tableNames === undefined ? "" : ` AND TABLE_NAME IN (${tableNames.map(() => "?").join(", ")})`;
+  const parameters = tableNames === undefined ? [db] : [db, ...tableNames];
+  const [columns, tables] =
+    tableNames !== undefined && tableNames.length === 0
+      ? [[], []]
+      : await Promise.all([
+          queryRows(
+            client,
+            sessionId,
+            `SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND GENERATION_EXPRESSION IS NOT NULL AND GENERATION_EXPRESSION <> ''${filter}`,
+            parameters,
+          ),
+          queryRows(
+            client,
+            sessionId,
+            `SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'${filter}`,
+            parameters,
+          ),
+        ]);
   const text = (value: unknown): string => {
     if (typeof value === "string") return value;
     if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -484,9 +493,38 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
     throw cause;
   }
   try {
-    const sourceMetadata = await readMetadata(request.source, sourceOpened.sessionId, sourceDatabase);
+    request.onProgress?.({ completed: 0, total: 0, current: "Inspecting selected tables" });
     const sourceCatalog = await describe(request.source, [sourceDatabase]);
-    const ordered = assertSafeSource(sourceCatalog, sourceDatabase, sourceMetadata);
+    const chosenNames = request.selectedTables === undefined ? null : new Set(request.selectedTables);
+    const candidateTables = sourceCatalog.relations.filter(
+      ({ kind, name }) => kind === "table" && (chosenNames === null || chosenNames.has(name)),
+    );
+    const sourceMetadata = await readMetadata(
+      request.source,
+      sourceOpened.sessionId,
+      sourceDatabase,
+      request.mode === "data-only" ? candidateTables.map(({ name }) => name) : undefined,
+    );
+    const sourceCheckCatalog =
+      request.mode === "data-only" ? { ...sourceCatalog, relations: candidateTables } : sourceCatalog;
+    const sourceCheckMetadata =
+      request.mode === "data-only"
+        ? {
+            ...sourceMetadata,
+            routines: 0,
+            triggers: 0,
+            events: 0,
+            generated: sourceMetadata.generated,
+            engines: sourceMetadata.engines,
+          }
+        : sourceMetadata;
+    const safeOrdered = assertSafeSource(sourceCheckCatalog, sourceDatabase, sourceCheckMetadata);
+    const allOrdered =
+      request.mode === "data-only" ? safeOrdered : assertSafeSource(sourceCatalog, sourceDatabase, sourceMetadata);
+    const ordered =
+      request.mode === "data-only" || chosenNames === null
+        ? allOrdered
+        : allOrdered.filter(({ name }) => chosenNames.has(name));
     const destinationNamespaces = await namespaces(request.destination);
     if (!hasNamespace(destinationNamespaces, request.destinationPath))
       throw new Error(`Destination database ${destinationDatabase} does not exist.`);
@@ -496,8 +534,23 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
         request.destination,
         destinationOpened.sessionId,
         destinationDatabase,
+        ordered.map(({ name }) => name),
       );
-      assertSafeSource(destinationCatalog, destinationDatabase, destinationMetadata);
+      const destinationCheckCatalog = {
+        ...destinationCatalog,
+        relations: destinationCatalog.relations.filter(
+          ({ kind, name }) => kind === "table" && (chosenNames === null || chosenNames.has(name)),
+        ),
+      };
+      const destinationCheckMetadata = {
+        ...destinationMetadata,
+        routines: 0,
+        triggers: 0,
+        events: 0,
+        generated: destinationMetadata.generated,
+        engines: destinationMetadata.engines,
+      };
+      assertSafeSource(destinationCheckCatalog, destinationDatabase, destinationCheckMetadata);
       const targetNames = new Set(
         destinationCatalog.relations.filter(({ kind }) => kind === "table").map(({ name }) => name),
       );
@@ -524,7 +577,7 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
 
     let schemaStatements: string[] = [];
     if (request.mode !== "data-only") {
-      const schemaRelations = [...ordered, ...sourceCatalog.relations.filter(({ kind }) => kind !== "table")];
+      const schemaRelations = [...allOrdered, ...sourceCatalog.relations.filter(({ kind }) => kind !== "table")];
       const definitions = await Promise.all(
         schemaRelations.map(async (relation) => ({
           relation,
@@ -570,6 +623,18 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
       );
     }
 
+    const schemaSplitStatements = await Promise.all(
+      schemaStatements.map(async (text) => {
+        const split = await request.destination.call<"script.split">("script.split", { text });
+        if (split.length !== 1) throw new Error("A MySQL schema object did not split into one statement.");
+        return split[0]?.sql ?? text;
+      }),
+    );
+    const total =
+      (request.mode === "data-only" ? 0 : schemaSplitStatements.length) +
+      (request.mode === "schema-only" ? 0 : ordered.length);
+    let completed = 0;
+
     if (request.mode !== "data-only") {
       await request.destination.call<"statement.execute">("statement.execute", {
         sessionId: destinationOpened.sessionId,
@@ -577,9 +642,7 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
         pageRows: PAGE_ROWS,
         fetchAllCap: PAGE_ROWS,
       });
-      const total = 1 + (request.mode === "schema-only" ? 0 : ordered.length);
-      let completed = 0;
-      for (const rewritten of schemaStatements) {
+      for (const [index, rewritten] of schemaSplitStatements.entries()) {
         await request.destination.call<"statement.execute">("statement.execute", {
           sessionId: destinationOpened.sessionId,
           sql: rewritten,
@@ -587,9 +650,13 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
           pageRows: PAGE_ROWS,
           fetchAllCap: PAGE_ROWS,
         });
+        completed++;
+        request.onProgress?.({
+          completed,
+          total,
+          current: `Schema object ${index + 1} of ${schemaSplitStatements.length}`,
+        });
       }
-      completed++;
-      request.onProgress?.({ completed, total, current: "Database schema" });
     }
 
     if (request.mode !== "schema-only") {
@@ -600,8 +667,6 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
       const targetTables = new Set(
         targetCatalog.relations.filter(({ kind }) => kind === "table").map(({ name }) => name),
       );
-      const total = ordered.length;
-      let completed = 0;
       for (const relation of ordered) {
         if (!targetTables.has(relation.name)) throw new Error(`Destination table ${relation.name} is missing.`);
         await request.destination.call<"statement.execute">("statement.execute", {

@@ -15,7 +15,34 @@ export interface PostgresCopyRequest {
   readonly sourcePath: readonly string[];
   readonly destinationPath: readonly string[];
   readonly mode: PostgresCopyMode;
+  /** JSON encoded [table] or [schema, table] identities; omitted means every table. */
+  readonly selectedTables?: readonly string[];
   readonly onProgress?: (progress: PostgresCopyProgress) => void;
+}
+
+function schemaTableId(name: string): string {
+  return JSON.stringify([name]);
+}
+
+function databaseTableId(schema: string, name: string): string {
+  return JSON.stringify([schema, name]);
+}
+
+function schemaSelectionFor(
+  selectedTables: readonly string[] | undefined,
+  schema: string,
+): readonly string[] | undefined {
+  if (selectedTables === undefined) return undefined;
+  return selectedTables.flatMap((id) => {
+    try {
+      const tuple: unknown = JSON.parse(id);
+      return Array.isArray(tuple) && tuple.length === 2 && tuple[0] === schema && typeof tuple[1] === "string"
+        ? [schemaTableId(tuple[1])]
+        : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export type VerificationStatus = "match" | "missing" | "extra" | "changed" | "mismatch" | "unverifiable";
@@ -122,6 +149,24 @@ function orderedTables(
     }
   }
   return ordered;
+}
+
+function dataLayout(relation: NamespaceCatalog["relations"][number]): string {
+  return JSON.stringify({
+    columns: relation.columns,
+    primaryKey: relation.primaryKey?.columns ?? null,
+    uniqueKeys: relation.uniqueKeys
+      .map(({ columns }) => columns)
+      .sort((a, b) => a.join("\0").localeCompare(b.join("\0"))),
+    foreignKeys: relation.foreignKeys
+      .map(({ columns, target, onDelete, onUpdate }) => ({
+        columns,
+        target: { relation: target.relation, columns: target.columns },
+        onDelete,
+        onUpdate,
+      }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  });
 }
 
 async function tableDigest(
@@ -330,7 +375,13 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
     }
     const destinationPath = [destinationDatabase, schemaName];
     const destinationSchemaExists = await hasSchema(request.destination, destinationPath);
-    if (!destinationSchemaExists && request.mode === "data-only") throw new Error("Destination schema does not exist.");
+    const hasSelectedTables =
+      request.selectedTables === undefined ||
+      sourceCatalog.relations.some(
+        ({ kind, name }) => kind === "table" && request.selectedTables?.includes(schemaTableId(name)),
+      );
+    if (!destinationSchemaExists && request.mode === "data-only" && hasSelectedTables)
+      throw new Error("Destination schema does not exist.");
     let destinationCatalog: NamespaceCatalog;
     const destinationSchemaMissing = !destinationSchemaExists;
     if (destinationSchemaExists) {
@@ -341,7 +392,17 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
 
     assertUniqueObjects(sourceCatalog, destinationCatalog, request.mode);
     const schemaRelations = sourceCatalog.relations;
-    const dataRelations = request.mode === "schema-only" ? [] : orderedTables(sourceCatalog, request.sourcePath);
+    const selectedTables = request.selectedTables === undefined ? null : new Set(request.selectedTables);
+    const dataCatalog =
+      selectedTables === null
+        ? sourceCatalog
+        : {
+            ...sourceCatalog,
+            relations: sourceCatalog.relations.filter(
+              ({ kind, name }) => kind === "table" && selectedTables.has(schemaTableId(name)),
+            ),
+          };
+    const dataRelations = request.mode === "schema-only" ? [] : orderedTables(dataCatalog, request.sourcePath);
     const relations = request.mode === "data-only" ? dataRelations : schemaRelations;
     if (request.mode === "data-only") {
       const missing = relations.filter(
@@ -350,6 +411,9 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
       if (missing.length > 0)
         throw new Error(`Destination is missing tables: ${missing.map(({ name }) => name).join(", ")}`);
       for (const relation of relations) {
+        const destinationRelation = destinationCatalog.relations.find(({ name }) => name === relation.name);
+        if (destinationRelation === undefined || dataLayout(destinationRelation) !== dataLayout(relation))
+          throw new Error(`Destination table ${relation.name} has a different column layout.`);
         const count = await request.destination.call<"statement.execute">("statement.execute", {
           sessionId: destinationSession,
           sql: `SELECT COUNT(*) AS count FROM ${qualifiedName(destinationPath, relation.name)}`,
@@ -368,8 +432,14 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
           .catch(() => undefined);
       }
     }
+    const schemaStatements =
+      schemaScript === null || schemaScript.text.trim() === ""
+        ? []
+        : (await request.source.call<"script.split">("script.split", { text: schemaScript.text })).map(
+            ({ sql }) => sql,
+          );
     const total =
-      (request.mode === "data-only" ? 0 : 1) +
+      (request.mode === "data-only" ? 0 : schemaStatements.length + Number(destinationSchemaMissing)) +
       (request.mode === "schema-only"
         ? 0
         : dataRelations.length + schemaRelations.filter(({ kind }) => kind === "materializedView").length);
@@ -390,14 +460,23 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
             pageRows: PAGE_ROWS,
             fetchAllCap: PAGE_ROWS,
           });
+          completed++;
+          request.onProgress?.({ completed, total, current: `Create schema ${schemaName}` });
         }
-        if (schemaScript?.text.trim() !== "")
+        for (const [index, statement] of schemaStatements.entries()) {
           await request.destination.call<"statement.execute">("statement.execute", {
             sessionId: destinationSession,
-            sql: schemaScript?.text ?? "",
+            sql: statement,
             pageRows: PAGE_ROWS,
             fetchAllCap: PAGE_ROWS,
           });
+          completed++;
+          request.onProgress?.({
+            completed,
+            total,
+            current: `Schema statement ${index + 1} of ${schemaStatements.length}`,
+          });
+        }
         await request.destination.call<"statement.execute">("statement.execute", {
           sessionId: destinationSession,
           sql: "COMMIT",
@@ -415,8 +494,6 @@ export async function copyPostgresSchema(request: PostgresCopyRequest): Promise<
           .catch(() => undefined);
         throw cause;
       }
-      completed++;
-      request.onProgress?.({ completed, total, current: "Schema definitions" });
     }
 
     if (request.mode !== "schema-only") {
@@ -527,14 +604,29 @@ export async function copyPostgresDatabase(
       path.length === 2 && path[1] !== undefined && path[1] !== "information_schema" && !path[1].startsWith("pg_"),
   );
   try {
-    // Preflight the full selection before the first destination write.
-    for (const { path: schemaPath } of selected) {
+    // Preflight the full schema selection before the first destination write.
+    for (const [schemaIndex, { path: schemaPath }] of selected.entries()) {
       const schemaName = schemaPath[1];
       if (schemaName === undefined) continue;
+      request.onProgress?.({
+        completed: schemaIndex,
+        total: selected.length,
+        current: `Preparing schema ${schemaName}`,
+      });
       const sourcePath = [sourceDatabase, schemaName];
       const destinationPath = [destinationDatabase, schemaName];
       const sourceCatalog = await describe(request.source, sourcePath);
-      const ordered = request.mode === "schema-only" ? [] : orderedTables(sourceCatalog, sourcePath);
+      const chosenIds = request.selectedTables === undefined ? null : new Set(request.selectedTables);
+      const chosenCatalog =
+        chosenIds === null
+          ? sourceCatalog
+          : {
+              ...sourceCatalog,
+              relations: sourceCatalog.relations.filter(
+                ({ kind, name }) => kind === "table" && chosenIds.has(databaseTableId(schemaName, name)),
+              ),
+            };
+      const chosenTables = request.mode === "schema-only" ? [] : orderedTables(chosenCatalog, sourcePath);
       if (request.mode !== "data-only" && sourceCatalog.routines.length > 0) {
         throw new Error(`Schema ${schemaName} contains routines that need a separate migration.`);
       }
@@ -554,6 +646,7 @@ export async function copyPostgresDatabase(
         ({ path }) => path.length === 2 && path[0] === destinationDatabase && path[1] === schemaName,
       );
       if (!destinationSchemaExists) {
+        if (request.mode === "data-only" && chosenTables.length === 0) continue;
         if (request.mode === "data-only") throw new Error(`Destination schema ${schemaName} does not exist.`);
         continue;
       }
@@ -571,16 +664,18 @@ export async function copyPostgresDatabase(
           throw new Error(`Destination schema ${schemaName} already contains objects: ${allConflicts.join(", ")}`);
         }
       } else {
-        const missing = sourceCatalog.relations.filter(
-          ({ name, kind }) =>
-            kind === "table" && !destinationCatalog.relations.some((relation) => relation.name === name),
+        const missing = chosenTables.filter(
+          ({ name }) => !destinationCatalog.relations.some((relation) => relation.name === name),
         );
         if (missing.length > 0) {
           throw new Error(
             `Destination schema ${schemaName} is missing tables: ${missing.map(({ name }) => name).join(", ")}`,
           );
         }
-        for (const relation of ordered) {
+        for (const relation of chosenTables) {
+          const destinationRelation = destinationCatalog.relations.find(({ name }) => name === relation.name);
+          if (destinationRelation === undefined || dataLayout(destinationRelation) !== dataLayout(relation))
+            throw new Error(`Destination table ${schemaName}.${relation.name} has a different column layout.`);
           const count = await request.destination.call<"statement.execute">("statement.execute", {
             sessionId: destinationOpened.sessionId,
             sql: `SELECT COUNT(*) AS count FROM ${qualifiedName(destinationPath, relation.name)}`,
@@ -613,6 +708,7 @@ export async function copyPostgresDatabase(
         ...request,
         sourcePath: [sourceDatabase, schemaName],
         destinationPath: [destinationDatabase, schemaName],
+        selectedTables: schemaSelectionFor(request.selectedTables, schemaName),
         onProgress: (progress) =>
           request.onProgress?.({
             ...progress,

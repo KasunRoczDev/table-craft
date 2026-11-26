@@ -8,7 +8,7 @@ import {
 } from "@table-craft/desktop/renderer/actions/mysqlCopy.js";
 import { datasourceById, useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
-import { useModal } from "@table-craft/desktop/renderer/state/modal.js";
+import { parseMultiPickAnswer, useModal } from "@table-craft/desktop/renderer/state/modal.js";
 import { toError } from "@table-craft/desktop/renderer/state/resultWindows.js";
 
 function selectedSchema(
@@ -227,10 +227,40 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
   });
   if (modeAnswer === null) return;
   const mode = modeAnswer as MysqlCopyMode;
+  let sourceClient: Awaited<ReturnType<ReturnType<typeof useDatasources.getState>["connect"]>>;
+  let selectedTables: readonly string[] | undefined;
+  try {
+    sourceClient =
+      destination.id === source.id ? destinationClient : await useDatasources.getState().connect(source.id);
+    if (mode !== "schema-only") {
+      const catalog = await sourceClient.call<"catalog.describe">("catalog.describe", {
+        path: target.path,
+        refresh: true,
+      });
+      const tables = catalog.catalog.relations.filter(({ kind }) => kind === "table");
+      const answer = await useModal.getState().ask({
+        kind: "multiPick",
+        title: "Choose tables to copy",
+        searchLabel: "Search tables",
+        items: tables.map(({ name }) => ({ id: name, label: name, detail: "Table rows" })),
+        selected: tables.map(({ name }) => name),
+        empty: "No tables match this search.",
+        confirm: "Continue",
+      });
+      if (answer === null) return;
+      selectedTables = parseMultiPickAnswer(answer);
+    }
+  } catch (cause) {
+    const error = toError(cause);
+    await useModal
+      .getState()
+      .ask({ kind: "notice", title: "Could not prepare database copy", message: error.message, hint: error.hint });
+    return;
+  }
   const confirmed = await useModal.getState().ask({
     kind: "confirm",
     title: "Copy MySQL database?",
-    message: `${mode === "data-only" ? "This copies table rows" : mode === "schema-only" ? "This creates table and view definitions" : "This creates table and view definitions and copies table rows"} in the existing database ${destinationDatabase} on ${destination.name}. Existing object names stop the copy; data-only requires matching empty tables. Routines, triggers, events, generated columns, non-InnoDB tables, circular foreign keys, and cross-database foreign keys are unsupported. MySQL DDL commits implicitly, so a failed schema copy may leave created objects. Database content stays on this computer.`,
+    message: `${mode === "data-only" ? `This copies rows from ${selectedTables?.length ?? 0} selected tables` : mode === "schema-only" ? "This creates table and view definitions" : `This creates table and view definitions and copies rows from ${selectedTables?.length ?? 0} selected tables`} in the existing database ${destinationDatabase} on ${destination.name}. Existing object names stop the copy; data-only requires matching layouts and empty selected tables. Routines, triggers, events, generated columns, non-InnoDB tables, circular foreign keys, and cross-database foreign keys are unsupported. MySQL DDL commits implicitly, so a failed schema copy may leave created objects. Database content stays on this computer.`,
     items: [
       { label: "Source", detail: `${source.name} / ${target.path[0]}`, tone: "info" },
       { label: "Destination", detail: `${destination.name} / ${destinationDatabase}`, tone: "info" },
@@ -238,17 +268,47 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
     confirm: "Start copy",
   });
   if (confirmed === null) return;
+  useModal.getState().showCopyProgress({
+    title: "Copying MySQL database",
+    phase: "Preparing",
+    current: "Opening source and destination",
+    completed: 0,
+    total: 0,
+  });
+  let failure: unknown = null;
+  let latestProgress = { completed: 0, total: 0, current: "Opening source and destination" };
   try {
-    const sourceClient =
-      destination.id === source.id ? destinationClient : await useDatasources.getState().connect(source.id);
     await copyMysqlDatabase({
       source: sourceClient,
       destination: destinationClient,
       sourcePath: target.path,
       destinationPath: [destinationDatabase],
       mode,
+      selectedTables,
+      onProgress: ({ completed, total, current }) => {
+        latestProgress = { completed, total, current };
+        const rowsCopied = /: (\d+) rows/.exec(current)?.[1];
+        useModal.getState().updateCopyProgress({
+          title: "Copying MySQL database",
+          phase: current.startsWith("Schema object")
+            ? "Creating schema"
+            : current.includes("rows")
+              ? "Copying table data"
+              : "Preparing",
+          current,
+          completed,
+          total,
+          ...(rowsCopied === undefined ? {} : { rowsCopied: Number(rowsCopied) }),
+        });
+      },
     });
     await useCatalog.getState().synchronize(destination.id, [destinationDatabase]);
+  } catch (cause) {
+    failure = cause;
+  } finally {
+    useModal.getState().clearCopyProgress();
+  }
+  if (failure === null) {
     await useModal.getState().ask({
       kind: "notice",
       title: "Database copy completed",
@@ -256,12 +316,13 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
       hint: "",
       tone: "info",
     });
-  } catch (cause) {
+  } else {
+    const error = toError(failure);
     await useModal.getState().ask({
       kind: "notice",
       title: "Database copy stopped",
-      message: toError(cause).message,
-      hint: toError(cause).hint,
+      message: `${error.message}\nStopped after ${latestProgress.completed} of ${latestProgress.total} steps at ${latestProgress.current}.`,
+      hint: error.hint,
     });
   }
 }

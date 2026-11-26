@@ -17,7 +17,12 @@ import { emptyDesign, scriptText } from "@table-craft/desktop/renderer/model/tab
 import { pathKey, relationKey, routineKey, sequenceKey } from "@table-craft/desktop/renderer/model/explorerTree.js";
 import { useCatalog } from "@table-craft/desktop/renderer/state/catalog.js";
 import { capabilitiesOf, datasourceById, useDatasources } from "@table-craft/desktop/renderer/state/datasources.js";
-import { OBJECT_CHOICES, parseObjectAnswer, useModal } from "@table-craft/desktop/renderer/state/modal.js";
+import {
+  OBJECT_CHOICES,
+  parseMultiPickAnswer,
+  parseObjectAnswer,
+  useModal,
+} from "@table-craft/desktop/renderer/state/modal.js";
 import { featuresOf } from "@table-craft/desktop/renderer/state/objects.js";
 import { toError } from "@table-craft/desktop/renderer/state/resultWindows.js";
 import { useTables } from "@table-craft/desktop/renderer/state/tables.js";
@@ -592,10 +597,60 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
       });
       if (modeAnswer === null) return;
       const mode = modeAnswer as PostgresCopyMode;
+      let sourceClient: Awaited<ReturnType<ReturnType<typeof useDatasources.getState>["connect"]>>;
+      let destinationClient: Awaited<ReturnType<ReturnType<typeof useDatasources.getState>["connect"]>>;
+      let selectedTables: readonly string[] | undefined;
+      try {
+        [sourceClient, destinationClient] = await Promise.all([
+          useDatasources.getState().connect(source.id),
+          useDatasources.getState().connect(destination.id),
+        ]);
+        if (mode !== "schema-only") {
+          const namespaces = await sourceClient.call<"catalog.namespaces">("catalog.namespaces", { refresh: true });
+          const schemaPaths = namespaces
+            .filter(({ path }) => path.length === 2 && path[1] !== "information_schema" && !path[1]?.startsWith("pg_"))
+            .map(({ path }) => path);
+          const items = [] as { id: string; label: string; detail: string }[];
+          for (const schemaPath of schemaPaths) {
+            const schemaName = schemaPath[1];
+            if (schemaName === undefined) continue;
+            const catalog = await sourceClient.call<"catalog.describe">("catalog.describe", {
+              path: schemaPath,
+              refresh: true,
+            });
+            items.push(
+              ...catalog.catalog.relations
+                .filter(({ kind }) => kind === "table")
+                .map(({ name }) => ({
+                  id: JSON.stringify([schemaName, name]),
+                  label: `${schemaName}.${name}`,
+                  detail: "Table rows",
+                })),
+            );
+          }
+          const answer = await useModal.getState().ask({
+            kind: "multiPick",
+            title: "Choose tables to copy",
+            searchLabel: "Search tables",
+            items,
+            selected: items.map(({ id }) => id),
+            empty: "No tables match this search.",
+            confirm: "Continue",
+          });
+          if (answer === null) return;
+          selectedTables = parseMultiPickAnswer(answer);
+        }
+      } catch (cause) {
+        const error = toError(cause);
+        await useModal
+          .getState()
+          .ask({ kind: "notice", title: "Could not prepare database copy", message: error.message, hint: error.hint });
+        return;
+      }
       const confirmed = await useModal.getState().ask({
         kind: "confirm",
         title: "Copy PostgreSQL database?",
-        message: `This writes supported table/view definitions${mode === "schema-only" ? "" : " and table rows"} for all non-system schemas to ${destination.name}. Existing object names stop the copy; data-only requires empty destination tables. Routines, triggers, standalone sequences, and sequence counters are not copied. Circular or cross-schema foreign keys stop data copy. Database content stays on this computer.`,
+        message: `This writes supported table/view definitions${mode === "schema-only" ? "" : ` and rows from ${selectedTables?.length ?? 0} selected tables`} for all non-system schemas to ${destination.name}. Existing object names stop the copy; data-only requires matching layouts and empty selected destination tables. Routines, triggers, standalone sequences, and sequence counters are not copied. Circular or cross-schema foreign keys stop data copy. Database content stays on this computer.`,
         items: [
           { label: "Source", detail: source.name, tone: "info" },
           { label: "Destination", detail: destination.name, tone: "info" },
@@ -603,13 +658,47 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
         confirm: "Start copy",
       });
       if (confirmed === null) return;
+      useModal.getState().showCopyProgress({
+        title: "Copying PostgreSQL database",
+        phase: "Preparing",
+        current: "Opening source and destination",
+        completed: 0,
+        total: 0,
+      });
+      let failure: unknown = null;
+      let latestProgress = { completed: 0, total: 0, current: "Opening source and destination" };
       try {
-        const [sourceClient, destinationClient] = await Promise.all([
-          useDatasources.getState().connect(source.id),
-          useDatasources.getState().connect(destination.id),
-        ]);
-        await copyPostgresDatabase({ source: sourceClient, destination: destinationClient, mode });
+        await copyPostgresDatabase({
+          source: sourceClient,
+          destination: destinationClient,
+          mode,
+          selectedTables,
+          onProgress: ({ completed, total, current }) => {
+            latestProgress = { completed, total, current };
+            const rowsCopied = /: (\d+) rows/.exec(current)?.[1];
+            useModal.getState().updateCopyProgress({
+              title: "Copying PostgreSQL database",
+              phase: current.startsWith("Preparing")
+                ? "Preparing"
+                : current.includes("statement") || current.startsWith("Create schema")
+                  ? "Creating schema"
+                  : current.includes("rows")
+                    ? "Copying table data"
+                    : "Working",
+              current,
+              completed,
+              total,
+              ...(rowsCopied === undefined ? {} : { rowsCopied: Number(rowsCopied) }),
+            });
+          },
+        });
         await useCatalog.getState().synchronize(destination.id, null);
+      } catch (cause) {
+        failure = cause;
+      } finally {
+        useModal.getState().clearCopyProgress();
+      }
+      if (failure === null) {
         await useModal.getState().ask({
           kind: "notice",
           title: "Database copy completed",
@@ -617,12 +706,13 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
           hint: "",
           tone: "info",
         });
-      } catch (cause) {
+      } else {
+        const error = toError(failure);
         await useModal.getState().ask({
           kind: "notice",
           title: "Database copy stopped",
-          message: toError(cause).message,
-          hint: toError(cause).hint,
+          message: `${error.message}\nStopped after ${latestProgress.completed} of ${latestProgress.total} steps at ${latestProgress.current}.`,
+          hint: error.hint,
         });
       }
     },
@@ -681,10 +771,43 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
       });
       if (modeId === null) return;
       const mode = modeId as PostgresCopyMode;
+      let sourceClient: Awaited<ReturnType<ReturnType<typeof useDatasources.getState>["connect"]>>;
+      let destinationClient: Awaited<ReturnType<ReturnType<typeof useDatasources.getState>["connect"]>>;
+      let selectedTables: readonly string[] | undefined;
+      try {
+        [sourceClient, destinationClient] = await Promise.all([
+          useDatasources.getState().connect(source.id),
+          useDatasources.getState().connect(destination.id),
+        ]);
+        if (mode !== "schema-only") {
+          const catalog = await sourceClient.call<"catalog.describe">("catalog.describe", {
+            path: target.path,
+            refresh: true,
+          });
+          const tables = catalog.catalog.relations.filter(({ kind }) => kind === "table");
+          const answer = await useModal.getState().ask({
+            kind: "multiPick",
+            title: "Choose tables to copy",
+            searchLabel: "Search tables",
+            items: tables.map(({ name }) => ({ id: JSON.stringify([name]), label: name, detail: "Table rows" })),
+            selected: tables.map(({ name }) => JSON.stringify([name])),
+            empty: "No tables match this search.",
+            confirm: "Continue",
+          });
+          if (answer === null) return;
+          selectedTables = parseMultiPickAnswer(answer);
+        }
+      } catch (cause) {
+        const error = toError(cause);
+        await useModal
+          .getState()
+          .ask({ kind: "notice", title: "Could not prepare schema copy", message: error.message, hint: error.hint });
+        return;
+      }
       const confirmed = await useModal.getState().ask({
         kind: "confirm",
         title: "Copy PostgreSQL schema?",
-        message: `This writes supported table/view definitions${mode === "schema-only" ? "" : " and table rows"} to ${destination.name}. Existing object names stop the copy; data-only requires empty destination tables. Routines, triggers, standalone sequences, and sequence counters are not copied. Circular or cross-schema foreign keys stop data copy. Database content stays on this computer.`,
+        message: `This writes supported table/view definitions${mode === "schema-only" ? "" : ` and rows from ${selectedTables?.length ?? 0} selected tables`} to ${destination.name}. Existing object names stop the copy; data-only requires matching layouts and empty selected destination tables. Routines, triggers, standalone sequences, and sequence counters are not copied. Circular or cross-schema foreign keys stop data copy. Database content stays on this computer.`,
         items: [
           { label: "Source", detail: `${source.name} · ${target.path.join(" / ")}`, tone: "info" },
           { label: "Destination", detail: `${destination.name} · ${target.path.join(" / ")}`, tone: "info" },
@@ -692,19 +815,48 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
         confirm: "Start copy",
       });
       if (confirmed === null) return;
+      useModal.getState().showCopyProgress({
+        title: "Copying PostgreSQL schema",
+        phase: "Preparing",
+        current: "Opening source and destination",
+        completed: 0,
+        total: 0,
+      });
+      let failure: unknown = null;
+      let latestProgress = { completed: 0, total: 0, current: "Opening source and destination" };
       try {
-        const [sourceClient, destinationClient] = await Promise.all([
-          useDatasources.getState().connect(source.id),
-          useDatasources.getState().connect(destination.id),
-        ]);
         await copyPostgresSchema({
           source: sourceClient,
           destination: destinationClient,
           sourcePath: target.path,
           destinationPath: target.path,
           mode,
+          selectedTables,
+          onProgress: ({ completed, total, current }) => {
+            latestProgress = { completed, total, current };
+            const rowsCopied = /: (\d+) rows/.exec(current)?.[1];
+            useModal.getState().updateCopyProgress({
+              title: "Copying PostgreSQL schema",
+              phase:
+                current.startsWith("Schema statement") || current.startsWith("Create schema")
+                  ? "Creating schema"
+                  : current.includes("rows")
+                    ? "Copying table data"
+                    : "Working",
+              current,
+              completed,
+              total,
+              ...(rowsCopied === undefined ? {} : { rowsCopied: Number(rowsCopied) }),
+            });
+          },
         });
         await useCatalog.getState().synchronize(destination.id, target.path);
+      } catch (cause) {
+        failure = cause;
+      } finally {
+        useModal.getState().clearCopyProgress();
+      }
+      if (failure === null) {
         await useModal.getState().ask({
           kind: "notice",
           title: "Schema copy completed",
@@ -712,12 +864,13 @@ export const OBJECT_ACTIONS: readonly AnyAction[] = [
           hint: "",
           tone: "info",
         });
-      } catch (cause) {
+      } else {
+        const error = toError(failure);
         await useModal.getState().ask({
           kind: "notice",
           title: "Schema copy stopped",
-          message: toError(cause).message,
-          hint: toError(cause).hint,
+          message: `${error.message}\nStopped after ${latestProgress.completed} of ${latestProgress.total} steps at ${latestProgress.current}.`,
+          hint: error.hint,
         });
       }
     },
