@@ -93,6 +93,7 @@
 - [ ] Keep creating all supported schema objects in schema-and-data mode, but transfer rows only for selected tables.
 - [ ] In data-only mode, check table layout and emptiness only for selected tables; empty selection performs no row writes.
 - [ ] Emit a progress update after each MySQL DDL statement and each row batch; keep existing rollback and failure behavior for row transactions.
+- [x] Allow schema-bearing modes to skip routines, triggers, and events; return omitted-object counts for the completion notice while retaining all other safety checks.
 - [ ] Run Prettier, targeted ESLint, and `bun run typecheck`; fix any failures.
 
 ### Task 5: Wire progress lifecycle, docs, package, and install

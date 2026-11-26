@@ -14,6 +14,7 @@ Make PostgreSQL and MySQL copy operations observable while they run and let user
 - Apply table selection to PostgreSQL schema copies, PostgreSQL database copies, and MySQL database copies.
 - Show a searchable checklist of source tables before starting any mode that copies rows. All tables start selected. Schema-only skips this step.
 - In data-only mode, transfer rows only from checked tables. In schema-and-data mode, create all supported schema objects and transfer rows only from checked tables.
+- MySQL schema-bearing modes copy supported tables and views even when routines, triggers, or events exist; disclose the omission up front and report counts after success. Data-only mode does not inspect or copy them.
 - A selection may be empty; the operation then performs schema-only work for schema-and-data mode, or no row writes for data-only mode.
 - Check destination compatibility and emptiness only for selected tables in data-only mode. Never touch skipped destination tables.
 - During execution, show preparation, schema, and data phases; the current object/table; completed versus total work; and rows transferred for the active table. Split PostgreSQL schema DDL into statements and report each statement while retaining its existing transaction. Report MySQL schema objects individually between DDL statements.
@@ -23,7 +24,7 @@ Make PostgreSQL and MySQL copy operations observable while they run and let user
 ## Constraints and non-goals
 
 - Progress stays local in the app and does not transmit database content.
-- Keep the existing source/destination rules, collision protections, and unsupported-object checks.
+- Keep the existing source/destination rules, collision protections, and unsupported-object checks for generated columns, non-InnoDB tables, and unsupported foreign keys.
 - Do not add a background task manager or resumable copy system.
 - Follow the workspace instruction not to add or run tests unless asked; use typecheck, lint, and build verification.
 

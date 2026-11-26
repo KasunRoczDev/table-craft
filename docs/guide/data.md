@@ -214,14 +214,16 @@ Schema-and-data still creates every supported schema object, while data-only che
 selected tables. Schema-bearing modes stop when an object with the same name already exists;
 data-only requires matching table layouts and empty selected tables. Copy never creates the target database or overwrites its
 objects. A live progress dialog shows each schema object and table batch, including rows copied for
-the active table. Data moves in bounded batches with bound parameters and per-table InnoDB
+the active table. Schema-bearing copies proceed without routines, triggers, or events and report how
+many of each were omitted. Data moves in bounded batches with bound parameters and per-table InnoDB
 transactions.
 
 Choose **Verify Schema or Data…** on a selected MySQL database to compare table and view definitions,
 or compare per-table row counts and local content digests. Verification is read-only. MySQL DDL
-implicitly commits, so a later schema error can leave earlier objects in place. Routines, triggers,
-events, generated columns, non-InnoDB tables, and circular, self-referencing, or cross-database
-foreign keys are unsupported. Binary row values cannot be copied or verified; other values that
+implicitly commits, so a later schema error can leave earlier objects in place. Routine, trigger,
+and event definitions are not copied or verified. Generated columns, non-InnoDB tables, and
+circular, self-referencing, or cross-database foreign keys stop the copy. Binary row values cannot
+be copied or verified; other values that
 cannot be safely represented by bound SQL parameters stop the table copy or are reported as
 unverifiable. MySQL `AUTO_INCREMENT` counters are not preserved.
 

@@ -260,7 +260,7 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
   const confirmed = await useModal.getState().ask({
     kind: "confirm",
     title: "Copy MySQL database?",
-    message: `${mode === "data-only" ? `This copies rows from ${selectedTables?.length ?? 0} selected tables` : mode === "schema-only" ? "This creates table and view definitions" : `This creates table and view definitions and copies rows from ${selectedTables?.length ?? 0} selected tables`} in the existing database ${destinationDatabase} on ${destination.name}. Existing object names stop the copy; data-only requires matching layouts and empty selected tables. Routines, triggers, events, generated columns, non-InnoDB tables, circular foreign keys, and cross-database foreign keys are unsupported. MySQL DDL commits implicitly, so a failed schema copy may leave created objects. Database content stays on this computer.`,
+    message: `${mode === "data-only" ? `This copies rows from ${selectedTables?.length ?? 0} selected tables` : mode === "schema-only" ? "This creates table and view definitions" : `This creates table and view definitions and copies rows from ${selectedTables?.length ?? 0} selected tables`} in the existing database ${destinationDatabase} on ${destination.name}. Existing object names stop the copy; data-only requires matching layouts and empty selected tables. ${mode === "data-only" ? "Routines, triggers, and events are outside data-only scope." : "Routines, triggers, and events are skipped; their counts appear after the copy."} Generated columns, non-InnoDB tables, circular foreign keys, and cross-database foreign keys still stop the copy. MySQL DDL commits implicitly, so a failed schema copy may leave created objects. Database content stays on this computer.`,
     items: [
       { label: "Source", detail: `${source.name} / ${target.path[0]}`, tone: "info" },
       { label: "Destination", detail: `${destination.name} / ${destinationDatabase}`, tone: "info" },
@@ -276,9 +276,10 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
     total: 0,
   });
   let failure: unknown = null;
+  let copyReport: Awaited<ReturnType<typeof copyMysqlDatabase>> | null = null;
   let latestProgress = { completed: 0, total: 0, current: "Opening source and destination" };
   try {
-    await copyMysqlDatabase({
+    copyReport = await copyMysqlDatabase({
       source: sourceClient,
       destination: destinationClient,
       sourcePath: target.path,
@@ -309,10 +310,15 @@ export async function copyMysqlDatabaseAction(context: ActionContext): Promise<v
     useModal.getState().clearCopyProgress();
   }
   if (failure === null) {
+    const skipped = copyReport?.skippedObjects;
+    const skippedTotal = skipped === undefined ? 0 : skipped.routines + skipped.triggers + skipped.events;
     await useModal.getState().ask({
       kind: "notice",
-      title: "Database copy completed",
-      message: `Database ${target.path[0]} was copied to ${destination.name} / ${destinationDatabase}.`,
+      title: skippedTotal === 0 ? "Database copy completed" : "Database copy completed with skipped objects",
+      message:
+        skippedTotal === 0
+          ? `Database ${target.path[0]} was copied to ${destination.name} / ${destinationDatabase}.`
+          : `Database ${target.path[0]} was copied to ${destination.name} / ${destinationDatabase}. Omitted objects: ${skipped?.routines ?? 0} routines, ${skipped?.triggers ?? 0} triggers, and ${skipped?.events ?? 0} events.`,
       hint: "",
       tone: "info",
     });

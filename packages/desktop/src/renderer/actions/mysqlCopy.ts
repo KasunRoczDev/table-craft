@@ -18,6 +18,14 @@ export interface MysqlCopyRequest {
   }) => void;
 }
 
+export interface MysqlCopyReport {
+  readonly skippedObjects: {
+    readonly routines: number;
+    readonly triggers: number;
+    readonly events: number;
+  };
+}
+
 export type MysqlVerificationStatus = "match" | "missing" | "extra" | "changed" | "mismatch" | "unverifiable";
 export interface MysqlVerificationFinding {
   readonly object: string;
@@ -264,8 +272,9 @@ function assertSafeSource(
   catalog: NamespaceCatalog,
   db: string,
   metadata: { routines: number; triggers: number; events: number; generated: string[]; engines: Map<string, string> },
+  options: { allowOmittedObjects?: boolean } = {},
 ): readonly NamespaceCatalog["relations"][number][] {
-  if (metadata.routines > 0 || metadata.triggers > 0 || metadata.events > 0) {
+  if (!options.allowOmittedObjects && (metadata.routines > 0 || metadata.triggers > 0 || metadata.events > 0)) {
     throw new Error("Copy supports tables and views only. Routines, triggers, and events must be migrated separately.");
   }
   if (metadata.generated.length > 0) {
@@ -464,8 +473,8 @@ async function tableDigest(
   }
 }
 
-/** Copies one selected MySQL database into a same-named database on another MySQL connection. */
-export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void> {
+/** Copies supported MySQL objects and selected rows into an existing destination database. */
+export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<MysqlCopyReport> {
   const sourceDatabase = request.sourcePath[0];
   const destinationDatabase = request.destinationPath[0];
   if (
@@ -518,9 +527,9 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
             engines: sourceMetadata.engines,
           }
         : sourceMetadata;
-    const safeOrdered = assertSafeSource(sourceCheckCatalog, sourceDatabase, sourceCheckMetadata);
-    const allOrdered =
-      request.mode === "data-only" ? safeOrdered : assertSafeSource(sourceCatalog, sourceDatabase, sourceMetadata);
+    const allOrdered = assertSafeSource(sourceCheckCatalog, sourceDatabase, sourceCheckMetadata, {
+      allowOmittedObjects: request.mode !== "data-only",
+    });
     const ordered =
       request.mode === "data-only" || chosenNames === null
         ? allOrdered
@@ -718,6 +727,16 @@ export async function copyMysqlDatabase(request: MysqlCopyRequest): Promise<void
         }
       }
     }
+    return {
+      skippedObjects:
+        request.mode === "data-only"
+          ? { routines: 0, triggers: 0, events: 0 }
+          : {
+              routines: sourceMetadata.routines,
+              triggers: sourceMetadata.triggers,
+              events: sourceMetadata.events,
+            },
+    };
   } finally {
     await Promise.allSettled([
       request.source.call<"session.close">("session.close", { sessionId: sourceOpened.sessionId }),
